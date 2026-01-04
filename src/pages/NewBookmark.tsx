@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Link as LinkIcon, Loader2, Upload, X, Plus, Clock, Tag, FileText, Image, Film, Tv, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { detectProvider, getMoodEmoji } from "@/lib/utils";
+import { bookmarkService } from "@/services/bookmarks";
 import type { Bookmark } from "@/types/database";
 
 const MOOD_OPTIONS = [
@@ -30,10 +32,10 @@ const TYPE_OPTIONS: { value: Bookmark["type"]; label: string; icon: React.Elemen
 const NewBookmark = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   
   const [url, setUrl] = useState("");
   const [isEnriching, setIsEnriching] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form state
   const [title, setTitle] = useState("");
@@ -49,6 +51,26 @@ const NewBookmark = () => {
 
   // Attachment state
   const [attachments, setAttachments] = useState<File[]>([]);
+
+  // Create bookmark mutation
+  const createBookmarkMutation = useMutation({
+    mutationFn: (bookmarkData: any) => bookmarkService.createBookmark(bookmarkData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
+      toast({
+        title: "Bookmark saved!",
+        description: `"${title}" has been added to your library.`,
+      });
+      navigate("/");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error saving bookmark",
+        description: error.message || "Something went wrong. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
 
   const handleUrlPaste = async () => {
     if (!url.trim()) return;
@@ -109,17 +131,20 @@ const NewBookmark = () => {
       return;
     }
 
-    setIsSubmitting(true);
-
-    // TODO: Implement actual bookmark creation with Supabase
-    setTimeout(() => {
-      setIsSubmitting(false);
-      toast({
-        title: "Bookmark saved!",
-        description: `"${title}" has been added to your library.`,
-      });
-      navigate("/");
-    }, 1000);
+    createBookmarkMutation.mutate({
+      title: title.trim(),
+      type,
+      provider,
+      source_url: url || null,
+      runtime_minutes: runtimeMinutes,
+      release_year: releaseYear,
+      poster_url: posterUrl || null,
+      notes: notes || null,
+      tags,
+      mood_tags: selectedMoods,
+      status: 'backlog',
+      metadata: {},
+    });
   };
 
   return (
@@ -134,8 +159,8 @@ const NewBookmark = () => {
               </Button>
               <h1 className="text-xl font-semibold">Add Bookmark</h1>
             </div>
-            <Button type="submit" form="bookmark-form" disabled={isSubmitting}>
-              {isSubmitting ? (
+            <Button type="submit" form="bookmark-form" disabled={createBookmarkMutation.isPending}>
+              {createBookmarkMutation.isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Saving...

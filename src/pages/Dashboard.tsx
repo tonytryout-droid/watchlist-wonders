@@ -1,162 +1,43 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { TopNav } from "@/components/layout/TopNav";
 import { HeroBanner } from "@/components/layout/HeroBanner";
 import { Rail } from "@/components/bookmarks/Rail";
 import { SearchOverlay } from "@/components/search/SearchOverlay";
-import type { Bookmark, Schedule } from "@/types/database";
-
-// Demo data for initial display
-const demoBookmarks: Bookmark[] = [
-  {
-    id: "1",
-    user_id: "demo",
-    title: "Oppenheimer",
-    type: "movie",
-    provider: "imdb",
-    status: "watching",
-    runtime_minutes: 180,
-    release_year: 2023,
-    poster_url: "https://image.tmdb.org/t/p/w500/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg",
-    backdrop_url: "https://image.tmdb.org/t/p/original/rLb2cwF3Pazuxaj0sRXQ037tGI1.jpg",
-    tags: ["thriller", "drama"],
-    mood_tags: ["intense", "epic", "thoughtful"],
-    notes: "The story of American scientist J. Robert Oppenheimer and his role in the development of the atomic bomb.",
-    metadata: {},
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "2",
-    user_id: "demo",
-    title: "Dune: Part Two",
-    type: "movie",
-    provider: "imdb",
-    status: "backlog",
-    runtime_minutes: 166,
-    release_year: 2024,
-    poster_url: "https://image.tmdb.org/t/p/w500/8b8R8l88Qje9dn9OE8PY05Nxl1X.jpg",
-    backdrop_url: "https://image.tmdb.org/t/p/original/xOMo8BRK7PfcJv9JCnx7s5hj0PX.jpg",
-    tags: ["scifi", "action"],
-    mood_tags: ["epic", "intense"],
-    notes: "",
-    metadata: {},
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "3",
-    user_id: "demo",
-    title: "Shōgun",
-    type: "series",
-    provider: "imdb",
-    status: "backlog",
-    runtime_minutes: 60,
-    release_year: 2024,
-    poster_url: "https://image.tmdb.org/t/p/w500/7O4iVfOMQmdCSxhOg1WnzG1AgmT.jpg",
-    backdrop_url: "https://image.tmdb.org/t/p/original/bOnRKdLqsuKjAOkVAeRA2fKj4Ud.jpg",
-    tags: ["drama", "history"],
-    mood_tags: ["epic", "drama", "thoughtful"],
-    notes: "",
-    metadata: {},
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "4",
-    user_id: "demo",
-    title: "Poor Things",
-    type: "movie",
-    provider: "imdb",
-    status: "backlog",
-    runtime_minutes: 141,
-    release_year: 2023,
-    poster_url: "https://image.tmdb.org/t/p/w500/kCGlIMHnOm8JPXq3rXM6c5wMxcT.jpg",
-    backdrop_url: "https://image.tmdb.org/t/p/original/bQS43HSLZzMjZkcHJz4fGc7fNdz.jpg",
-    tags: ["comedy", "scifi"],
-    mood_tags: ["quirky", "fun"],
-    notes: "",
-    metadata: {},
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "5",
-    user_id: "demo",
-    title: "Killers of the Flower Moon",
-    type: "movie",
-    provider: "imdb",
-    status: "backlog",
-    runtime_minutes: 206,
-    release_year: 2023,
-    poster_url: "https://image.tmdb.org/t/p/w500/dB6Krk806zeqd0YNp2ngQ9zXteH.jpg",
-    backdrop_url: "https://image.tmdb.org/t/p/original/1X7vow16X7CnCoexXh4H4F2yDJv.jpg",
-    tags: ["drama", "crime"],
-    mood_tags: ["intense", "drama"],
-    notes: "",
-    metadata: {},
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "6",
-    user_id: "demo",
-    title: "The Bear",
-    type: "series",
-    provider: "imdb",
-    status: "watching",
-    runtime_minutes: 30,
-    release_year: 2022,
-    poster_url: "https://image.tmdb.org/t/p/w500/sHFlbKS3WLqMnp9t2ghADIJFnuQ.jpg",
-    backdrop_url: "https://image.tmdb.org/t/p/original/9Qq8InnodUYs8zdam8Zj5d0nPqU.jpg",
-    tags: ["drama", "comedy"],
-    mood_tags: ["intense", "emotional"],
-    notes: "",
-    metadata: {},
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "7",
-    user_id: "demo",
-    title: "YouTube: Building a Second Brain",
-    type: "video",
-    provider: "youtube",
-    status: "backlog",
-    runtime_minutes: 45,
-    release_year: 2024,
-    poster_url: null,
-    backdrop_url: null,
-    tags: ["productivity"],
-    mood_tags: ["educational", "inspiring"],
-    source_url: "https://youtube.com/watch?v=example",
-    notes: "",
-    metadata: {},
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "8",
-    user_id: "demo",
-    title: "Barbie",
-    type: "movie",
-    provider: "imdb",
-    status: "done",
-    runtime_minutes: 114,
-    release_year: 2023,
-    poster_url: "https://image.tmdb.org/t/p/w500/iuFNMS8U5cb6xfzi51Dbkovj7vM.jpg",
-    backdrop_url: "https://image.tmdb.org/t/p/original/nHf61UzkfFno5X1ofIhugCPus2R.jpg",
-    tags: ["comedy"],
-    mood_tags: ["fun", "uplifting"],
-    notes: "",
-    metadata: {},
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
+import { bookmarkService } from "@/services/bookmarks";
+import type { Bookmark } from "@/types/database";
+import { Loader2 } from "lucide-react";
 
 const Dashboard = () => {
   const [searchOpen, setSearchOpen] = useState(false);
-  const [bookmarks] = useState<Bookmark[]>(demoBookmarks);
+
+  // Fetch bookmarks from Supabase
+  const { data: bookmarks = [], isLoading, error } = useQuery({
+    queryKey: ['bookmarks'],
+    queryFn: () => bookmarkService.getBookmarks(),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Loading your watchlist...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-destructive mb-2">Error loading bookmarks</p>
+          <p className="text-muted-foreground text-sm">Please try refreshing the page</p>
+        </div>
+      </div>
+    );
+  }
 
   // Group bookmarks
   const continueWatching = bookmarks.filter((b) => b.status === "watching");
