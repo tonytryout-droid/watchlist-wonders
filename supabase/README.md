@@ -206,7 +206,7 @@ For metadata enrichment features, you'll need API keys from:
 After completing the setup:
 
 1. Create your first bookmark to test the system
-2. Explore the dashboard rails
+2. Explore the dashboard features
 3. Try the search functionality
 4. Set up your first watch schedule
 

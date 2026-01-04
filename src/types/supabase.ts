@@ -1,5 +1,7 @@
 // Generated types for Supabase schema
-// This file should ideally be auto-generated using `supabase gen types typescript`
+// These types are manually maintained to match the database schema in supabase/migrations/001_initial_schema.sql
+// For production use, consider auto-generating with: `supabase gen types typescript --local > src/types/supabase.ts`
+// Note: Keep this file in sync with any database schema changes
 
 export type Json =
   | string
