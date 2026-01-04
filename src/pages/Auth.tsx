@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 type AuthMode = "login" | "signup";
 
@@ -16,6 +17,14 @@ const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, signIn, signUp } = useAuth();
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      navigate("/");
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,16 +49,30 @@ const Auth = () => {
 
     setIsLoading(true);
 
-    // TODO: Implement Supabase auth once Cloud is enabled
-    // For now, simulate auth and redirect
-    setTimeout(() => {
-      setIsLoading(false);
-      toast({
-        title: mode === "login" ? "Welcome back!" : "Account created!",
-        description: "Redirecting to your dashboard...",
-      });
+    try {
+      if (mode === "login") {
+        await signIn(email, password);
+        toast({
+          title: "Welcome back!",
+          description: "Successfully signed in.",
+        });
+      } else {
+        await signUp(email, password);
+        toast({
+          title: "Account created!",
+          description: "Please check your email to verify your account.",
+        });
+      }
       navigate("/");
-    }, 1000);
+    } catch (error: any) {
+      toast({
+        title: "Authentication error",
+        description: error.message || "Something went wrong. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
