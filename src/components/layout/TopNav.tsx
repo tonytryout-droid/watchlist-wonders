@@ -1,20 +1,40 @@
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { Search, Bell, Calendar, User, Menu, X, Plus, Sparkles } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Search, Bell, Calendar, User, Menu, X, Plus, Sparkles, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 interface TopNavProps {
   notificationCount?: number;
   onSearchClick?: () => void;
-  user?: { email?: string } | null;
-  onLogout?: () => void;
 }
 
-export function TopNav({ notificationCount = 0, onSearchClick, user, onLogout }: TopNavProps) {
+export function TopNav({ notificationCount = 0, onSearchClick }: TopNavProps) {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const { user, profile, signOut } = useAuth();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      toast({
+        title: "Signed out",
+        description: "You have been successfully signed out.",
+      });
+      navigate("/auth");
+    } catch (error) {
+      toast({
+        title: "Error signing out",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   useEffect(() => {
     const handleScroll = () => {
@@ -99,6 +119,15 @@ export function TopNav({ notificationCount = 0, onSearchClick, user, onLogout }:
                     <User className="w-5 h-5" />
                   </Button>
                 </Link>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={handleSignOut}
+                  className="text-muted-foreground hover:text-foreground"
+                  title="Sign out"
+                >
+                  <LogOut className="w-5 h-5" />
+                </Button>
               </div>
             ) : (
               <Link to="/auth" className="hidden sm:block">
