@@ -4,18 +4,20 @@ export interface Bookmark {
   title: string;
   type: "movie" | "series" | "episode" | "video" | "doc" | "other";
   provider: "youtube" | "imdb" | "netflix" | "instagram" | "facebook" | "x" | "generic";
-  source_url?: string | null;
-  canonical_url?: string | null;
-  platform_label?: string | null;
+  source_url: string | null;
+  canonical_url: string | null;
+  platform_label: string | null;
   status: "backlog" | "scheduled" | "watching" | "done" | "dropped";
-  runtime_minutes?: number | null;
-  release_year?: number | null;
-  poster_url?: string | null;
-  backdrop_url?: string | null;
+  runtime_minutes: number | null;
+  release_year: number | null;
+  poster_url: string | null;
+  backdrop_url: string | null;
   tags: string[];
   mood_tags: string[];
-  notes?: string | null;
-  metadata: Record<string, any>;
+  notes: string | null;
+  metadata: Record<string, unknown>;
+  last_shown_at: string | null;
+  shown_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -27,7 +29,7 @@ export interface Attachment {
   file_url: string;
   file_type: string;
   file_name: string;
-  size?: number | null;
+  size: number | null;
   created_at: string;
 }
 
@@ -39,49 +41,51 @@ export interface Schedule {
   reminder_offset_minutes: number;
   state: "scheduled" | "fired" | "snoozed" | "cancelled";
   created_at: string;
-  bookmark?: Bookmark;
+  updated_at: string;
 }
 
 export interface Notification {
   id: string;
   user_id: string;
-  bookmark_id?: string | null;
-  schedule_id?: string | null;
+  bookmark_id: string | null;
+  schedule_id: string | null;
   title: string;
   body: string;
-  read_at?: string | null;
+  read_at: string | null;
   created_at: string;
-  bookmark?: Bookmark;
 }
 
 export interface WatchPlan {
   id: string;
   user_id: string;
   name: string;
+  description: string | null;
   preferred_days: number[];
   time_windows: { start: string; end: string }[];
-  max_runtime_minutes?: number | null;
+  max_runtime_minutes: number | null;
   mood_tags: string[];
   platforms_allowed: string[];
   auto_suggest: boolean;
   created_at: string;
+  updated_at: string;
 }
 
 export interface WatchPlanBookmark {
   plan_id: string;
   bookmark_id: string;
   user_id: string;
+  position: number;
 }
 
 export interface EnrichmentResult {
   title: string;
-  poster_url?: string | null;
-  backdrop_url?: string | null;
-  runtime_minutes?: number | null;
-  release_year?: number | null;
+  poster_url: string | null;
+  backdrop_url: string | null;
+  runtime_minutes: number | null;
+  release_year: number | null;
   type: Bookmark["type"];
   provider: Bookmark["provider"];
-  canonical_url?: string | null;
-  platform_label?: string | null;
-  metadata: Record<string, any>;
+  canonical_url: string | null;
+  platform_label: string | null;
+  metadata: Record<string, unknown>;
 }
