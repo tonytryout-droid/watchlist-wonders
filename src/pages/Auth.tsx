@@ -6,8 +6,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { z } from "zod";
 
 type AuthMode = "login" | "signup";
+
+const authSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .min(1, { message: "Email is required" })
+    .email({ message: "Please enter a valid email address" })
+    .max(255, { message: "Email must be less than 255 characters" }),
+  password: z
+    .string()
+    .min(6, { message: "Password must be at least 6 characters" })
+    .max(72, { message: "Password must be less than 72 characters" }),
+});
 
 const Auth = () => {
   const [mode, setMode] = useState<AuthMode>("login");
@@ -15,35 +29,37 @@ const Auth = () => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user, signIn, signUp } = useAuth();
+  const { user, loading, signIn, signUp } = useAuth();
 
   // Redirect if already logged in
   useEffect(() => {
-    if (user) {
+    if (!loading && user) {
       navigate("/");
     }
-  }, [user, navigate]);
+  }, [user, loading, navigate]);
+
+  const validateForm = () => {
+    const result = authSchema.safeParse({ email, password });
+    if (!result.success) {
+      const fieldErrors: { email?: string; password?: string } = {};
+      result.error.errors.forEach((err) => {
+        if (err.path[0] === "email") fieldErrors.email = err.message;
+        if (err.path[0] === "password") fieldErrors.password = err.message;
+      });
+      setErrors(fieldErrors);
+      return false;
+    }
+    setErrors({});
+    return true;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!email || !password) {
-      toast({
-        title: "Missing fields",
-        description: "Please fill in all required fields.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (password.length < 6) {
-      toast({
-        title: "Password too short",
-        description: "Password must be at least 6 characters.",
-        variant: "destructive",
-      });
+    if (!validateForm()) {
       return;
     }
 
@@ -51,29 +67,54 @@ const Auth = () => {
 
     try {
       if (mode === "login") {
-        await signIn(email, password);
+        await signIn(email.trim(), password);
         toast({
           title: "Welcome back!",
           description: "Successfully signed in.",
         });
+        navigate("/");
       } else {
-        await signUp(email, password);
+        await signUp(email.trim(), password);
         toast({
           title: "Account created!",
-          description: "Please check your email to verify your account.",
+          description: "Please check your email to verify your account, or you may be logged in automatically.",
         });
+        // Navigation will happen automatically via useEffect when user state changes
       }
-      navigate("/");
     } catch (error: any) {
+      let errorMessage = "Something went wrong. Please try again.";
+      
+      // Handle specific Supabase error messages
+      if (error.message?.includes("Invalid login credentials")) {
+        errorMessage = "Invalid email or password. Please try again.";
+      } else if (error.message?.includes("Email not confirmed")) {
+        errorMessage = "Please verify your email before signing in.";
+      } else if (error.message?.includes("User already registered")) {
+        errorMessage = "An account with this email already exists. Please sign in instead.";
+      } else if (error.message?.includes("Password should be")) {
+        errorMessage = error.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
-        title: "Authentication error",
-        description: error.message || "Something went wrong. Please try again.",
+        title: mode === "login" ? "Sign in failed" : "Sign up failed",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
   };
+
+  // Show loading while checking auth state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
@@ -108,11 +149,18 @@ const Auth = () => {
                   type="email"
                   placeholder="you@example.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10"
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (errors.email) setErrors({ ...errors, email: undefined });
+                  }}
+                  className={`pl-10 ${errors.email ? "border-destructive" : ""}`}
                   disabled={isLoading}
+                  autoComplete="email"
                 />
               </div>
+              {errors.email && (
+                <p className="text-sm text-destructive">{errors.email}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -124,9 +172,13 @@ const Auth = () => {
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10 pr-10"
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (errors.password) setErrors({ ...errors, password: undefined });
+                  }}
+                  className={`pl-10 pr-10 ${errors.password ? "border-destructive" : ""}`}
                   disabled={isLoading}
+                  autoComplete={mode === "login" ? "current-password" : "new-password"}
                 />
                 <Button
                   type="button"
@@ -134,6 +186,7 @@ const Auth = () => {
                   size="icon"
                   className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
                   onClick={() => setShowPassword(!showPassword)}
+                  tabIndex={-1}
                 >
                   {showPassword ? (
                     <EyeOff className="w-4 h-4" />
@@ -142,6 +195,9 @@ const Auth = () => {
                   )}
                 </Button>
               </div>
+              {errors.password && (
+                <p className="text-sm text-destructive">{errors.password}</p>
+              )}
             </div>
 
             <Button type="submit" className="w-full" disabled={isLoading}>
@@ -162,7 +218,10 @@ const Auth = () => {
                 Don't have an account?{" "}
                 <button
                   type="button"
-                  onClick={() => setMode("signup")}
+                  onClick={() => {
+                    setMode("signup");
+                    setErrors({});
+                  }}
                   className="text-primary hover:underline font-medium"
                 >
                   Sign up
@@ -173,7 +232,10 @@ const Auth = () => {
                 Already have an account?{" "}
                 <button
                   type="button"
-                  onClick={() => setMode("login")}
+                  onClick={() => {
+                    setMode("login");
+                    setErrors({});
+                  }}
                   className="text-primary hover:underline font-medium"
                 >
                   Sign in
