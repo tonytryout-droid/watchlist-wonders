@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { fetchOpenGraphMetadata } from "@/lib/openGraph";
 import { detectProvider, getMoodEmoji } from "@/lib/utils";
 import { bookmarkService } from "@/services/bookmarks";
 import type { Bookmark } from "@/types/database";
@@ -45,6 +46,8 @@ const NewBookmark = () => {
   const [releaseYear, setReleaseYear] = useState<number | null>(null);
   const [posterUrl, setPosterUrl] = useState("");
   const [notes, setNotes] = useState("");
+  const [canonicalUrl, setCanonicalUrl] = useState<string | null>(null);
+  const [metadata, setMetadata] = useState<Record<string, unknown>>({});
   const [selectedMoods, setSelectedMoods] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
@@ -79,18 +82,47 @@ const NewBookmark = () => {
     const detectedProvider = detectProvider(url);
     setProvider(detectedProvider);
 
-    // Simulate enrichment - this will be replaced with actual API call
-    setTimeout(() => {
-      // Set some defaults based on provider
-      if (detectedProvider === "youtube") {
+    try {
+      const ogMetadata = await fetchOpenGraphMetadata(url.trim());
+
+      setMetadata(ogMetadata);
+      setCanonicalUrl(ogMetadata.canonicalUrl || null);
+
+      if (!title.trim() && ogMetadata.title) {
+        setTitle(ogMetadata.title);
+      }
+
+      if (!notes.trim() && ogMetadata.description) {
+        setNotes(ogMetadata.description);
+      }
+
+      if (!posterUrl.trim() && ogMetadata.image) {
+        setPosterUrl(ogMetadata.image);
+      }
+
+      if (ogMetadata.type?.includes("video")) {
+        setType("video");
+      } else if (ogMetadata.type?.includes("episode")) {
+        setType("episode");
+      } else if (ogMetadata.type?.includes("movie")) {
+        setType("movie");
+      } else if (detectedProvider === "youtube") {
         setType("video");
       }
-      setIsEnriching(false);
+
       toast({
-        title: "URL detected",
-        description: `Detected as ${detectedProvider}. Fill in the details below.`,
+        title: "Details fetched",
+        description: `Loaded metadata from ${ogMetadata.siteName || detectedProvider}.`,
       });
-    }, 500);
+    } catch (error: any) {
+      toast({
+        title: "Unable to fetch metadata",
+        description: error?.message || "Please fill in the details manually.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsEnriching(false);
+    }
   };
 
   const handleMoodToggle = (mood: string) => {
@@ -136,6 +168,7 @@ const NewBookmark = () => {
       type,
       provider,
       source_url: url || null,
+      canonical_url: canonicalUrl,
       runtime_minutes: runtimeMinutes,
       release_year: releaseYear,
       poster_url: posterUrl || null,
@@ -143,7 +176,7 @@ const NewBookmark = () => {
       tags,
       mood_tags: selectedMoods,
       status: 'backlog',
-      metadata: {},
+      metadata,
     });
   };
 
