@@ -14,7 +14,289 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      attachments: {
+        Row: {
+          bookmark_id: string
+          created_at: string
+          file_name: string
+          file_type: string
+          file_url: string
+          id: string
+          size: number | null
+          user_id: string
+        }
+        Insert: {
+          bookmark_id: string
+          created_at?: string
+          file_name: string
+          file_type: string
+          file_url: string
+          id?: string
+          size?: number | null
+          user_id: string
+        }
+        Update: {
+          bookmark_id?: string
+          created_at?: string
+          file_name?: string
+          file_type?: string
+          file_url?: string
+          id?: string
+          size?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attachments_bookmark_id_fkey"
+            columns: ["bookmark_id"]
+            isOneToOne: false
+            referencedRelation: "bookmarks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bookmarks: {
+        Row: {
+          backdrop_url: string | null
+          canonical_url: string | null
+          created_at: string
+          id: string
+          last_shown_at: string | null
+          metadata: Json | null
+          mood_tags: string[] | null
+          notes: string | null
+          platform_label: string | null
+          poster_url: string | null
+          provider: string
+          release_year: number | null
+          runtime_minutes: number | null
+          shown_count: number | null
+          source_url: string | null
+          status: string
+          tags: string[] | null
+          title: string
+          type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          backdrop_url?: string | null
+          canonical_url?: string | null
+          created_at?: string
+          id?: string
+          last_shown_at?: string | null
+          metadata?: Json | null
+          mood_tags?: string[] | null
+          notes?: string | null
+          platform_label?: string | null
+          poster_url?: string | null
+          provider?: string
+          release_year?: number | null
+          runtime_minutes?: number | null
+          shown_count?: number | null
+          source_url?: string | null
+          status?: string
+          tags?: string[] | null
+          title: string
+          type?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          backdrop_url?: string | null
+          canonical_url?: string | null
+          created_at?: string
+          id?: string
+          last_shown_at?: string | null
+          metadata?: Json | null
+          mood_tags?: string[] | null
+          notes?: string | null
+          platform_label?: string | null
+          poster_url?: string | null
+          provider?: string
+          release_year?: number | null
+          runtime_minutes?: number | null
+          shown_count?: number | null
+          source_url?: string | null
+          status?: string
+          tags?: string[] | null
+          title?: string
+          type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          body: string
+          bookmark_id: string | null
+          created_at: string
+          id: string
+          read_at: string | null
+          schedule_id: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          bookmark_id?: string | null
+          created_at?: string
+          id?: string
+          read_at?: string | null
+          schedule_id?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          bookmark_id?: string | null
+          created_at?: string
+          id?: string
+          read_at?: string | null
+          schedule_id?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_bookmark_id_fkey"
+            columns: ["bookmark_id"]
+            isOneToOne: false
+            referencedRelation: "bookmarks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "schedules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      schedules: {
+        Row: {
+          bookmark_id: string
+          created_at: string
+          id: string
+          reminder_offset_minutes: number | null
+          scheduled_for: string
+          state: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          bookmark_id: string
+          created_at?: string
+          id?: string
+          reminder_offset_minutes?: number | null
+          scheduled_for: string
+          state?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          bookmark_id?: string
+          created_at?: string
+          id?: string
+          reminder_offset_minutes?: number | null
+          scheduled_for?: string
+          state?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedules_bookmark_id_fkey"
+            columns: ["bookmark_id"]
+            isOneToOne: false
+            referencedRelation: "bookmarks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      watch_plan_bookmarks: {
+        Row: {
+          bookmark_id: string
+          plan_id: string
+          position: number | null
+          user_id: string
+        }
+        Insert: {
+          bookmark_id: string
+          plan_id: string
+          position?: number | null
+          user_id: string
+        }
+        Update: {
+          bookmark_id?: string
+          plan_id?: string
+          position?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "watch_plan_bookmarks_bookmark_id_fkey"
+            columns: ["bookmark_id"]
+            isOneToOne: false
+            referencedRelation: "bookmarks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "watch_plan_bookmarks_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "watch_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      watch_plans: {
+        Row: {
+          auto_suggest: boolean | null
+          created_at: string
+          description: string | null
+          id: string
+          max_runtime_minutes: number | null
+          mood_tags: string[] | null
+          name: string
+          platforms_allowed: string[] | null
+          preferred_days: number[] | null
+          time_windows: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          auto_suggest?: boolean | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          max_runtime_minutes?: number | null
+          mood_tags?: string[] | null
+          name: string
+          platforms_allowed?: string[] | null
+          preferred_days?: number[] | null
+          time_windows?: Json | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          auto_suggest?: boolean | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          max_runtime_minutes?: number | null
+          mood_tags?: string[] | null
+          name?: string
+          platforms_allowed?: string[] | null
+          preferred_days?: number[] | null
+          time_windows?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
