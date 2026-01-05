@@ -1,14 +1,13 @@
-import { supabase } from '@/lib/supabase';
-import type { Database } from '@/types/supabase';
+import { supabase } from '@/integrations/supabase/client';
+import type { Notification, Bookmark } from '@/types/database';
 
-type Notification = Database['public']['Tables']['notifications']['Row'];
-type NotificationInsert = Database['public']['Tables']['notifications']['Insert'];
+type NotificationWithBookmark = Notification & { bookmarks?: Bookmark };
 
 export const notificationService = {
   /**
    * Get all notifications for the current user
    */
-  async getNotifications(limit = 50) {
+  async getNotifications(limit = 50): Promise<NotificationWithBookmark[]> {
     const { data, error } = await supabase
       .from('notifications')
       .select('*, bookmarks(*)')
@@ -16,13 +15,13 @@ export const notificationService = {
       .limit(limit);
 
     if (error) throw error;
-    return data;
+    return (data || []) as NotificationWithBookmark[];
   },
 
   /**
    * Get unread notifications
    */
-  async getUnreadNotifications() {
+  async getUnreadNotifications(): Promise<NotificationWithBookmark[]> {
     const { data, error } = await supabase
       .from('notifications')
       .select('*, bookmarks(*)')
@@ -30,13 +29,13 @@ export const notificationService = {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return data;
+    return (data || []) as NotificationWithBookmark[];
   },
 
   /**
    * Get unread notification count
    */
-  async getUnreadCount() {
+  async getUnreadCount(): Promise<number> {
     const { count, error } = await supabase
       .from('notifications')
       .select('*', { count: 'exact', head: true })
@@ -49,7 +48,7 @@ export const notificationService = {
   /**
    * Mark notification as read
    */
-  async markAsRead(id: string) {
+  async markAsRead(id: string): Promise<Notification> {
     const { data, error } = await supabase
       .from('notifications')
       .update({ read_at: new Date().toISOString() })
@@ -64,7 +63,7 @@ export const notificationService = {
   /**
    * Mark all notifications as read
    */
-  async markAllAsRead() {
+  async markAllAsRead(): Promise<void> {
     const { error } = await supabase
       .from('notifications')
       .update({ read_at: new Date().toISOString() })
@@ -76,27 +75,13 @@ export const notificationService = {
   /**
    * Delete a notification
    */
-  async deleteNotification(id: string) {
+  async deleteNotification(id: string): Promise<void> {
     const { error } = await supabase
       .from('notifications')
       .delete()
       .eq('id', id);
 
     if (error) throw error;
-  },
-
-  /**
-   * Create a notification (typically used by server-side functions)
-   */
-  async createNotification(notification: NotificationInsert) {
-    const { data, error } = await supabase
-      .from('notifications')
-      .insert(notification)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data as Notification;
   },
 
   /**
