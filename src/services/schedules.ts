@@ -1,29 +1,26 @@
-import { supabase } from '@/lib/supabase';
-import type { Database } from '@/types/supabase';
+import { supabase } from '@/integrations/supabase/client';
+import type { Schedule, Bookmark } from '@/types/database';
 
-type Schedule = Database['public']['Tables']['schedules']['Row'];
-type ScheduleInsert = Database['public']['Tables']['schedules']['Insert'];
-type ScheduleUpdate = Database['public']['Tables']['schedules']['Update'];
-type ScheduleOccurrence = Database['public']['Tables']['schedule_occurrences']['Row'];
+type ScheduleWithBookmark = Schedule & { bookmarks: Bookmark };
 
 export const scheduleService = {
   /**
    * Get all schedules for the current user
    */
-  async getSchedules() {
+  async getSchedules(): Promise<ScheduleWithBookmark[]> {
     const { data, error } = await supabase
       .from('schedules')
       .select('*, bookmarks(*)')
       .order('scheduled_for', { ascending: true });
 
     if (error) throw error;
-    return data;
+    return (data || []) as ScheduleWithBookmark[];
   },
 
   /**
    * Get upcoming schedules
    */
-  async getUpcomingSchedules(limit = 10) {
+  async getUpcomingSchedules(limit = 10): Promise<ScheduleWithBookmark[]> {
     const now = new Date().toISOString();
     const { data, error } = await supabase
       .from('schedules')
@@ -34,13 +31,13 @@ export const scheduleService = {
       .limit(limit);
 
     if (error) throw error;
-    return data;
+    return (data || []) as ScheduleWithBookmark[];
   },
 
   /**
    * Get schedule by ID
    */
-  async getSchedule(id: string) {
+  async getSchedule(id: string): Promise<ScheduleWithBookmark> {
     const { data, error } = await supabase
       .from('schedules')
       .select('*, bookmarks(*)')
@@ -48,19 +45,27 @@ export const scheduleService = {
       .single();
 
     if (error) throw error;
-    return data;
+    return data as ScheduleWithBookmark;
   },
 
   /**
    * Create a new schedule
    */
-  async createSchedule(schedule: ScheduleInsert) {
+  async createSchedule(schedule: { 
+    bookmark_id: string; 
+    scheduled_for: string; 
+    reminder_offset_minutes?: number;
+  }): Promise<Schedule> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
     const { data, error } = await supabase
       .from('schedules')
-      .insert({ ...schedule, user_id: user.id })
+      .insert({ 
+        ...schedule, 
+        user_id: user.id,
+        reminder_offset_minutes: schedule.reminder_offset_minutes || 60,
+      })
       .select()
       .single();
 
@@ -71,7 +76,7 @@ export const scheduleService = {
   /**
    * Update a schedule
    */
-  async updateSchedule(id: string, updates: ScheduleUpdate) {
+  async updateSchedule(id: string, updates: Partial<Schedule>): Promise<Schedule> {
     const { data, error } = await supabase
       .from('schedules')
       .update(updates)
@@ -86,7 +91,7 @@ export const scheduleService = {
   /**
    * Delete a schedule
    */
-  async deleteSchedule(id: string) {
+  async deleteSchedule(id: string): Promise<void> {
     const { error } = await supabase
       .from('schedules')
       .delete()
@@ -98,14 +103,14 @@ export const scheduleService = {
   /**
    * Cancel a schedule
    */
-  async cancelSchedule(id: string) {
+  async cancelSchedule(id: string): Promise<Schedule> {
     return this.updateSchedule(id, { state: 'cancelled' });
   },
 
   /**
    * Snooze a schedule
    */
-  async snoozeSchedule(id: string, snoozeMinutes: number) {
+  async snoozeSchedule(id: string, snoozeMinutes: number): Promise<Schedule> {
     const schedule = await this.getSchedule(id);
     const newScheduledFor = new Date(schedule.scheduled_for);
     newScheduledFor.setMinutes(newScheduledFor.getMinutes() + snoozeMinutes);
@@ -117,62 +122,44 @@ export const scheduleService = {
   },
 
   /**
-   * Get schedule occurrences for a date range
+   * Get schedules for today
    */
-  async getOccurrences(startDate: string, endDate: string) {
-    const { data, error } = await supabase
-      .from('schedule_occurrences')
-      .select('*, bookmarks(*)')
-      .gte('occurrence_date', startDate)
-      .lte('occurrence_date', endDate)
-      .order('occurrence_date', { ascending: true });
-
-    if (error) throw error;
-    return data;
-  },
-
-  /**
-   * Get occurrences for today
-   */
-  async getTodayOccurrences() {
+  async getTodaySchedules(): Promise<ScheduleWithBookmark[]> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    return this.getOccurrences(today.toISOString(), tomorrow.toISOString());
+    const { data, error } = await supabase
+      .from('schedules')
+      .select('*, bookmarks(*)')
+      .eq('state', 'scheduled')
+      .gte('scheduled_for', today.toISOString())
+      .lt('scheduled_for', tomorrow.toISOString())
+      .order('scheduled_for', { ascending: true });
+
+    if (error) throw error;
+    return (data || []) as ScheduleWithBookmark[];
   },
 
   /**
-   * Update occurrence state
+   * Get schedules for this week
    */
-  async updateOccurrenceState(occurrenceId: string, state: ScheduleOccurrence['state']) {
+  async getThisWeekSchedules(): Promise<ScheduleWithBookmark[]> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const nextWeek = new Date(today);
+    nextWeek.setDate(nextWeek.getDate() + 7);
+
     const { data, error } = await supabase
-      .from('schedule_occurrences')
-      .update({ state })
-      .eq('id', occurrenceId)
-      .select()
-      .single();
+      .from('schedules')
+      .select('*, bookmarks(*)')
+      .eq('state', 'scheduled')
+      .gte('scheduled_for', today.toISOString())
+      .lt('scheduled_for', nextWeek.toISOString())
+      .order('scheduled_for', { ascending: true });
 
     if (error) throw error;
-    return data;
-  },
-
-  /**
-   * Skip an occurrence
-   */
-  async skipOccurrence(occurrenceId: string) {
-    const { data, error } = await supabase
-      .from('schedule_occurrences')
-      .update({
-        state: 'skipped',
-        skipped_at: new Date().toISOString(),
-      })
-      .eq('id', occurrenceId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
+    return (data || []) as ScheduleWithBookmark[];
   },
 };
