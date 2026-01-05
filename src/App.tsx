@@ -24,12 +24,14 @@ const App = () => (
         <BrowserRouter>
           <div className="dark">
             <Routes>
-              <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/auth" element={<Auth />} />
-              <Route path="/new" element={<ProtectedRoute><NewBookmark /></ProtectedRoute>} />
-              <Route path="/tonight" element={<ProtectedRoute><TonightPick /></ProtectedRoute>} />
-              <Route path="/plans" element={<ProtectedRoute><Plans /></ProtectedRoute>} />
-              <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+              <Route element={<ProtectedRoute />}>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/new" element={<NewBookmark />} />
+                <Route path="/tonight" element={<TonightPick />} />
+                <Route path="/plans" element={<Plans />} />
+                <Route path="/notifications" element={<Notifications />} />
+              </Route>
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
