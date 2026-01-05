@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { fetchOpenGraphMetadata } from "@/lib/openGraph";
+import { supabase } from "@/integrations/supabase/client";
 import { detectProvider, getMoodEmoji } from "@/lib/utils";
 import { bookmarkService } from "@/services/bookmarks";
 import type { Bookmark } from "@/types/database";
@@ -83,28 +83,73 @@ const NewBookmark = () => {
     setProvider(detectedProvider);
 
     try {
-      const ogMetadata = await fetchOpenGraphMetadata(url.trim());
+      const { data, error } = await supabase.functions.invoke<{
+        ok: boolean;
+        provider: Bookmark["provider"] | "unknown";
+        canonicalUrl: string;
+        title?: string;
+        posterUrl?: string;
+        runtimeMinutes?: number | null;
+        metadata?: Record<string, unknown>;
+        blocked?: boolean;
+        error?: { message: string; step?: string; status?: number };
+      }>("enrich", { body: { url: url.trim() } });
 
-      setMetadata(ogMetadata);
-      setCanonicalUrl(ogMetadata.canonicalUrl || null);
-
-      if (!title.trim() && ogMetadata.title) {
-        setTitle(ogMetadata.title);
+      if (error || !data) {
+        throw new Error(error?.message || "Server misconfigured");
       }
 
-      if (!notes.trim() && ogMetadata.description) {
+      if (!data.ok && data.blocked) {
+        toast({
+          title: "Platform blocked preview",
+          description: "This site requires login or blocks previews. Please fill in details manually.",
+        });
+        return;
+      }
+
+      if (!data.ok) {
+        const errorMessage = data.error?.message || "Unable to fetch metadata";
+        const statusSuffix = data.error?.status ? ` (${data.error.status})` : "";
+        const stepSuffix = data.error?.step ? ` • ${data.error.step}` : "";
+        toast({
+          title: "Metadata fetch failed",
+          description: `${errorMessage}${statusSuffix}${stepSuffix}`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const ogMetadata = data.metadata?.og as
+        | {
+            title?: string;
+            image?: string;
+            description?: string;
+            siteName?: string;
+            type?: string;
+          }
+        | undefined;
+
+      setMetadata(data.metadata || {});
+      setCanonicalUrl(data.canonicalUrl || null);
+      setProvider(data.provider === "unknown" ? detectedProvider : data.provider);
+
+      if (!title.trim() && data.title) {
+        setTitle(data.title);
+      }
+
+      if (!notes.trim() && ogMetadata?.description) {
         setNotes(ogMetadata.description);
       }
 
-      if (!posterUrl.trim() && ogMetadata.image) {
-        setPosterUrl(ogMetadata.image);
+      if (!posterUrl.trim() && data.posterUrl) {
+        setPosterUrl(data.posterUrl);
       }
 
-      if (ogMetadata.type?.includes("video")) {
+      if (ogMetadata?.type?.includes("video")) {
         setType("video");
-      } else if (ogMetadata.type?.includes("episode")) {
+      } else if (ogMetadata?.type?.includes("episode")) {
         setType("episode");
-      } else if (ogMetadata.type?.includes("movie")) {
+      } else if (ogMetadata?.type?.includes("movie")) {
         setType("movie");
       } else if (detectedProvider === "youtube") {
         setType("video");
@@ -112,11 +157,11 @@ const NewBookmark = () => {
 
       toast({
         title: "Details fetched",
-        description: `Loaded metadata from ${ogMetadata.siteName || detectedProvider}.`,
+        description: `Loaded metadata from ${ogMetadata?.siteName || detectedProvider}.`,
       });
     } catch (error: any) {
       toast({
-        title: "Unable to fetch metadata",
+        title: "Metadata fetch failed",
         description: error?.message || "Please fill in the details manually.",
         variant: "destructive",
       });
