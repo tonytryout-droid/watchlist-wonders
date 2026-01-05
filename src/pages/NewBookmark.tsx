@@ -36,6 +36,8 @@ const NewBookmark = () => {
   
   const [url, setUrl] = useState("");
   const [isEnriching, setIsEnriching] = useState(false);
+  const [canonicalUrl, setCanonicalUrl] = useState<string | null>(null);
+  const [metadata, setMetadata] = useState<Record<string, string>>({});
 
   // Form state
   const [title, setTitle] = useState("");
@@ -72,25 +74,126 @@ const NewBookmark = () => {
     },
   });
 
-  const handleUrlPaste = async () => {
-    if (!url.trim()) return;
+  const normalizeUrl = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    try {
+      return new URL(trimmed).toString();
+    } catch {
+      try {
+        return new URL(`https://${trimmed}`).toString();
+      } catch {
+        return null;
+      }
+    }
+  };
 
+  const getMetaContent = (doc: Document, selector: string) =>
+    doc.querySelector<HTMLMetaElement>(selector)?.content?.trim() || "";
+
+  const fetchOpenGraph = async (targetUrl: string) => {
+    const proxiedUrl = `https://r.jina.ai/http://${targetUrl.replace(/^https?:\/\//, "")}`;
+    const response = await fetch(proxiedUrl);
+    if (!response.ok) {
+      throw new Error("Unable to fetch metadata for this URL.");
+    }
+    const html = await response.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+
+    const ogTitle = getMetaContent(doc, 'meta[property="og:title"]') || getMetaContent(doc, 'meta[name="og:title"]');
+    const ogDescription = getMetaContent(doc, 'meta[property="og:description"]') || getMetaContent(doc, 'meta[name="og:description"]');
+    const ogImage = getMetaContent(doc, 'meta[property="og:image"]') || getMetaContent(doc, 'meta[name="og:image"]');
+    const ogType = getMetaContent(doc, 'meta[property="og:type"]') || getMetaContent(doc, 'meta[name="og:type"]');
+    const ogUrl = getMetaContent(doc, 'meta[property="og:url"]') || getMetaContent(doc, 'meta[name="og:url"]');
+    const ogSiteName = getMetaContent(doc, 'meta[property="og:site_name"]') || getMetaContent(doc, 'meta[name="og:site_name"]');
+    const description = ogDescription || getMetaContent(doc, 'meta[name="description"]');
+    const canonical = doc.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href?.trim() || "";
+
+    return {
+      title: ogTitle || doc.title || "",
+      description,
+      image: ogImage,
+      type: ogType,
+      url: ogUrl || canonical || targetUrl,
+      siteName: ogSiteName,
+      canonical,
+    };
+  };
+
+  const mapOgTypeToBookmarkType = (ogType: string): Bookmark["type"] | null => {
+    const normalized = ogType.toLowerCase();
+    if (normalized.includes("video") || normalized.includes("movie")) {
+      return "video";
+    }
+    if (normalized.includes("episode")) {
+      return "episode";
+    }
+    if (normalized.includes("series") || normalized.includes("tv")) {
+      return "series";
+    }
+    if (normalized.includes("article") || normalized.includes("book") || normalized.includes("document")) {
+      return "doc";
+    }
+    return null;
+  };
+
+  const handleUrlEnrich = async (incomingUrl?: string) => {
+    const baseUrl = normalizeUrl(incomingUrl ?? url);
+    if (!baseUrl) {
+      toast({
+        title: "Invalid URL",
+        description: "Please enter a valid URL to fetch details.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setUrl(baseUrl);
     setIsEnriching(true);
-    const detectedProvider = detectProvider(url);
+    const detectedProvider = detectProvider(baseUrl);
     setProvider(detectedProvider);
 
-    // Simulate enrichment - this will be replaced with actual API call
-    setTimeout(() => {
-      // Set some defaults based on provider
-      if (detectedProvider === "youtube") {
-        setType("video");
-      }
-      setIsEnriching(false);
-      toast({
-        title: "URL detected",
-        description: `Detected as ${detectedProvider}. Fill in the details below.`,
+    try {
+      const ogData = await fetchOpenGraph(baseUrl);
+      setMetadata({
+        ogTitle: ogData.title,
+        ogDescription: ogData.description,
+        ogImage: ogData.image,
+        ogType: ogData.type,
+        ogUrl: ogData.url,
+        ogSiteName: ogData.siteName,
       });
-    }, 500);
+      setCanonicalUrl(ogData.canonical || ogData.url || null);
+
+      if (!title.trim() && ogData.title) {
+        setTitle(ogData.title);
+      }
+      if (!notes.trim() && ogData.description) {
+        setNotes(ogData.description);
+      }
+      if (!posterUrl.trim() && ogData.image) {
+        setPosterUrl(ogData.image);
+      }
+
+      const mappedType = mapOgTypeToBookmarkType(ogData.type);
+      if (mappedType && type === "movie") {
+        setType(mappedType);
+      }
+
+      toast({
+        title: "Details fetched",
+        description: `Auto-filled details from ${ogData.siteName || detectedProvider}.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Couldn't fetch details",
+        description: error.message || "Please fill in the details manually.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsEnriching(false);
+    }
   };
 
   const handleMoodToggle = (mood: string) => {
@@ -136,6 +239,7 @@ const NewBookmark = () => {
       type,
       provider,
       source_url: url || null,
+      canonical_url: canonicalUrl,
       runtime_minutes: runtimeMinutes,
       release_year: releaseYear,
       poster_url: posterUrl || null,
@@ -143,7 +247,7 @@ const NewBookmark = () => {
       tags,
       mood_tags: selectedMoods,
       status: 'backlog',
-      metadata: {},
+      metadata,
     });
   };
 
@@ -188,13 +292,19 @@ const NewBookmark = () => {
                   placeholder="Paste a URL to auto-fill details..."
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
+                  onPaste={(e) => {
+                    const pasted = e.clipboardData.getData("text");
+                    if (!pasted) return;
+                    e.preventDefault();
+                    handleUrlEnrich(pasted);
+                  }}
                   className="pl-10"
                 />
               </div>
               <Button
                 type="button"
                 variant="secondary"
-                onClick={handleUrlPaste}
+                onClick={() => handleUrlEnrich()}
                 disabled={!url.trim() || isEnriching}
               >
                 {isEnriching ? (
