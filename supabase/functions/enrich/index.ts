@@ -30,6 +30,7 @@ const detectProvider = (url: URL) => {
   if (host.endsWith("instagram.com")) return "instagram";
   if (host.endsWith("facebook.com") || host === "fb.watch" || host === "fb.com") return "facebook";
   if (host === "x.com" || host === "twitter.com") return "x";
+  if (host.endsWith("tiktok.com") || host === "vm.tiktok.com") return "tiktok";
   if (host.endsWith("imdb.com")) return "imdb";
   if (host.endsWith("netflix.com")) return "netflix";
   return "generic";
@@ -96,6 +97,9 @@ const tryOEmbed = async (provider: string, canonicalUrl: string) => {
     case "instagram":
       // Instagram oEmbed requires Facebook App token, try basic endpoint
       endpoint = "https://api.instagram.com/oembed?url=" + encodeURIComponent(canonicalUrl);
+      break;
+    case "tiktok":
+      endpoint = "https://www.tiktok.com/oembed?url=" + encodeURIComponent(canonicalUrl);
       break;
     case "facebook":
       // Facebook oEmbed requires token, skip for now
@@ -174,7 +178,7 @@ Deno.serve(async (req) => {
     const canonicalUrl = parsed.toString();
 
     // Try oEmbed for supported providers
-    if (provider === "youtube" || provider === "x" || provider === "instagram") {
+    if (provider === "youtube" || provider === "x" || provider === "instagram" || provider === "tiktok") {
       const oembed = await tryOEmbed(provider, canonicalUrl);
       if (oembed?.title || oembed?.posterUrl) {
         return jsonResponse({
