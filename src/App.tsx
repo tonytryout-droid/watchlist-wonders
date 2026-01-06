@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import Auth from "./pages/Auth";
 import NewBookmark from "./pages/NewBookmark";
@@ -24,9 +25,10 @@ const App = () => (
         <BrowserRouter>
           <div className="dark">
             <Routes>
+              <Route path="/" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
               <Route element={<ProtectedRoute />}>
-                <Route path="/" element={<Dashboard />} />
+                <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/new" element={<NewBookmark />} />
                 <Route path="/tonight" element={<TonightPick />} />
                 <Route path="/plans" element={<Plans />} />
