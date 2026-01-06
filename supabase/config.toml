@@ -1,1 +1,4 @@
 project_id = "gpsdrlxkauyrapwehlca"
+
+[functions.enrich]
+verify_jwt = false
