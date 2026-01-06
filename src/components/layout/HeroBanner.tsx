@@ -1,6 +1,7 @@
 import { Play, Info, Clock, Calendar as CalendarIcon, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { GradientBarsBackground } from "@/components/ui/gradient-bars-background";
 import { cn } from "@/lib/utils";
 
 interface Bookmark {
@@ -29,6 +30,7 @@ export function HeroBanner({ bookmark, onPlay, onMoreInfo, className }: HeroBann
   if (!bookmark) {
     return (
       <div className={cn("relative h-[70vh] min-h-[500px] flex items-end", className)}>
+        <GradientBarsBackground className="opacity-60" />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
         <div className="relative z-10 container mx-auto px-4 lg:px-8 pb-16">
           <h2 className="text-3xl md:text-5xl font-bold text-foreground mb-4">
@@ -59,6 +61,8 @@ export function HeroBanner({ bookmark, onPlay, onMoreInfo, className }: HeroBann
           />
         </div>
       )}
+
+      <GradientBarsBackground baseClassName="bg-transparent" className="opacity-70" />
 
       {/* Gradient Overlays */}
       <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
