@@ -83,18 +83,44 @@ const extractOg = (html: string) => {
   return { title, image, description, siteName, type, url };
 };
 
-const tryYouTubeOEmbed = async (canonicalUrl: string) => {
-  const endpoint =
-    "https://www.youtube.com/oembed?format=json&url=" +
-    encodeURIComponent(canonicalUrl);
-  const response = await fetch(endpoint, { redirect: "follow" });
-  if (!response.ok) return null;
-  const data = await response.json();
-  return {
-    title: data.title as string | undefined,
-    posterUrl: data.thumbnail_url as string | undefined,
-    metadata: { oembed: data },
-  };
+const tryOEmbed = async (provider: string, canonicalUrl: string) => {
+  let endpoint: string;
+  
+  switch (provider) {
+    case "youtube":
+      endpoint = "https://www.youtube.com/oembed?format=json&url=" + encodeURIComponent(canonicalUrl);
+      break;
+    case "x":
+      endpoint = "https://publish.twitter.com/oembed?url=" + encodeURIComponent(canonicalUrl);
+      break;
+    case "instagram":
+      // Instagram oEmbed requires Facebook App token, try basic endpoint
+      endpoint = "https://api.instagram.com/oembed?url=" + encodeURIComponent(canonicalUrl);
+      break;
+    case "facebook":
+      // Facebook oEmbed requires token, skip for now
+      return null;
+    default:
+      return null;
+  }
+
+  try {
+    const response = await fetch(endpoint, { 
+      redirect: "follow",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; MetadataBot/1.0)",
+      },
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return {
+      title: data.title || data.author_name as string | undefined,
+      posterUrl: data.thumbnail_url as string | undefined,
+      metadata: { oembed: data },
+    };
+  } catch {
+    return null;
+  }
 };
 
 Deno.serve(async (req) => {
@@ -147,8 +173,9 @@ Deno.serve(async (req) => {
     const provider = detectProvider(parsed);
     const canonicalUrl = parsed.toString();
 
-    if (provider === "youtube") {
-      const oembed = await tryYouTubeOEmbed(canonicalUrl);
+    // Try oEmbed for supported providers
+    if (provider === "youtube" || provider === "x" || provider === "instagram") {
+      const oembed = await tryOEmbed(provider, canonicalUrl);
       if (oembed?.title || oembed?.posterUrl) {
         return jsonResponse({
           ok: true,
