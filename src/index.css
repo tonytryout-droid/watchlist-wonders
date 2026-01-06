@@ -128,3 +128,14 @@
     @apply bg-background text-foreground;
   }
 }
+
+@keyframes pulseBar {
+  0% {
+    transform: scaleY(var(--bar-scale, 0.6));
+    opacity: 0.75;
+  }
+  100% {
+    transform: scaleY(calc(var(--bar-scale, 0.6) + 0.08));
+    opacity: 1;
+  }
+}
