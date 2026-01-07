@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { detectProvider, getMoodEmoji } from "@/lib/utils";
 import { bookmarkService } from "@/services/bookmarks";
+import { ConfirmMetadataDialog, type ConfirmMetadataPayload } from "@/components/bookmarks/ConfirmMetadataDialog";
 import type { Bookmark } from "@/types/database";
 
 const MOOD_OPTIONS = [
@@ -54,6 +55,10 @@ const NewBookmark = () => {
 
   // Attachment state
   const [attachments, setAttachments] = useState<File[]>([]);
+
+  // Confirm metadata dialog state
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmInitial, setConfirmInitial] = useState<ConfirmMetadataPayload>({ url: "" });
 
   // Create bookmark mutation
   const createBookmarkMutation = useMutation({
@@ -99,26 +104,32 @@ const NewBookmark = () => {
         throw new Error(error?.message || "Server misconfigured");
       }
 
-      if (!data.ok && data.blocked) {
-        toast({
-          title: "Platform blocked preview",
-          description: "This site requires login or blocks previews. Please fill in details manually.",
+      const resolvedProvider = data.provider === "unknown" ? detectedProvider : data.provider;
+      setProvider(resolvedProvider);
+      setCanonicalUrl(data.canonicalUrl || null);
+      setMetadata(data.metadata || {});
+
+      // Check if enrichment failed or returned partial data
+      const hasTitle = data.ok && data.title;
+      const hasPoster = data.ok && data.posterUrl;
+
+      if (!data.ok || !hasTitle) {
+        // Open confirm dialog for user to fill missing data
+        setConfirmInitial({
+          url: url.trim(),
+          provider: resolvedProvider,
+          title: data.title,
+          posterUrl: data.posterUrl,
+          runtimeMinutes: data.runtimeMinutes,
+          type: detectedProvider === "youtube" ? "video" : "movie",
+          blocked: data.blocked,
+          debugMessage: data.error?.message,
         });
+        setConfirmOpen(true);
         return;
       }
 
-      if (!data.ok) {
-        const errorMessage = data.error?.message || "Unable to fetch metadata";
-        const statusSuffix = data.error?.status ? ` (${data.error.status})` : "";
-        const stepSuffix = data.error?.step ? ` • ${data.error.step}` : "";
-        toast({
-          title: "Metadata fetch failed",
-          description: `${errorMessage}${statusSuffix}${stepSuffix}`,
-          variant: "destructive",
-        });
-        return;
-      }
-
+      // Auto-fill form with successful enrichment
       const ogMetadata = data.metadata?.og as
         | {
             title?: string;
@@ -128,10 +139,6 @@ const NewBookmark = () => {
             type?: string;
           }
         | undefined;
-
-      setMetadata(data.metadata || {});
-      setCanonicalUrl(data.canonicalUrl || null);
-      setProvider(data.provider === "unknown" ? detectedProvider : data.provider);
 
       if (!title.trim() && data.title) {
         setTitle(data.title);
@@ -160,14 +167,37 @@ const NewBookmark = () => {
         description: `Loaded metadata from ${ogMetadata?.siteName || detectedProvider}.`,
       });
     } catch (error: any) {
-      toast({
-        title: "Metadata fetch failed",
-        description: error?.message || "Please fill in the details manually.",
-        variant: "destructive",
+      // On complete failure, open confirm dialog
+      setConfirmInitial({
+        url: url.trim(),
+        provider: detectedProvider,
+        type: detectedProvider === "youtube" ? "video" : "movie",
+        blocked: false,
+        debugMessage: error?.message || "Unable to fetch metadata",
       });
+      setConfirmOpen(true);
     } finally {
       setIsEnriching(false);
     }
+  };
+
+  const handleConfirmMetadata = (data: {
+    url: string;
+    provider?: string;
+    title: string;
+    posterUrl?: string;
+    runtimeMinutes: number | null;
+    type: Bookmark["type"];
+  }) => {
+    setTitle(data.title);
+    if (data.posterUrl) setPosterUrl(data.posterUrl);
+    if (data.runtimeMinutes) setRuntimeMinutes(data.runtimeMinutes);
+    setType(data.type);
+    
+    toast({
+      title: "Details confirmed",
+      description: "You can now save the bookmark or add more details.",
+    });
   };
 
   const handleMoodToggle = (mood: string) => {
@@ -484,6 +514,14 @@ const NewBookmark = () => {
           </div>
         </form>
       </div>
+
+      {/* Confirm Metadata Dialog */}
+      <ConfirmMetadataDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        initial={confirmInitial}
+        onConfirm={handleConfirmMetadata}
+      />
     </div>
   );
 };
