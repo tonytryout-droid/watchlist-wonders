@@ -18,7 +18,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Film, Tv, Play, FileText, Link as LinkIcon } from "lucide-react";
+import { Film, Tv, Play, FileText, Link as LinkIcon, Upload, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 import type { Bookmark } from "@/types/database";
 
 export type ConfirmMetadataPayload = {
@@ -62,10 +64,13 @@ const RUNTIME_PRESETS = [
 ];
 
 export function ConfirmMetadataDialog({ open, onOpenChange, initial, onConfirm }: Props) {
+  const { toast } = useToast();
   const [title, setTitle] = React.useState(initial.title ?? "");
   const [posterUrl, setPosterUrl] = React.useState(initial.posterUrl ?? "");
   const [runtime, setRuntime] = React.useState(initial.runtimeMinutes?.toString() ?? "");
   const [type, setType] = React.useState<Bookmark["type"]>(initial.type ?? "video");
+  const [isUploading, setIsUploading] = React.useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     setTitle(initial.title ?? "");
@@ -73,6 +78,66 @@ export function ConfirmMetadataDialog({ open, onOpenChange, initial, onConfirm }
     setRuntime(initial.runtimeMinutes?.toString() ?? "");
     setType(initial.type ?? "video");
   }, [initial]);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Invalid file type",
+        description: "Please upload an image file.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "File too large",
+        description: "Please upload an image under 5MB.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${user.id}/posters/${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("attachments")
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from("attachments")
+        .getPublicUrl(fileName);
+
+      setPosterUrl(publicUrl);
+      toast({
+        title: "Image uploaded",
+        description: "Poster image has been uploaded successfully.",
+      });
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      toast({
+        title: "Upload failed",
+        description: error.message || "Failed to upload image.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
 
   const canSave = title.trim().length > 0;
 
@@ -146,14 +211,40 @@ export function ConfirmMetadataDialog({ open, onOpenChange, initial, onConfirm }
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="confirm-poster">Poster / Thumbnail URL (optional)</Label>
-            <Input
-              id="confirm-poster"
-              type="url"
-              value={posterUrl}
-              onChange={(e) => setPosterUrl(e.target.value)}
-              placeholder="Paste image URL, or upload later"
-            />
+            <Label htmlFor="confirm-poster">Poster / Thumbnail</Label>
+            <div className="flex gap-2">
+              <Input
+                id="confirm-poster"
+                type="url"
+                value={posterUrl}
+                onChange={(e) => setPosterUrl(e.target.value)}
+                placeholder="Paste image URL..."
+                className="flex-1"
+              />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                disabled={isUploading}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {isUploading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Upload className="w-4 h-4" />
+                )}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Paste a URL or click the upload button to add an image
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -189,7 +280,7 @@ export function ConfirmMetadataDialog({ open, onOpenChange, initial, onConfirm }
             Cancel
           </Button>
           <Button
-            disabled={!canSave}
+            disabled={!canSave || isUploading}
             onClick={() => {
               onConfirm({
                 url: initial.url,
