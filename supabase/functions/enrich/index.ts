@@ -137,13 +137,16 @@ const tryFirecrawl = async (url: string) => {
       },
       body: JSON.stringify({
         url,
-        formats: ["markdown"],
-        onlyMainContent: true,
+        formats: ["markdown", "html"],
+        onlyMainContent: false,
+        waitFor: 3000, // Wait for JS to render
+        timeout: 30000,
       }),
     });
 
     if (!response.ok) {
-      console.log("Firecrawl request failed:", response.status);
+      const errorText = await response.text();
+      console.log("Firecrawl request failed:", response.status, errorText);
       return null;
     }
 
