@@ -94,16 +94,9 @@ const tryOEmbed = async (provider: string, canonicalUrl: string) => {
     case "x":
       endpoint = "https://publish.twitter.com/oembed?url=" + encodeURIComponent(canonicalUrl);
       break;
-    case "instagram":
-      // Instagram oEmbed requires Facebook App token, try basic endpoint
-      endpoint = "https://api.instagram.com/oembed?url=" + encodeURIComponent(canonicalUrl);
-      break;
     case "tiktok":
       endpoint = "https://www.tiktok.com/oembed?url=" + encodeURIComponent(canonicalUrl);
       break;
-    case "facebook":
-      // Facebook oEmbed requires token, skip for now
-      return null;
     default:
       return null;
   }
@@ -123,6 +116,51 @@ const tryOEmbed = async (provider: string, canonicalUrl: string) => {
       metadata: { oembed: data },
     };
   } catch {
+    return null;
+  }
+};
+
+const tryFirecrawl = async (url: string) => {
+  const apiKey = Deno.env.get("FIRECRAWL_API_KEY");
+  if (!apiKey) {
+    console.log("FIRECRAWL_API_KEY not configured");
+    return null;
+  }
+
+  try {
+    console.log("Using Firecrawl for:", url);
+    const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        url,
+        formats: ["markdown"],
+        onlyMainContent: true,
+      }),
+    });
+
+    if (!response.ok) {
+      console.log("Firecrawl request failed:", response.status);
+      return null;
+    }
+
+    const result = await response.json();
+    const data = result.data || result;
+    const metadata = data.metadata || {};
+
+    console.log("Firecrawl metadata:", JSON.stringify(metadata));
+
+    return {
+      title: metadata.title || metadata.ogTitle,
+      posterUrl: metadata.ogImage || metadata.image,
+      description: metadata.description || metadata.ogDescription,
+      metadata: { firecrawl: metadata },
+    };
+  } catch (error) {
+    console.error("Firecrawl error:", error);
     return null;
   }
 };
@@ -177,8 +215,8 @@ Deno.serve(async (req) => {
     const provider = detectProvider(parsed);
     const canonicalUrl = parsed.toString();
 
-    // Try oEmbed for supported providers
-    if (provider === "youtube" || provider === "x" || provider === "instagram" || provider === "tiktok") {
+    // Try oEmbed for supported providers (YouTube, X, TikTok)
+    if (provider === "youtube" || provider === "x" || provider === "tiktok") {
       const oembed = await tryOEmbed(provider, canonicalUrl);
       if (oembed?.title || oembed?.posterUrl) {
         return jsonResponse({
@@ -189,6 +227,22 @@ Deno.serve(async (req) => {
           posterUrl: oembed.posterUrl,
           runtimeMinutes: null,
           metadata: oembed.metadata,
+        });
+      }
+    }
+
+    // Use Firecrawl for Instagram/Facebook (anti-bot bypassing)
+    if (provider === "instagram" || provider === "facebook") {
+      const firecrawlResult = await tryFirecrawl(canonicalUrl);
+      if (firecrawlResult?.title || firecrawlResult?.posterUrl) {
+        return jsonResponse({
+          ok: true,
+          provider,
+          canonicalUrl,
+          title: firecrawlResult.title,
+          posterUrl: firecrawlResult.posterUrl,
+          runtimeMinutes: null,
+          metadata: firecrawlResult.metadata,
         });
       }
     }
