@@ -45,7 +45,7 @@ export function TopNav({ notificationCount = 0, onSearchClick }: TopNavProps) {
   }, []);
 
   const navLinks = [
-    { href: "/", label: "Home" },
+    { href: "/dashboard", label: "Home" },
     { href: "/tonight", label: "Tonight", icon: Sparkles },
     { href: "/plans", label: "Plans" },
     { href: "/calendar", label: "Calendar", icon: Calendar },
