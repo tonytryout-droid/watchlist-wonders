@@ -1,129 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Sparkles, RefreshCw, Play, Calendar, Check, X, Clock, Shuffle } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Sparkles, RefreshCw, Play, Calendar, Check, X, Clock, Shuffle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatRuntime, getMoodEmoji } from "@/lib/utils";
+import { bookmarkService } from "@/services/bookmarks";
+import { useToast } from "@/hooks/use-toast";
 import type { Bookmark } from "@/types/database";
-
-// Demo data - backlog items under 90 minutes
-const backlogUnder90: Bookmark[] = [
-  {
-    id: "7",
-    user_id: "demo",
-    title: "YouTube: Building a Second Brain",
-    type: "video",
-    provider: "youtube",
-    status: "backlog",
-    runtime_minutes: 45,
-    release_year: 2024,
-    poster_url: null,
-    backdrop_url: null,
-    tags: ["productivity"],
-    mood_tags: ["educational", "inspiring"],
-    source_url: "https://youtube.com/watch?v=example",
-    canonical_url: null,
-    platform_label: null,
-    notes: "A guide to organizing your digital life with effective note-taking systems.",
-    metadata: {},
-    last_shown_at: null,
-    shown_count: 0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "6a",
-    user_id: "demo",
-    title: "The Bear - Episode 1",
-    type: "episode",
-    provider: "imdb",
-    status: "backlog",
-    runtime_minutes: 30,
-    release_year: 2022,
-    poster_url: "https://image.tmdb.org/t/p/w500/sHFlbKS3WLqMnp9t2ghADIJFnuQ.jpg",
-    backdrop_url: "https://image.tmdb.org/t/p/original/9Qq8InnodUYs8zdam8Zj5d0nPqU.jpg",
-    tags: ["drama", "comedy"],
-    mood_tags: ["intense", "emotional"],
-    source_url: null,
-    canonical_url: null,
-    platform_label: null,
-    notes: "",
-    metadata: {},
-    last_shown_at: null,
-    shown_count: 0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "new1",
-    user_id: "demo",
-    title: "TED Talk: The Power of Vulnerability",
-    type: "video",
-    provider: "generic",
-    status: "backlog",
-    runtime_minutes: 20,
-    release_year: 2010,
-    poster_url: null,
-    backdrop_url: null,
-    tags: ["psychology"],
-    mood_tags: ["inspiring", "emotional", "thoughtful"],
-    source_url: null,
-    canonical_url: null,
-    platform_label: null,
-    notes: "Brené Brown's famous talk on vulnerability and connection.",
-    metadata: {},
-    last_shown_at: null,
-    shown_count: 0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "new2",
-    user_id: "demo",
-    title: "Black Mirror: Joan Is Awful",
-    type: "episode",
-    provider: "netflix",
-    status: "backlog",
-    runtime_minutes: 60,
-    release_year: 2023,
-    poster_url: "https://image.tmdb.org/t/p/w500/7PRddO7z7mcPi21nMTXMQXNlOng.jpg",
-    backdrop_url: null,
-    tags: ["scifi", "thriller"],
-    mood_tags: ["dark", "quirky", "thoughtful"],
-    source_url: null,
-    canonical_url: null,
-    platform_label: null,
-    notes: "",
-    metadata: {},
-    last_shown_at: null,
-    shown_count: 0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "new3",
-    user_id: "demo",
-    title: "Comedy Special: Nate Bargatze",
-    type: "video",
-    provider: "netflix",
-    status: "backlog",
-    runtime_minutes: 65,
-    release_year: 2024,
-    poster_url: null,
-    backdrop_url: null,
-    tags: ["comedy"],
-    mood_tags: ["fun", "relaxing"],
-    source_url: null,
-    canonical_url: null,
-    platform_label: null,
-    notes: "",
-    metadata: {},
-    last_shown_at: null,
-    shown_count: 0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
 
 function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array];
@@ -136,17 +20,44 @@ function shuffleArray<T>(array: T[]): T[] {
 
 const TonightPick = () => {
   const navigate = useNavigate();
-  const [picks, setPicks] = useState<Bookmark[]>(() => shuffleArray(backlogUnder90).slice(0, 3));
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [picks, setPicks] = useState<Bookmark[]>([]);
+  const [hasInitialized, setHasInitialized] = useState(false);
+
+  // Fetch backlog items under 90 minutes
+  const { data: candidates = [], isLoading, error } = useQuery({
+    queryKey: ['tonight-candidates'],
+    queryFn: () => bookmarkService.getTonightCandidates(),
+  });
+
+  // Initialize picks when data loads
+  if (candidates.length > 0 && !hasInitialized) {
+    setPicks(shuffleArray(candidates).slice(0, 3));
+    setHasInitialized(true);
+  }
+
+  // Mark as done mutation
+  const markDoneMutation = useMutation({
+    mutationFn: (id: string) => bookmarkService.updateStatus(id, 'done'),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
+      queryClient.invalidateQueries({ queryKey: ['tonight-candidates'] });
+      setPicks(picks.filter((p) => p.id !== id));
+      toast({
+        title: "Marked as done!",
+        description: "Moved to your watched list.",
+      });
+    },
+  });
 
   const handleRerollAll = () => {
-    setPicks(shuffleArray(backlogUnder90).slice(0, 3));
-    setSelectedIndex(null);
+    setPicks(shuffleArray(candidates).slice(0, 3));
   };
 
   const handleSwapOne = (index: number) => {
     const currentIds = new Set(picks.map((p) => p.id));
-    const available = backlogUnder90.filter((b) => !currentIds.has(b.id));
+    const available = candidates.filter((b) => !currentIds.has(b.id));
     if (available.length === 0) return;
     
     const newPick = shuffleArray(available)[0];
@@ -161,15 +72,50 @@ const TonightPick = () => {
     }
   };
 
-  const handleSchedule = (bookmark: Bookmark) => {
-    // TODO: Open schedule modal
-    console.log("Schedule:", bookmark.id);
+  const handleMarkDone = (bookmark: Bookmark) => {
+    markDoneMutation.mutate(bookmark.id);
   };
 
-  const handleMarkDone = (bookmark: Bookmark) => {
-    // TODO: Mark as done via Supabase
-    setPicks(picks.filter((p) => p.id !== bookmark.id));
-  };
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Finding your picks...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-destructive mb-2">Error loading picks</p>
+          <Button onClick={() => navigate("/dashboard")}>Back to Dashboard</Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (candidates.length === 0) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+        <Sparkles className="w-16 h-16 text-muted-foreground mb-4" />
+        <h1 className="text-2xl font-bold text-foreground mb-2">No Quick Picks Available</h1>
+        <p className="text-muted-foreground text-center mb-6 max-w-md">
+          Add some bookmarks under 90 minutes to your backlog to get personalized tonight picks!
+        </p>
+        <div className="flex gap-4">
+          <Button onClick={() => navigate("/new")}>Add Bookmark</Button>
+          <Button variant="ghost" onClick={() => navigate("/dashboard")}>
+            <X className="w-4 h-4 mr-2" />
+            Back
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -190,10 +136,7 @@ const TonightPick = () => {
           {picks.map((bookmark, index) => (
             <div
               key={bookmark.id}
-              className={cn(
-                "relative bg-card border border-border rounded-lg overflow-hidden transition-all duration-300",
-                selectedIndex === index && "ring-2 ring-primary scale-[1.02]"
-              )}
+              className="relative bg-card border border-border rounded-lg overflow-hidden transition-all duration-300 hover:border-primary/50"
             >
               {/* Poster/Image */}
               <div className="aspect-video bg-secondary relative">
@@ -220,10 +163,12 @@ const TonightPick = () => {
                   <Shuffle className="w-4 h-4" />
                 </Button>
                 {/* Runtime */}
-                <div className="absolute bottom-2 right-2 bg-background/80 backdrop-blur px-2 py-1 rounded text-sm font-medium flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {formatRuntime(bookmark.runtime_minutes)}
-                </div>
+                {bookmark.runtime_minutes && (
+                  <div className="absolute bottom-2 right-2 bg-background/80 backdrop-blur px-2 py-1 rounded text-sm font-medium flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {formatRuntime(bookmark.runtime_minutes)}
+                  </div>
+                )}
               </div>
 
               {/* Content */}
@@ -244,7 +189,7 @@ const TonightPick = () => {
                 </div>
 
                 {/* Mood tags */}
-                {bookmark.mood_tags.length > 0 && (
+                {bookmark.mood_tags && bookmark.mood_tags.length > 0 && (
                   <div className="flex flex-wrap gap-1">
                     {bookmark.mood_tags.slice(0, 3).map((mood) => (
                       <Badge key={mood} variant="outline" className="text-xs">
@@ -268,6 +213,7 @@ const TonightPick = () => {
                     size="sm"
                     className="flex-1"
                     onClick={() => handleWatch(bookmark)}
+                    disabled={!bookmark.source_url}
                   >
                     <Play className="w-4 h-4 mr-1 fill-current" />
                     Watch
@@ -276,15 +222,8 @@ const TonightPick = () => {
                     variant="secondary"
                     size="icon"
                     className="h-9 w-9"
-                    onClick={() => handleSchedule(bookmark)}
-                  >
-                    <Calendar className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    className="h-9 w-9"
                     onClick={() => handleMarkDone(bookmark)}
+                    disabled={markDoneMutation.isPending}
                   >
                     <Check className="w-4 h-4" />
                   </Button>
@@ -305,7 +244,7 @@ const TonightPick = () => {
 
       {/* Back link */}
       <div className="container mx-auto px-4 lg:px-8 py-8 text-center">
-        <Button variant="ghost" onClick={() => navigate("/")}>
+        <Button variant="ghost" onClick={() => navigate("/dashboard")}>
           <X className="w-4 h-4 mr-2" />
           Back to Dashboard
         </Button>
