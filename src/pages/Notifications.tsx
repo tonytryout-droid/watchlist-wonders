@@ -1,66 +1,68 @@
-import { useState } from "react";
-import { Bell, Check, CheckCheck, Trash2, Clock } from "lucide-react";
+import { Bell, Check, CheckCheck, Trash2, Clock, Loader2 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { TopNav } from "@/components/layout/TopNav";
 import { cn, formatRelativeDate } from "@/lib/utils";
-import type { Notification } from "@/types/database";
-
-// Demo data
-const demoNotifications: Notification[] = [
-  {
-    id: "n1",
-    user_id: "demo",
-    bookmark_id: "1",
-    schedule_id: "s1",
-    title: "Time to watch!",
-    body: "Oppenheimer is scheduled for tonight at 8:00 PM",
-    read_at: null,
-    created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "n2",
-    user_id: "demo",
-    bookmark_id: "3",
-    schedule_id: null,
-    title: "Shōgun reminder",
-    body: "You added Shōgun to your backlog 7 days ago. Ready to start?",
-    read_at: null,
-    created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "n3",
-    user_id: "demo",
-    bookmark_id: "8",
-    schedule_id: null,
-    title: "Weekend Plan suggestion",
-    body: "Based on your Weekend Binge plan, we suggest watching Barbie tonight!",
-    read_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    created_at: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
-  },
-];
+import { notificationService } from "@/services/notifications";
+import { useToast } from "@/hooks/use-toast";
 
 const Notifications = () => {
-  const [notifications, setNotifications] = useState<Notification[]>(demoNotifications);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const { data: notifications = [], isLoading, error } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => notificationService.getNotifications(),
+  });
+
+  const markAsReadMutation = useMutation({
+    mutationFn: (id: string) => notificationService.markAsRead(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+
+  const markAllAsReadMutation = useMutation({
+    mutationFn: () => notificationService.markAllAsRead(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      toast({
+        title: "All caught up!",
+        description: "All notifications marked as read.",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => notificationService.deleteNotification(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
 
   const unreadCount = notifications.filter((n) => !n.read_at).length;
 
-  const markAsRead = (id: string) => {
-    setNotifications(
-      notifications.map((n) =>
-        n.id === id ? { ...n, read_at: new Date().toISOString() } : n
-      )
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <TopNav />
+        <div className="flex items-center justify-center pt-32">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </div>
     );
-  };
+  }
 
-  const markAllAsRead = () => {
-    setNotifications(
-      notifications.map((n) => ({ ...n, read_at: n.read_at || new Date().toISOString() }))
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background">
+        <TopNav />
+        <div className="flex items-center justify-center pt-32">
+          <p className="text-destructive">Error loading notifications</p>
+        </div>
+      </div>
     );
-  };
-
-  const deleteNotification = (id: string) => {
-    setNotifications(notifications.filter((n) => n.id !== id));
-  };
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -76,7 +78,11 @@ const Notifications = () => {
             </p>
           </div>
           {unreadCount > 0 && (
-            <Button variant="outline" onClick={markAllAsRead}>
+            <Button 
+              variant="outline" 
+              onClick={() => markAllAsReadMutation.mutate()}
+              disabled={markAllAsReadMutation.isPending}
+            >
               <CheckCheck className="w-4 h-4 mr-2" />
               Mark All Read
             </Button>
@@ -131,7 +137,8 @@ const Notifications = () => {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
-                      onClick={() => markAsRead(notification.id)}
+                      onClick={() => markAsReadMutation.mutate(notification.id)}
+                      disabled={markAsReadMutation.isPending}
                     >
                       <Check className="w-4 h-4" />
                     </Button>
@@ -140,7 +147,8 @@ const Notifications = () => {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                    onClick={() => deleteNotification(notification.id)}
+                    onClick={() => deleteMutation.mutate(notification.id)}
+                    disabled={deleteMutation.isPending}
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>
