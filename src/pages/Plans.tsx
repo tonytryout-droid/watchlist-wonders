@@ -1,63 +1,138 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { Plus, Calendar, Clock, Tag, ChevronRight, Settings, Trash2 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Plus, Calendar, Clock, ChevronRight, Trash2, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TopNav } from "@/components/layout/TopNav";
 import { cn, getMoodEmoji } from "@/lib/utils";
-import type { WatchPlan } from "@/types/database";
+import { watchPlanService } from "@/services/watchPlans";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-// Demo data
-const demoPlans: WatchPlan[] = [
-  {
-    id: "plan1",
-    user_id: "demo",
-    name: "Weekend Binge",
-    description: "For epic weekend viewing sessions",
-    preferred_days: [5, 6],
-    time_windows: [{ start: "19:00", end: "23:00" }],
-    max_runtime_minutes: null,
-    mood_tags: ["epic", "intense"],
-    platforms_allowed: ["netflix", "imdb"],
-    auto_suggest: true,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "plan2",
-    user_id: "demo",
-    name: "Quick Lunch Watch",
-    description: "Short content during lunch breaks",
-    preferred_days: [1, 2, 3, 4, 5],
-    time_windows: [{ start: "12:00", end: "13:00" }],
-    max_runtime_minutes: 45,
-    mood_tags: ["fun", "relaxing", "comedy"],
-    platforms_allowed: ["youtube"],
-    auto_suggest: true,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "plan3",
-    user_id: "demo",
-    name: "Documentary Sundays",
-    description: "Learn something new every Sunday",
-    preferred_days: [0],
-    time_windows: [{ start: "10:00", end: "12:00" }, { start: "20:00", end: "22:00" }],
-    max_runtime_minutes: 120,
-    mood_tags: ["educational", "thoughtful", "inspiring"],
-    platforms_allowed: [],
-    auto_suggest: true,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
+const MOOD_OPTIONS = [
+  "action", "comedy", "drama", "horror", "romance", "thriller",
+  "documentary", "scifi", "fantasy", "relaxing", "inspiring", 
+  "intense", "thoughtful", "uplifting", "dark", "fun", "educational"
 ];
 
 const Plans = () => {
   const navigate = useNavigate();
-  const [plans] = useState<WatchPlan[]>(demoPlans);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [createOpen, setCreateOpen] = useState(false);
+  
+  // Form state
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [preferredDays, setPreferredDays] = useState<number[]>([]);
+  const [startTime, setStartTime] = useState("19:00");
+  const [endTime, setEndTime] = useState("23:00");
+  const [maxRuntime, setMaxRuntime] = useState<string>("");
+  const [selectedMoods, setSelectedMoods] = useState<string[]>([]);
+
+  const { data: plans = [], isLoading, error } = useQuery({
+    queryKey: ['watch-plans'],
+    queryFn: () => watchPlanService.getWatchPlans(),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: () => watchPlanService.createWatchPlan({
+      name,
+      description: description || null,
+      preferred_days: preferredDays,
+      time_windows: [{ start: startTime, end: endTime }],
+      max_runtime_minutes: maxRuntime ? parseInt(maxRuntime) : null,
+      mood_tags: selectedMoods,
+      platforms_allowed: [],
+      auto_suggest: true,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['watch-plans'] });
+      setCreateOpen(false);
+      resetForm();
+      toast({
+        title: "Plan created!",
+        description: `"${name}" has been added to your watch plans.`,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error creating plan",
+        description: error.message || "Something went wrong.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => watchPlanService.deleteWatchPlan(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['watch-plans'] });
+      toast({
+        title: "Plan deleted",
+        description: "Watch plan has been removed.",
+      });
+    },
+  });
+
+  const resetForm = () => {
+    setName("");
+    setDescription("");
+    setPreferredDays([]);
+    setStartTime("19:00");
+    setEndTime("23:00");
+    setMaxRuntime("");
+    setSelectedMoods([]);
+  };
+
+  const toggleDay = (dayIndex: number) => {
+    setPreferredDays((prev) =>
+      prev.includes(dayIndex) ? prev.filter((d) => d !== dayIndex) : [...prev, dayIndex]
+    );
+  };
+
+  const toggleMood = (mood: string) => {
+    setSelectedMoods((prev) =>
+      prev.includes(mood) ? prev.filter((m) => m !== mood) : [...prev, mood]
+    );
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      toast({
+        title: "Name required",
+        description: "Please enter a name for this watch plan.",
+        variant: "destructive",
+      });
+      return;
+    }
+    createMutation.mutate();
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <TopNav />
+        <div className="flex items-center justify-center pt-32">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -72,11 +147,9 @@ const Plans = () => {
               Create custom viewing schedules tailored to your preferences
             </p>
           </div>
-          <Button asChild>
-            <Link to="/plans/new">
-              <Plus className="w-4 h-4 mr-2" />
-              New Plan
-            </Link>
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            New Plan
           </Button>
         </div>
 
@@ -88,27 +161,40 @@ const Plans = () => {
             <p className="text-muted-foreground mb-6">
               Create your first watch plan to get personalized suggestions
             </p>
-            <Button asChild>
-              <Link to="/plans/new">
-                <Plus className="w-4 h-4 mr-2" />
-                Create Your First Plan
-              </Link>
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Create Your First Plan
             </Button>
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {plans.map((plan) => (
-              <Link
+              <div
                 key={plan.id}
-                to={`/plans/${plan.id}`}
                 className="group bg-card border border-border rounded-lg p-5 hover:border-primary/50 transition-colors"
               >
                 <div className="flex items-start justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-foreground group-hover:text-primary transition-colors">
+                  <h3 className="text-lg font-semibold text-foreground">
                     {plan.name}
                   </h3>
-                  <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      deleteMutation.mutate(plan.id);
+                    }}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
                 </div>
+
+                {plan.description && (
+                  <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+                    {plan.description}
+                  </p>
+                )}
 
                 {/* Preferred Days */}
                 <div className="flex items-center gap-2 mb-3">
@@ -119,7 +205,7 @@ const Plans = () => {
                         key={day}
                         className={cn(
                           "text-xs px-1.5 py-0.5 rounded",
-                          plan.preferred_days.includes(i)
+                          plan.preferred_days?.includes(i)
                             ? "bg-primary text-primary-foreground"
                             : "bg-secondary text-muted-foreground"
                         )}
@@ -134,7 +220,7 @@ const Plans = () => {
                 <div className="flex items-center gap-2 mb-3">
                   <Clock className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm text-muted-foreground">
-                    {plan.time_windows.map((tw) => `${tw.start}-${tw.end}`).join(", ")}
+                    {plan.time_windows?.map((tw: any) => `${tw.start}-${tw.end}`).join(", ") || "Any time"}
                   </span>
                 </div>
 
@@ -146,7 +232,7 @@ const Plans = () => {
                 )}
 
                 {/* Mood Tags */}
-                {plan.mood_tags.length > 0 && (
+                {plan.mood_tags && plan.mood_tags.length > 0 && (
                   <div className="flex flex-wrap gap-1">
                     {plan.mood_tags.slice(0, 4).map((mood) => (
                       <Badge key={mood} variant="outline" className="text-xs">
@@ -160,11 +246,138 @@ const Plans = () => {
                     )}
                   </div>
                 )}
-              </Link>
+              </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Create Plan Dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create Watch Plan</DialogTitle>
+            <DialogDescription>
+              Set up a custom viewing schedule for specific days and moods.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmit} className="space-y-6 mt-4">
+            {/* Name */}
+            <div className="space-y-2">
+              <Label htmlFor="plan-name">Plan Name *</Label>
+              <Input
+                id="plan-name"
+                placeholder="e.g., Weekend Binge, Lunch Break..."
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+
+            {/* Description */}
+            <div className="space-y-2">
+              <Label htmlFor="plan-desc">Description</Label>
+              <Textarea
+                id="plan-desc"
+                placeholder="What's this plan for?"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={2}
+              />
+            </div>
+
+            {/* Preferred Days */}
+            <div className="space-y-2">
+              <Label>Preferred Days</Label>
+              <div className="flex gap-2">
+                {DAYS.map((day, i) => (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => toggleDay(i)}
+                    className={cn(
+                      "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
+                      preferredDays.includes(i)
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-secondary text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {day}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Time Window */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="start-time">Start Time</Label>
+                <Input
+                  id="start-time"
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="end-time">End Time</Label>
+                <Input
+                  id="end-time"
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Max Runtime */}
+            <div className="space-y-2">
+              <Label htmlFor="max-runtime">Max Runtime (minutes)</Label>
+              <Input
+                id="max-runtime"
+                type="number"
+                placeholder="Leave empty for no limit"
+                value={maxRuntime}
+                onChange={(e) => setMaxRuntime(e.target.value)}
+              />
+            </div>
+
+            {/* Mood Tags */}
+            <div className="space-y-2">
+              <Label>Mood Tags</Label>
+              <div className="flex flex-wrap gap-2">
+                {MOOD_OPTIONS.map((mood) => (
+                  <Badge
+                    key={mood}
+                    variant={selectedMoods.includes(mood) ? "default" : "outline"}
+                    className="cursor-pointer select-none transition-colors"
+                    onClick={() => toggleMood(mood)}
+                  >
+                    {getMoodEmoji(mood)} {mood}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-2 pt-4">
+              <Button type="button" variant="ghost" onClick={() => setCreateOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  "Create Plan"
+                )}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
