@@ -1,16 +1,18 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { TopNav } from "@/components/layout/TopNav";
 import { HeroBanner } from "@/components/layout/HeroBanner";
 import { Rail } from "@/components/bookmarks/Rail";
 import { SearchOverlay } from "@/components/search/SearchOverlay";
+import { StatsBar } from "@/components/dashboard/StatsBar";
+import { FilterChips } from "@/components/dashboard/FilterChips";
+import { SkeletonRail } from "@/components/ui/skeleton-card";
 import { bookmarkService } from "@/services/bookmarks";
 import { scheduleService } from "@/services/schedules";
 import { watchPlanService } from "@/services/watchPlans";
 import { notificationService } from "@/services/notifications";
 import { useToast } from "@/hooks/use-toast";
 import type { Bookmark } from "@/types/database";
-import { Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -18,19 +20,37 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+type FilterType = "all" | "movie" | "series" | "video" | "doc";
+type FilterStatus = "all" | "backlog" | "watching" | "done";
+
 const Dashboard = () => {
   const [searchOpen, setSearchOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedBookmark, setSelectedBookmark] = useState<Bookmark | null>(null);
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("20:00");
   const [selectedPlanId, setSelectedPlanId] = useState("");
+  
+  // Filter state
+  const [filterType, setFilterType] = useState<FilterType>("all");
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -53,6 +73,37 @@ const Dashboard = () => {
     queryFn: () => watchPlanService.getWatchPlans(),
   });
 
+  // Calculate filter counts
+  const filterCounts = useMemo(() => ({
+    movie: bookmarks.filter((b) => b.type === "movie").length,
+    series: bookmarks.filter((b) => b.type === "series").length,
+    video: bookmarks.filter((b) => b.type === "video").length,
+    doc: bookmarks.filter((b) => b.type === "doc").length,
+    backlog: bookmarks.filter((b) => b.status === "backlog").length,
+    watching: bookmarks.filter((b) => b.status === "watching").length,
+    done: bookmarks.filter((b) => b.status === "done").length,
+  }), [bookmarks]);
+
+  // Calculate stats
+  const stats = useMemo(() => ({
+    total: bookmarks.length,
+    backlog: filterCounts.backlog,
+    watching: filterCounts.watching,
+    done: filterCounts.done,
+    totalMinutes: bookmarks
+      .filter((b) => b.status === "done" && b.runtime_minutes)
+      .reduce((sum, b) => sum + (b.runtime_minutes || 0), 0),
+  }), [bookmarks, filterCounts]);
+
+  // Apply filters
+  const filteredBookmarks = useMemo(() => {
+    return bookmarks.filter((b) => {
+      const typeMatch = filterType === "all" || b.type === filterType;
+      const statusMatch = filterStatus === "all" || b.status === filterStatus;
+      return typeMatch && statusMatch;
+    });
+  }, [bookmarks, filterType, filterStatus]);
+
   // Mark as done mutation
   const markDoneMutation = useMutation({
     mutationFn: (id: string) => bookmarkService.updateStatus(id, 'done'),
@@ -61,6 +112,39 @@ const Dashboard = () => {
       toast({
         title: "Marked as done!",
         description: "Moved to your watched list.",
+      });
+    },
+  });
+
+  // Undo done mutation (move back to backlog)
+  const undoDoneMutation = useMutation({
+    mutationFn: (id: string) => bookmarkService.updateStatus(id, 'backlog'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
+      toast({
+        title: "Moved to backlog",
+        description: "Ready to watch again.",
+      });
+    },
+  });
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => bookmarkService.deleteBookmark(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
+      setDeleteOpen(false);
+      setSelectedBookmark(null);
+      toast({
+        title: "Deleted",
+        description: "Bookmark removed from your list.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error deleting",
+        description: error.message || "Something went wrong.",
+        variant: "destructive",
       });
     },
   });
@@ -110,7 +194,6 @@ const Dashboard = () => {
 
   const handleSchedule = (bookmark: Bookmark) => {
     setSelectedBookmark(bookmark);
-    // Set default date to today
     const today = new Date();
     setScheduleDate(today.toISOString().split('T')[0]);
     setScheduleOpen(true);
@@ -129,6 +212,20 @@ const Dashboard = () => {
     markDoneMutation.mutate(bookmark.id);
   };
 
+  const handleUndoDone = (bookmark: Bookmark) => {
+    undoDoneMutation.mutate(bookmark.id);
+  };
+
+  const handleDelete = (bookmark: Bookmark) => {
+    setSelectedBookmark(bookmark);
+    setDeleteOpen(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (!selectedBookmark) return;
+    deleteMutation.mutate(selectedBookmark.id);
+  };
+
   const handleAddToPlan = (bookmark: Bookmark) => {
     setSelectedBookmark(bookmark);
     setSelectedPlanId("");
@@ -145,10 +242,12 @@ const Dashboard = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">Loading your watchlist...</p>
+      <div className="min-h-screen bg-background">
+        <TopNav onSearchClick={() => setSearchOpen(true)} notificationCount={0} />
+        <div className="h-[70vh] min-h-[500px] bg-muted/30 animate-pulse" />
+        <div className="relative z-10 -mt-20 pb-16 space-y-2">
+          <SkeletonRail count={6} />
+          <SkeletonRail count={6} />
         </div>
       </div>
     );
@@ -165,17 +264,21 @@ const Dashboard = () => {
     );
   }
 
-  // Group bookmarks
-  const continueWatching = bookmarks.filter((b) => b.status === "watching");
-  const backlog = bookmarks.filter((b) => b.status === "backlog");
-  const completed = bookmarks.filter((b) => b.status === "done");
+  // Check if filters are active
+  const hasActiveFilters = filterType !== "all" || filterStatus !== "all";
+
+  // Group bookmarks (use filtered if filters active, otherwise use all)
+  const displayBookmarks = hasActiveFilters ? filteredBookmarks : bookmarks;
+  const continueWatching = displayBookmarks.filter((b) => b.status === "watching");
+  const backlog = displayBookmarks.filter((b) => b.status === "backlog");
+  const completed = displayBookmarks.filter((b) => b.status === "done");
 
   // Hero bookmark (next scheduled or first watching)
   const heroBookmark = continueWatching[0] || backlog[0] || null;
 
   // Group by mood
   const byMood: Record<string, Bookmark[]> = {};
-  bookmarks.forEach((b) => {
+  displayBookmarks.forEach((b) => {
     (b.mood_tags || []).forEach((mood) => {
       if (!byMood[mood]) byMood[mood] = [];
       byMood[mood].push(b);
@@ -205,63 +308,114 @@ const Dashboard = () => {
         onMoreInfo={handleMoreInfo}
       />
 
-      {/* Rails */}
-      <div className="relative z-10 -mt-20 pb-16 space-y-2">
-        {continueWatching.length > 0 && (
-          <Rail
-            title="Continue Watching"
-            bookmarks={continueWatching}
-            onSchedule={handleSchedule}
-            onMarkDone={handleMarkDone}
-            onAddToPlan={handleAddToPlan}
+      {/* Content */}
+      <div className="relative z-10 -mt-20 pb-16 space-y-6">
+        {/* Stats Bar */}
+        {bookmarks.length > 0 && (
+          <StatsBar
+            total={stats.total}
+            backlog={stats.backlog}
+            watching={stats.watching}
+            done={stats.done}
+            totalMinutes={stats.totalMinutes}
+            className="animate-fade-in"
           />
         )}
 
-        {backlog.length > 0 && (
-          <Rail
-            title="Your Backlog"
-            subtitle="Ready to watch"
-            bookmarks={backlog}
-            onSchedule={handleSchedule}
-            onMarkDone={handleMarkDone}
-            onAddToPlan={handleAddToPlan}
+        {/* Filter Chips */}
+        {bookmarks.length > 0 && (
+          <FilterChips
+            activeType={filterType}
+            activeStatus={filterStatus}
+            onTypeChange={setFilterType}
+            onStatusChange={setFilterStatus}
+            counts={filterCounts}
+            className="animate-fade-in"
           />
         )}
 
-        {/* Mood Rails */}
-        {Object.entries(byMood)
-          .filter(([_, items]) => items.length >= 2)
-          .slice(0, 3)
-          .map(([mood, items]) => (
+        {/* Rails */}
+        <div className="space-y-2 animate-fade-in">
+          {continueWatching.length > 0 && (
             <Rail
-              key={mood}
-              title={`${mood.charAt(0).toUpperCase()}${mood.slice(1)} Picks`}
-              bookmarks={items}
+              title="Continue Watching"
+              bookmarks={continueWatching}
               onSchedule={handleSchedule}
               onMarkDone={handleMarkDone}
               onAddToPlan={handleAddToPlan}
+              onDelete={handleDelete}
+              onUndoDone={handleUndoDone}
             />
-          ))}
+          )}
 
-        {completed.length > 0 && (
-          <Rail
-            title="Recently Watched"
-            bookmarks={completed}
-            onSchedule={handleSchedule}
-            onMarkDone={handleMarkDone}
-            onAddToPlan={handleAddToPlan}
-          />
-        )}
+          {backlog.length > 0 && (
+            <Rail
+              title="Your Backlog"
+              subtitle="Ready to watch"
+              bookmarks={backlog}
+              onSchedule={handleSchedule}
+              onMarkDone={handleMarkDone}
+              onAddToPlan={handleAddToPlan}
+              onDelete={handleDelete}
+              onUndoDone={handleUndoDone}
+            />
+          )}
 
-        {/* Empty state */}
-        {bookmarks.length === 0 && (
-          <div className="container mx-auto px-4 lg:px-8 text-center py-16">
-            <p className="text-muted-foreground mb-4">Your watchlist is empty</p>
-            <Button onClick={() => window.location.href = '/new'}>
-              Add your first bookmark
-            </Button>
-          </div>
-        )}
+          {/* Mood Rails */}
+          {Object.entries(byMood)
+            .filter(([_, items]) => items.length >= 2)
+            .slice(0, 3)
+            .map(([mood, items]) => (
+              <Rail
+                key={mood}
+                title={`${mood.charAt(0).toUpperCase()}${mood.slice(1)} Picks`}
+                bookmarks={items}
+                onSchedule={handleSchedule}
+                onMarkDone={handleMarkDone}
+                onAddToPlan={handleAddToPlan}
+                onDelete={handleDelete}
+                onUndoDone={handleUndoDone}
+              />
+            ))}
+
+          {completed.length > 0 && (
+            <Rail
+              title="Recently Watched"
+              bookmarks={completed}
+              onSchedule={handleSchedule}
+              onMarkDone={handleMarkDone}
+              onAddToPlan={handleAddToPlan}
+              onDelete={handleDelete}
+              onUndoDone={handleUndoDone}
+            />
+          )}
+
+          {/* Filtered empty state */}
+          {hasActiveFilters && filteredBookmarks.length === 0 && (
+            <div className="container mx-auto px-4 lg:px-8 text-center py-16">
+              <p className="text-muted-foreground mb-4">No bookmarks match your filters</p>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setFilterType("all");
+                  setFilterStatus("all");
+                }}
+              >
+                Clear Filters
+              </Button>
+            </div>
+          )}
+
+          {/* Empty state */}
+          {bookmarks.length === 0 && (
+            <div className="container mx-auto px-4 lg:px-8 text-center py-16">
+              <p className="text-muted-foreground mb-4">Your watchlist is empty</p>
+              <Button onClick={() => window.location.href = '/new'}>
+                Add your first bookmark
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
 
       <SearchOverlay
@@ -363,6 +517,27 @@ const Dashboard = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{selectedBookmark?.title}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete this bookmark from your watchlist.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
