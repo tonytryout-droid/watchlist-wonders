@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Play, Plus, Check, Clock, Calendar, MoreHorizontal, ExternalLink, Trash2, Undo2 } from "lucide-react";
+import { Play, Plus, Check, Clock, Calendar, MoreHorizontal, ExternalLink, Trash2, Undo2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -34,6 +34,7 @@ interface PosterCardProps {
   onAddToPlan?: () => void;
   onDelete?: () => void;
   onUndoDone?: () => void;
+  onSetWatching?: () => void;
   variant?: "poster" | "backdrop";
   className?: string;
 }
@@ -46,6 +47,7 @@ export function PosterCard({
   onAddToPlan,
   onDelete,
   onUndoDone,
+  onSetWatching,
   variant = "poster",
   className,
 }: PosterCardProps) {
@@ -198,6 +200,12 @@ export function PosterCard({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
+                  {bookmark.status !== "watching" && (
+                    <DropdownMenuItem onClick={onSetWatching}>
+                      <Eye className="w-4 h-4 mr-2" />
+                      Set as Watching
+                    </DropdownMenuItem>
+                  )}
                   {bookmark.status === "done" ? (
                     <DropdownMenuItem onClick={onUndoDone}>
                       <Undo2 className="w-4 h-4 mr-2" />

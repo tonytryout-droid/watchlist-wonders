@@ -128,6 +128,18 @@ const Dashboard = () => {
     },
   });
 
+  // Set as watching mutation
+  const setWatchingMutation = useMutation({
+    mutationFn: (id: string) => bookmarkService.updateStatus(id, 'watching'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
+      toast({
+        title: "Now watching!",
+        description: "Added to Continue Watching.",
+      });
+    },
+  });
+
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: (id: string) => bookmarkService.deleteBookmark(id),
@@ -214,6 +226,10 @@ const Dashboard = () => {
 
   const handleUndoDone = (bookmark: Bookmark) => {
     undoDoneMutation.mutate(bookmark.id);
+  };
+
+  const handleSetWatching = (bookmark: Bookmark) => {
+    setWatchingMutation.mutate(bookmark.id);
   };
 
   const handleDelete = (bookmark: Bookmark) => {
@@ -345,6 +361,7 @@ const Dashboard = () => {
               onAddToPlan={handleAddToPlan}
               onDelete={handleDelete}
               onUndoDone={handleUndoDone}
+              onSetWatching={handleSetWatching}
             />
           )}
 
@@ -358,6 +375,7 @@ const Dashboard = () => {
               onAddToPlan={handleAddToPlan}
               onDelete={handleDelete}
               onUndoDone={handleUndoDone}
+              onSetWatching={handleSetWatching}
             />
           )}
 
@@ -375,6 +393,7 @@ const Dashboard = () => {
                 onAddToPlan={handleAddToPlan}
                 onDelete={handleDelete}
                 onUndoDone={handleUndoDone}
+                onSetWatching={handleSetWatching}
               />
             ))}
 
@@ -387,6 +406,7 @@ const Dashboard = () => {
               onAddToPlan={handleAddToPlan}
               onDelete={handleDelete}
               onUndoDone={handleUndoDone}
+              onSetWatching={handleSetWatching}
             />
           )}
 
