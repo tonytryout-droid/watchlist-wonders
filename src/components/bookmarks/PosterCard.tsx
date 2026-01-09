@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Play, Plus, Check, Clock, Calendar, MoreHorizontal, ExternalLink } from "lucide-react";
+import { Play, Plus, Check, Clock, Calendar, MoreHorizontal, ExternalLink, Trash2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -32,6 +32,8 @@ interface PosterCardProps {
   onSchedule?: () => void;
   onMarkDone?: () => void;
   onAddToPlan?: () => void;
+  onDelete?: () => void;
+  onUndoDone?: () => void;
   variant?: "poster" | "backdrop";
   className?: string;
 }
@@ -42,6 +44,8 @@ export function PosterCard({
   onSchedule,
   onMarkDone,
   onAddToPlan,
+  onDelete,
+  onUndoDone,
   variant = "poster",
   className,
 }: PosterCardProps) {
@@ -80,13 +84,25 @@ export function PosterCard({
     return colors[provider] || colors.generic;
   };
 
+  const getMoodColor = (mood: string) => {
+    const colors: Record<string, string> = {
+      chill: "bg-chart-4/20 text-chart-4",
+      intense: "bg-destructive/20 text-destructive",
+      funny: "bg-chart-2/20 text-chart-2",
+      romantic: "bg-pink-500/20 text-pink-400",
+      inspiring: "bg-chart-3/20 text-chart-3",
+      dark: "bg-chart-5/20 text-chart-5",
+    };
+    return colors[mood.toLowerCase()] || "bg-muted text-muted-foreground";
+  };
+
   return (
     <Link
       to={`/b/${bookmark.id}`}
       className={cn(
-        "group relative block flex-shrink-0 rounded-md overflow-hidden transition-all duration-300",
+        "group relative block flex-shrink-0 rounded-lg overflow-hidden transition-all duration-300",
         variant === "poster" ? "w-32 sm:w-36 md:w-40 lg:w-44" : "w-60 sm:w-72 md:w-80",
-        isHovered && "scale-105 z-10 shadow-xl",
+        isHovered && "scale-105 z-10 shadow-2xl ring-2 ring-primary/50",
         className
       )}
       onMouseEnter={() => setIsHovered(true)}
@@ -182,10 +198,17 @@ export function PosterCard({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={onMarkDone}>
-                    <Check className="w-4 h-4 mr-2" />
-                    Mark as Done
-                  </DropdownMenuItem>
+                  {bookmark.status === "done" ? (
+                    <DropdownMenuItem onClick={onUndoDone}>
+                      <Undo2 className="w-4 h-4 mr-2" />
+                      Move to Backlog
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem onClick={onMarkDone}>
+                      <Check className="w-4 h-4 mr-2" />
+                      Mark as Done
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onClick={onAddToPlan}>
                     <Plus className="w-4 h-4 mr-2" />
                     Add to Plan
@@ -195,6 +218,14 @@ export function PosterCard({
                     <ExternalLink className="w-4 h-4 mr-2" />
                     Open Source
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onClick={onDelete}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -202,14 +233,21 @@ export function PosterCard({
         </div>
       </div>
 
-      {/* Title (shown on smaller screens or when not hovered on larger) */}
+      {/* Title and metadata */}
       <div className="p-2">
         <h3 className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
           {bookmark.title}
         </h3>
-        {bookmark.release_year && (
-          <p className="text-xs text-muted-foreground">{bookmark.release_year}</p>
-        )}
+        <div className="flex items-center gap-2 mt-1">
+          {bookmark.release_year && (
+            <span className="text-xs text-muted-foreground">{bookmark.release_year}</span>
+          )}
+          {bookmark.mood_tags && bookmark.mood_tags.length > 0 && (
+            <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", getMoodColor(bookmark.mood_tags[0]))}>
+              {bookmark.mood_tags[0]}
+            </span>
+          )}
+        </div>
       </div>
     </Link>
   );

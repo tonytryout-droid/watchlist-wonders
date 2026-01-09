@@ -26,6 +26,8 @@ interface RailProps {
   onSchedule?: (bookmark: Bookmark) => void;
   onMarkDone?: (bookmark: Bookmark) => void;
   onAddToPlan?: (bookmark: Bookmark) => void;
+  onDelete?: (bookmark: Bookmark) => void;
+  onUndoDone?: (bookmark: Bookmark) => void;
   emptyMessage?: string;
   className?: string;
 }
@@ -38,6 +40,8 @@ export function Rail({
   onSchedule,
   onMarkDone,
   onAddToPlan,
+  onDelete,
+  onUndoDone,
   emptyMessage = "No items yet",
   className,
 }: RailProps) {
@@ -126,6 +130,8 @@ export function Rail({
               onSchedule={() => onSchedule?.(bookmark)}
               onMarkDone={() => onMarkDone?.(bookmark)}
               onAddToPlan={() => onAddToPlan?.(bookmark)}
+              onDelete={() => onDelete?.(bookmark)}
+              onUndoDone={() => onUndoDone?.(bookmark)}
             />
           ))}
         </div>
