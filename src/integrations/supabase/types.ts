@@ -341,10 +341,51 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      meta_connections_safe: {
+        Row: {
+          account_name: string | null
+          account_username: string | null
+          created_at: string | null
+          id: string | null
+          meta_user_id: string | null
+          platform: string | null
+          profile_picture_url: string | null
+          token_expires_at: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          account_name?: string | null
+          account_username?: string | null
+          created_at?: string | null
+          id?: string | null
+          meta_user_id?: string | null
+          platform?: string | null
+          profile_picture_url?: string | null
+          token_expires_at?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          account_name?: string | null
+          account_username?: string | null
+          created_at?: string | null
+          id?: string | null
+          meta_user_id?: string | null
+          platform?: string | null
+          profile_picture_url?: string | null
+          token_expires_at?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
-      [_ in never]: never
+      get_meta_access_token: {
+        Args: { connection_id: string }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never
