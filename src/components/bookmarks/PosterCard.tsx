@@ -242,11 +242,11 @@ export function PosterCard({
       </div>
 
       {/* Title and metadata */}
-      <div className="p-2">
+      <div className="p-3">
         <h3 className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
           {bookmark.title}
         </h3>
-        <div className="flex items-center gap-2 mt-1">
+        <div className="flex items-center gap-2 mt-1.5">
           {bookmark.release_year && (
             <span className="text-xs text-muted-foreground">{bookmark.release_year}</span>
           )}

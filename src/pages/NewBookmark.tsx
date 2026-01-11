@@ -282,8 +282,8 @@ const NewBookmark = () => {
       </div>
 
       {/* Form */}
-      <div className="container mx-auto px-4 lg:px-8 py-8">
-        <form id="bookmark-form" onSubmit={handleSubmit} className="max-w-2xl mx-auto space-y-8">
+      <div className="container mx-auto px-4 lg:px-8 py-6">
+        <form id="bookmark-form" onSubmit={handleSubmit} className="max-w-2xl mx-auto space-y-6">
           {/* URL Input */}
           <div className="space-y-2">
             <Label htmlFor="url">URL (optional)</Label>
