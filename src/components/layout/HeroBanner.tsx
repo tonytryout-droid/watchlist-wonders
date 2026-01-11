@@ -29,10 +29,10 @@ interface HeroBannerProps {
 export function HeroBanner({ bookmark, onPlay, onMoreInfo, className }: HeroBannerProps) {
   if (!bookmark) {
     return (
-      <div className={cn("relative h-[70vh] min-h-[500px] flex items-end", className)}>
+      <div className={cn("relative h-[70vh] min-h-[500px] flex items-end pt-16", className)}>
         <GradientBarsBackground className="opacity-60" />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
-        <div className="relative z-10 container mx-auto px-4 lg:px-8 pb-16">
+        <div className="relative z-10 container mx-auto px-4 lg:px-8 pb-20">
           <h2 className="text-3xl md:text-5xl font-bold text-foreground mb-4">
             Your Watchlist Awaits
           </h2>
@@ -50,7 +50,7 @@ export function HeroBanner({ bookmark, onPlay, onMoreInfo, className }: HeroBann
   const backdropUrl = bookmark.backdrop_url || bookmark.poster_url;
 
   return (
-    <div className={cn("relative h-[70vh] min-h-[500px] flex items-end overflow-hidden", className)}>
+    <div className={cn("relative h-[70vh] min-h-[500px] flex items-end overflow-hidden pt-16", className)}>
       {/* Backdrop Image */}
       {backdropUrl && (
         <div className="absolute inset-0">
@@ -69,7 +69,7 @@ export function HeroBanner({ bookmark, onPlay, onMoreInfo, className }: HeroBann
       <div className="absolute inset-0 bg-gradient-to-r from-background/80 via-transparent to-transparent" />
 
       {/* Content */}
-      <div className="relative z-10 container mx-auto px-4 lg:px-8 pb-16">
+      <div className="relative z-10 container mx-auto px-4 lg:px-8 pb-20">
         {/* Badge */}
         <div className="flex items-center gap-2 mb-4">
           {bookmark.scheduled_for && (

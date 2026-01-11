@@ -27,22 +27,22 @@ export function StatsBar({ total, backlog, watching, done, totalMinutes, classNa
 
   return (
     <div className={cn("container mx-auto px-4 lg:px-8", className)}>
-      <div className="bg-card/50 backdrop-blur-sm border border-border/50 rounded-xl p-4">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="bg-card/60 backdrop-blur-md border border-border/50 rounded-xl p-5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6">
           {stats.map((stat) => (
             <div key={stat.label} className="flex items-center gap-3">
-              <div className={cn("p-2 rounded-lg bg-muted", stat.color)}>
+              <div className={cn("p-2.5 rounded-lg bg-muted", stat.color)}>
                 <stat.icon className="w-4 h-4" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+                <p className="text-xl sm:text-2xl font-bold text-foreground">{stat.value}</p>
                 <p className="text-xs text-muted-foreground">{stat.label}</p>
               </div>
             </div>
           ))}
         </div>
         {totalMinutes > 0 && (
-          <div className="mt-3 pt-3 border-t border-border/50">
+          <div className="mt-4 pt-4 border-t border-border/50">
             <p className="text-sm text-muted-foreground">
               <span className="text-foreground font-medium">{formatTime(totalMinutes)}</span> watched so far
             </p>

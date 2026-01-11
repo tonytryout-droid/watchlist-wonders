@@ -46,19 +46,19 @@ const Calendar = () => {
     <div className="min-h-screen bg-background">
       <TopNav />
 
-      <div className="container mx-auto px-4 lg:px-8 pt-24 pb-16">
+      <div className="container mx-auto px-4 lg:px-8 pt-20 pb-16">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Calendar</h1>
-            <p className="text-muted-foreground mt-1">
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground">Calendar</h1>
+            <p className="text-sm md:text-base text-muted-foreground mt-1">
               View your scheduled watch times
             </p>
           </div>
         </div>
 
         {/* Calendar Navigation */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
             <ChevronLeft className="w-5 h-5" />
           </Button>
@@ -136,8 +136,8 @@ const Calendar = () => {
         </div>
 
         {/* Upcoming Schedules */}
-        <div className="mt-8">
-          <h3 className="text-lg font-semibold text-foreground mb-4">Upcoming</h3>
+        <div className="mt-6">
+          <h3 className="text-lg font-semibold text-foreground mb-3">Upcoming</h3>
           {schedules.filter((s) => new Date(s.scheduled_for) >= new Date()).length === 0 ? (
             <div className="text-center py-8 bg-card border border-border rounded-lg">
               <CalendarIcon className="w-8 h-8 mx-auto text-muted-foreground mb-2" />

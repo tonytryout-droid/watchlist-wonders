@@ -54,9 +54,9 @@ export function FilterChips({
 
   return (
     <div className={cn("container mx-auto px-4 lg:px-8", className)}>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-3">
         {/* Type filters */}
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-2">
           {typeFilters.map((filter) => (
             <Badge
               key={filter.value}
@@ -78,10 +78,10 @@ export function FilterChips({
           ))}
         </div>
 
-        <div className="w-px h-6 bg-border mx-1 hidden sm:block" />
+        <div className="w-px h-5 bg-border mx-1 hidden sm:block" />
 
         {/* Status filters */}
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-2">
           {statusFilters.map((filter) => (
             <Badge
               key={filter.value}

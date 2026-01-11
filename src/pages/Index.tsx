@@ -25,7 +25,7 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
-      <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+      <section className="relative min-h-screen flex items-center justify-center overflow-hidden px-4">
         {/* Background Gradient */}
         <div className="absolute inset-0 bg-gradient-to-b from-primary/20 via-background to-background" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent" />
@@ -38,9 +38,9 @@ const Index = () => {
         </div>
 
         {/* Content */}
-        <div className="relative z-10 container mx-auto px-4 text-center">
+        <div className="relative z-10 container mx-auto text-center max-w-3xl">
           {/* Logo/Brand */}
-          <div className="flex items-center justify-center gap-3 mb-8">
+          <div className="flex items-center justify-center gap-3 mb-6">
             <div className="p-3 bg-primary rounded-lg">
               <Play className="w-8 h-8 text-primary-foreground fill-current" />
             </div>
@@ -50,15 +50,15 @@ const Index = () => {
           </div>
 
           {/* Tagline */}
-          <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-4">
+          <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-3">
             Your personal streaming companion
           </p>
-          <p className="text-lg text-muted-foreground/80 max-w-xl mx-auto mb-10">
+          <p className="text-base md:text-lg text-muted-foreground/80 max-w-xl mx-auto mb-8">
             Save links from any platform, organize your watchlist, and never forget what to watch next.
           </p>
 
           {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
             <Button
               size="lg"
               onClick={() => navigate("/auth")}
@@ -87,16 +87,16 @@ const Index = () => {
       </section>
 
       {/* Features Section */}
-      <section className="py-24 bg-card/50">
+      <section className="py-20 md:py-24 bg-card/50">
         <div className="container mx-auto px-4">
-          <h2 className="text-3xl md:text-4xl font-bold text-center text-foreground mb-4">
+          <h2 className="text-3xl md:text-4xl font-bold text-center text-foreground mb-3">
             Everything You Need
           </h2>
-          <p className="text-muted-foreground text-center max-w-xl mx-auto mb-16">
+          <p className="text-muted-foreground text-center max-w-xl mx-auto mb-12">
             A beautifully simple way to manage what you want to watch across all your streaming services.
           </p>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-5xl mx-auto">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
             <FeatureCard
               icon={Bookmark}
               title="Save From Anywhere"
@@ -132,9 +132,9 @@ const Index = () => {
       </section>
 
       {/* How It Works Section */}
-      <section className="py-24">
+      <section className="py-20 md:py-24">
         <div className="container mx-auto px-4">
-          <h2 className="text-3xl md:text-4xl font-bold text-center text-foreground mb-16">
+          <h2 className="text-3xl md:text-4xl font-bold text-center text-foreground mb-12">
             How It Works
           </h2>
 
@@ -159,12 +159,12 @@ const Index = () => {
       </section>
 
       {/* CTA Section */}
-      <section className="py-24 bg-gradient-to-t from-primary/10 to-transparent">
+      <section className="py-20 md:py-24 bg-gradient-to-t from-primary/10 to-transparent">
         <div className="container mx-auto px-4 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
+          <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-3">
             Ready to Start Watching?
           </h2>
-          <p className="text-muted-foreground max-w-md mx-auto mb-8">
+          <p className="text-muted-foreground max-w-md mx-auto mb-6">
             Join WatchMarks today and take control of your streaming experience.
           </p>
           <Button
@@ -178,7 +178,7 @@ const Index = () => {
       </section>
 
       {/* Footer */}
-      <footer className="py-8 border-t border-border">
+      <footer className="py-10 border-t border-border">
         <div className="container mx-auto px-4 text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
             <div className="p-1.5 bg-primary rounded">
@@ -207,8 +207,8 @@ function FeatureCard({ icon: Icon, title, description }: FeatureCardProps) {
       <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
         <Icon className="w-6 h-6 text-primary" />
       </div>
-      <h3 className="text-xl font-semibold text-foreground mb-2">{title}</h3>
-      <p className="text-muted-foreground">{description}</p>
+      <h3 className="text-lg font-semibold text-foreground mb-2">{title}</h3>
+      <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
     </div>
   );
 }
@@ -222,11 +222,11 @@ interface StepCardProps {
 function StepCard({ step, title, description }: StepCardProps) {
   return (
     <div className="text-center">
-      <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">
-        <span className="text-2xl font-bold text-primary-foreground">{step}</span>
+      <div className="w-14 h-14 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">
+        <span className="text-xl font-bold text-primary-foreground">{step}</span>
       </div>
-      <h3 className="text-xl font-semibold text-foreground mb-2">{title}</h3>
-      <p className="text-muted-foreground">{description}</p>
+      <h3 className="text-lg font-semibold text-foreground mb-2">{title}</h3>
+      <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
     </div>
   );
 }
