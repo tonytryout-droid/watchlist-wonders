@@ -73,14 +73,14 @@ export function Rail({
   }
 
   return (
-    <section className={cn("relative py-4", className)}>
+    <section className={cn("relative py-6", className)}>
       {/* Header */}
-      <div className="container mx-auto px-4 lg:px-8 mb-3">
+      <div className="container mx-auto px-4 lg:px-8 mb-4">
         <div className="flex items-baseline justify-between">
           <div>
             <h2 className="text-xl font-semibold text-foreground">{title}</h2>
             {subtitle && (
-              <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>
+              <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>
             )}
           </div>
           <span className="text-sm text-muted-foreground">
@@ -121,7 +121,7 @@ export function Rail({
         <div
           ref={scrollRef}
           onScroll={updateArrows}
-          className="flex gap-3 overflow-x-auto scrollbar-hide px-4 lg:px-8 pb-2"
+          className="flex gap-4 overflow-x-auto scrollbar-hide px-4 lg:px-8 pb-2"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
           {bookmarks.map((bookmark) => (

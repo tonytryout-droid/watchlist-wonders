@@ -117,29 +117,29 @@ const Auth = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+    <div className="min-h-screen bg-background flex items-center justify-center px-4 py-8">
       {/* Background gradient */}
       <div className="fixed inset-0 bg-gradient-to-br from-primary/5 via-background to-background" />
 
       <div className="relative w-full max-w-md">
         {/* Logo */}
-        <Link to="/" className="flex items-center justify-center gap-2 mb-8">
+        <Link to="/" className="flex items-center justify-center gap-2 mb-10">
           <span className="text-4xl font-bold text-primary">W</span>
           <span className="text-2xl font-semibold text-foreground">WatchMarks</span>
         </Link>
 
         {/* Auth Card */}
-        <div className="bg-card border border-border rounded-lg p-8">
+        <div className="bg-card border border-border rounded-xl p-8 shadow-lg">
           <h1 className="text-2xl font-bold text-foreground mb-2">
             {mode === "login" ? "Sign in to your account" : "Create your account"}
           </h1>
-          <p className="text-muted-foreground mb-6">
+          <p className="text-muted-foreground mb-8">
             {mode === "login"
               ? "Welcome back! Enter your credentials to continue."
               : "Join WatchMarks and start organizing your watchlist."}
           </p>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <div className="relative">
@@ -246,7 +246,7 @@ const Auth = () => {
         </div>
 
         {/* Footer */}
-        <p className="mt-8 text-center text-xs text-muted-foreground">
+        <p className="mt-10 text-center text-xs text-muted-foreground">
           By continuing, you agree to our Terms of Service and Privacy Policy.
         </p>
       </div>

@@ -261,7 +261,7 @@ const Dashboard = () => {
       <div className="min-h-screen bg-background">
         <TopNav onSearchClick={() => setSearchOpen(true)} notificationCount={0} />
         <div className="h-[70vh] min-h-[500px] bg-muted/30 animate-pulse" />
-        <div className="relative z-10 -mt-20 pb-16 space-y-2">
+        <div className="relative z-10 -mt-24 pb-16 space-y-2">
           <SkeletonRail count={6} />
           <SkeletonRail count={6} />
         </div>
@@ -325,7 +325,7 @@ const Dashboard = () => {
       />
 
       {/* Content */}
-      <div className="relative z-10 -mt-20 pb-16 space-y-6">
+      <div className="relative z-10 -mt-24 pb-16 space-y-8">
         {/* Stats Bar */}
         {bookmarks.length > 0 && (
           <StatsBar
@@ -351,7 +351,7 @@ const Dashboard = () => {
         )}
 
         {/* Rails */}
-        <div className="space-y-2 animate-fade-in">
+        <div className="space-y-4 animate-fade-in">
           {continueWatching.length > 0 && (
             <Rail
               title="Continue Watching"
