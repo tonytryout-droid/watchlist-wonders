@@ -120,23 +120,23 @@ const TonightPick = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <div className="container mx-auto px-4 lg:px-8 py-8 text-center">
-        <div className="flex items-center justify-center gap-2 mb-2">
-          <Sparkles className="w-6 h-6 text-primary" />
-          <h1 className="text-3xl font-bold text-foreground">Tonight Pick 1</h1>
+      <div className="container mx-auto px-4 lg:px-8 py-6 text-center">
+        <div className="flex items-center justify-center gap-2 mb-1">
+          <Sparkles className="w-5 h-5 text-primary" />
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground">Tonight Pick 1</h1>
         </div>
-        <p className="text-muted-foreground">
+        <p className="text-sm md:text-base text-muted-foreground">
           Quick decisions for busy nights. Under 90 minutes, perfectly curated.
         </p>
       </div>
 
       {/* Cards */}
-      <div className="flex-1 container mx-auto px-4 lg:px-8 py-8">
-        <div className="grid gap-6 md:grid-cols-3 max-w-5xl mx-auto">
+      <div className="flex-1 container mx-auto px-4 lg:px-8 py-6">
+        <div className="grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3 max-w-5xl mx-auto">
           {picks.map((bookmark, index) => (
             <div
               key={bookmark.id}
-              className="relative bg-card border border-border rounded-lg overflow-hidden transition-all duration-300 hover:border-primary/50"
+              className="relative bg-card border border-border rounded-xl overflow-hidden transition-all duration-300 hover:border-primary/50"
             >
               {/* Poster/Image */}
               <div className="aspect-video bg-secondary relative">
@@ -172,7 +172,7 @@ const TonightPick = () => {
               </div>
 
               {/* Content */}
-              <div className="p-4 space-y-3">
+              <div className="p-4 space-y-2">
                 <div>
                   <h3 className="font-semibold text-foreground line-clamp-2">{bookmark.title}</h3>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
@@ -234,7 +234,7 @@ const TonightPick = () => {
         </div>
 
         {/* Reroll Button */}
-        <div className="text-center mt-8">
+        <div className="text-center mt-6">
           <Button variant="outline" size="lg" onClick={handleRerollAll}>
             <RefreshCw className="w-4 h-4 mr-2" />
             Reroll All
@@ -243,7 +243,7 @@ const TonightPick = () => {
       </div>
 
       {/* Back link */}
-      <div className="container mx-auto px-4 lg:px-8 py-8 text-center">
+      <div className="container mx-auto px-4 lg:px-8 py-6 text-center">
         <Button variant="ghost" onClick={() => navigate("/dashboard")}>
           <X className="w-4 h-4 mr-2" />
           Back to Dashboard
