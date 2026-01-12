@@ -4,17 +4,25 @@ import { useQuery } from "@tanstack/react-query";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TopNav } from "@/components/layout/TopNav";
+import { SearchOverlay } from "@/components/search/SearchOverlay";
 import { cn, formatRuntime } from "@/lib/utils";
 import { scheduleService } from "@/services/schedules";
+import { bookmarkService } from "@/services/bookmarks";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, isToday } from "date-fns";
 
 const Calendar = () => {
   const navigate = useNavigate();
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const { data: schedules = [], isLoading } = useQuery({
     queryKey: ['schedules'],
     queryFn: () => scheduleService.getSchedules(),
+  });
+
+  const { data: bookmarks = [] } = useQuery({
+    queryKey: ['bookmarks'],
+    queryFn: () => bookmarkService.getBookmarks(),
   });
 
   const monthStart = startOfMonth(currentMonth);
@@ -34,17 +42,18 @@ const Calendar = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
-        <TopNav />
+        <TopNav onSearchClick={() => setSearchOpen(true)} />
         <div className="flex items-center justify-center pt-32">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
+        <SearchOverlay isOpen={searchOpen} onClose={() => setSearchOpen(false)} bookmarks={[]} />
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-background">
-      <TopNav />
+      <TopNav onSearchClick={() => setSearchOpen(true)} />
 
       <div className="container mx-auto px-4 lg:px-8 pt-20 pb-16">
         {/* Header */}
@@ -173,6 +182,12 @@ const Calendar = () => {
           )}
         </div>
       </div>
+      
+      <SearchOverlay
+        isOpen={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        bookmarks={bookmarks}
+      />
     </div>
   );
 };
