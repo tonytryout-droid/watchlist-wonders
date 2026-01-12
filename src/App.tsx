@@ -15,6 +15,7 @@ import Plans from "./pages/Plans";
 import Notifications from "./pages/Notifications";
 import Calendar from "./pages/Calendar";
 import BookmarkDetail from "./pages/BookmarkDetail";
+import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -39,6 +40,7 @@ const App = () => (
                 <Route path="/notifications" element={<Notifications />} />
                 <Route path="/calendar" element={<Calendar />} />
                 <Route path="/b/:id" element={<BookmarkDetail />} />
+                <Route path="/settings" element={<Settings />} />
               </Route>
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />

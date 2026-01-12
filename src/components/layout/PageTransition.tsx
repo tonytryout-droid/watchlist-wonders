@@ -8,12 +8,20 @@ interface PageTransitionProps {
 const PageTransition = ({ children }: PageTransitionProps) => {
   const location = useLocation();
   const [isVisible, setIsVisible] = useState(false);
+  const [displayLocation, setDisplayLocation] = useState(location);
 
   useEffect(() => {
-    setIsVisible(false);
-    const timer = setTimeout(() => setIsVisible(true), 50);
-    return () => clearTimeout(timer);
-  }, [location.pathname]);
+    if (location.pathname !== displayLocation.pathname) {
+      setIsVisible(false);
+      const timer = setTimeout(() => {
+        setDisplayLocation(location);
+        setIsVisible(true);
+      }, 150);
+      return () => clearTimeout(timer);
+    } else {
+      setIsVisible(true);
+    }
+  }, [location, displayLocation]);
 
   return (
     <div

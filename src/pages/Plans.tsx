@@ -5,8 +5,10 @@ import { Plus, Calendar, Clock, ChevronRight, Trash2, Loader2, X } from "lucide-
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TopNav } from "@/components/layout/TopNav";
+import { SearchOverlay } from "@/components/search/SearchOverlay";
 import { cn, getMoodEmoji } from "@/lib/utils";
 import { watchPlanService } from "@/services/watchPlans";
+import { bookmarkService } from "@/services/bookmarks";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -33,7 +35,7 @@ const Plans = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
-  
+  const [searchOpen, setSearchOpen] = useState(false);
   // Form state
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -46,6 +48,11 @@ const Plans = () => {
   const { data: plans = [], isLoading, error } = useQuery({
     queryKey: ['watch-plans'],
     queryFn: () => watchPlanService.getWatchPlans(),
+  });
+
+  const { data: bookmarks = [] } = useQuery({
+    queryKey: ['bookmarks'],
+    queryFn: () => bookmarkService.getBookmarks(),
   });
 
   const createMutation = useMutation({
@@ -126,17 +133,18 @@ const Plans = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
-        <TopNav />
+        <TopNav onSearchClick={() => setSearchOpen(true)} />
         <div className="flex items-center justify-center pt-32">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
+        <SearchOverlay isOpen={searchOpen} onClose={() => setSearchOpen(false)} bookmarks={[]} />
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-background">
-      <TopNav />
+      <TopNav onSearchClick={() => setSearchOpen(true)} />
 
       <div className="container mx-auto px-4 lg:px-8 pt-20 pb-16">
         {/* Header */}
@@ -381,6 +389,12 @@ const Plans = () => {
           </form>
         </DialogContent>
       </Dialog>
+
+      <SearchOverlay
+        isOpen={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        bookmarks={bookmarks}
+      />
     </div>
   );
 };
