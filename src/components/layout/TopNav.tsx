@@ -2,8 +2,10 @@ import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Search, Bell, Calendar, User, Menu, X, Plus, Sparkles, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAvatar } from "@/hooks/useAvatar";
 import { useToast } from "@/hooks/use-toast";
 
 interface TopNavProps {
@@ -16,6 +18,7 @@ export function TopNav({ notificationCount = 0, onSearchClick }: TopNavProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
   const { user, signOut } = useAuth();
+  const { avatarUrl } = useAvatar();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -115,9 +118,12 @@ export function TopNav({ notificationCount = 0, onSearchClick }: TopNavProps) {
             {user ? (
               <div className="flex items-center gap-2">
                 <Link to="/settings">
-                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
-                    <User className="w-5 h-5" />
-                  </Button>
+                  <Avatar className="h-8 w-8 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all">
+                    <AvatarImage src={avatarUrl || undefined} alt="Profile" />
+                    <AvatarFallback className="bg-primary/10 text-primary text-sm">
+                      {user.email?.charAt(0).toUpperCase() || 'U'}
+                    </AvatarFallback>
+                  </Avatar>
                 </Link>
                 <Button 
                   variant="ghost" 
