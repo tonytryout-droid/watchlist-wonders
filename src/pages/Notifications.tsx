@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Bell, Check, CheckCheck, Trash2, Clock, Loader2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -8,9 +7,10 @@ import { cn, formatRelativeDate } from "@/lib/utils";
 import { notificationService } from "@/services/notifications";
 import { bookmarkService } from "@/services/bookmarks";
 import { useToast } from "@/hooks/use-toast";
+import { useSearchShortcut } from "@/hooks/useSearchShortcut";
 
 const Notifications = () => {
-  const [searchOpen, setSearchOpen] = useState(false);
+  const { isSearchOpen, openSearch, closeSearch } = useSearchShortcut();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -54,7 +54,7 @@ const Notifications = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
-        <TopNav onSearchClick={() => setSearchOpen(true)} />
+        <TopNav onSearchClick={openSearch} />
         <div className="flex items-center justify-center pt-32">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
@@ -65,7 +65,7 @@ const Notifications = () => {
   if (error) {
     return (
       <div className="min-h-screen bg-background">
-        <TopNav onSearchClick={() => setSearchOpen(true)} />
+        <TopNav onSearchClick={openSearch} />
         <div className="flex items-center justify-center pt-32">
           <p className="text-destructive">Error loading notifications</p>
         </div>
@@ -75,7 +75,7 @@ const Notifications = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <TopNav notificationCount={unreadCount} onSearchClick={() => setSearchOpen(true)} />
+      <TopNav notificationCount={unreadCount} onSearchClick={openSearch} />
 
       <div className="container mx-auto px-4 lg:px-8 pt-24 pb-16">
         {/* Header */}
@@ -169,8 +169,8 @@ const Notifications = () => {
       </div>
       
       <SearchOverlay
-        isOpen={searchOpen}
-        onClose={() => setSearchOpen(false)}
+        isOpen={isSearchOpen}
+        onClose={closeSearch}
         bookmarks={bookmarks}
       />
     </div>
