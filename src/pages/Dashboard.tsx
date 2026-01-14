@@ -12,6 +12,7 @@ import { scheduleService } from "@/services/schedules";
 import { watchPlanService } from "@/services/watchPlans";
 import { notificationService } from "@/services/notifications";
 import { useToast } from "@/hooks/use-toast";
+import { useSearchShortcut } from "@/hooks/useSearchShortcut";
 import type { Bookmark } from "@/types/database";
 import {
   Dialog,
@@ -39,7 +40,7 @@ type FilterType = "all" | "movie" | "series" | "video" | "doc";
 type FilterStatus = "all" | "backlog" | "watching" | "done";
 
 const Dashboard = () => {
-  const [searchOpen, setSearchOpen] = useState(false);
+  const { isSearchOpen, openSearch, closeSearch } = useSearchShortcut();
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -259,7 +260,7 @@ const Dashboard = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
-        <TopNav onSearchClick={() => setSearchOpen(true)} notificationCount={0} />
+        <TopNav onSearchClick={openSearch} notificationCount={0} />
         <div className="h-[70vh] min-h-[500px] bg-muted/30 animate-pulse" />
         <div className="relative z-10 -mt-24 pb-16 space-y-2">
           <SkeletonRail count={6} />
@@ -315,7 +316,7 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <TopNav onSearchClick={() => setSearchOpen(true)} notificationCount={unreadCount} />
+      <TopNav onSearchClick={openSearch} notificationCount={unreadCount} />
       
       {/* Hero Banner */}
       <HeroBanner
@@ -439,8 +440,8 @@ const Dashboard = () => {
       </div>
 
       <SearchOverlay
-        isOpen={searchOpen}
-        onClose={() => setSearchOpen(false)}
+        isOpen={isSearchOpen}
+        onClose={closeSearch}
         bookmarks={bookmarks}
       />
 
