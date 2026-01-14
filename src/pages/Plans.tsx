@@ -10,6 +10,7 @@ import { cn, getMoodEmoji } from "@/lib/utils";
 import { watchPlanService } from "@/services/watchPlans";
 import { bookmarkService } from "@/services/bookmarks";
 import { useToast } from "@/hooks/use-toast";
+import { useSearchShortcut } from "@/hooks/useSearchShortcut";
 import {
   Dialog,
   DialogContent,
@@ -34,8 +35,8 @@ const Plans = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { isSearchOpen, openSearch, closeSearch } = useSearchShortcut();
   const [createOpen, setCreateOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
   // Form state
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -133,18 +134,18 @@ const Plans = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
-        <TopNav onSearchClick={() => setSearchOpen(true)} />
+        <TopNav onSearchClick={openSearch} />
         <div className="flex items-center justify-center pt-32">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
-        <SearchOverlay isOpen={searchOpen} onClose={() => setSearchOpen(false)} bookmarks={[]} />
+        <SearchOverlay isOpen={isSearchOpen} onClose={closeSearch} bookmarks={[]} />
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-background">
-      <TopNav onSearchClick={() => setSearchOpen(true)} />
+      <TopNav onSearchClick={openSearch} />
 
       <div className="container mx-auto px-4 lg:px-8 pt-20 pb-16">
         {/* Header */}
@@ -391,8 +392,8 @@ const Plans = () => {
       </Dialog>
 
       <SearchOverlay
-        isOpen={searchOpen}
-        onClose={() => setSearchOpen(false)}
+        isOpen={isSearchOpen}
+        onClose={closeSearch}
         bookmarks={bookmarks}
       />
     </div>
