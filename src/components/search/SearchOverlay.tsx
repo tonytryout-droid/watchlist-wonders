@@ -24,17 +24,21 @@ export function SearchOverlay({ isOpen, onClose, bookmarks }: SearchOverlayProps
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Bookmark[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     if (isOpen) {
       inputRef.current?.focus();
       document.body.style.overflow = "hidden";
+      setSelectedIndex(-1);
     } else {
       document.body.style.overflow = "";
       setQuery("");
       setResults([]);
+      setSelectedIndex(-1);
     }
 
     return () => {
@@ -45,6 +49,7 @@ export function SearchOverlay({ isOpen, onClose, bookmarks }: SearchOverlayProps
   useEffect(() => {
     if (!query.trim()) {
       setResults([]);
+      setSelectedIndex(-1);
       return;
     }
 
@@ -57,6 +62,7 @@ export function SearchOverlay({ isOpen, onClose, bookmarks }: SearchOverlayProps
         b.provider.toLowerCase().includes(searchTerm)
     );
     setResults(filtered.slice(0, 10));
+    setSelectedIndex(-1);
     setIsSearching(false);
   }, [query, bookmarks]);
 
@@ -64,6 +70,20 @@ export function SearchOverlay({ isOpen, onClose, bookmarks }: SearchOverlayProps
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         onClose();
+        return;
+      }
+
+      if (results.length === 0) return;
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev < results.length - 1 ? prev + 1 : 0));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : results.length - 1));
+      } else if (e.key === "Enter" && selectedIndex >= 0) {
+        e.preventDefault();
+        handleSelect(results[selectedIndex]);
       }
     };
 
@@ -71,7 +91,7 @@ export function SearchOverlay({ isOpen, onClose, bookmarks }: SearchOverlayProps
       window.addEventListener("keydown", handleKeyDown);
       return () => window.removeEventListener("keydown", handleKeyDown);
     }
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, results, selectedIndex]);
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -130,20 +150,32 @@ export function SearchOverlay({ isOpen, onClose, bookmarks }: SearchOverlayProps
 
         {/* Results */}
         {(query.trim() || results.length > 0) && (
-          <div className="mt-2 bg-card border border-border rounded-lg overflow-hidden max-h-[60vh] overflow-y-auto">
+          <div 
+            ref={resultsRef}
+            className="mt-2 bg-card border border-border rounded-lg overflow-hidden max-h-[60vh] overflow-y-auto"
+            role="listbox"
+            aria-label="Search results"
+          >
             {results.length === 0 && query.trim() && (
               <div className="p-8 text-center text-muted-foreground">
                 <p>No results found for "{query}"</p>
               </div>
             )}
 
-            {results.map((bookmark) => {
+            {results.map((bookmark, index) => {
               const Icon = getTypeIcon(bookmark.type);
+              const isSelected = index === selectedIndex;
               return (
                 <button
                   key={bookmark.id}
                   onClick={() => handleSelect(bookmark)}
-                  className="w-full flex items-center gap-4 p-4 hover:bg-secondary transition-colors text-left"
+                  onMouseEnter={() => setSelectedIndex(index)}
+                  className={cn(
+                    "w-full flex items-center gap-4 p-4 transition-colors text-left focus:outline-none",
+                    isSelected ? "bg-secondary" : "hover:bg-secondary/50"
+                  )}
+                  role="option"
+                  aria-selected={isSelected}
                 >
                   {/* Poster Thumbnail */}
                   <div className="w-12 h-16 flex-shrink-0 rounded bg-muted overflow-hidden">
