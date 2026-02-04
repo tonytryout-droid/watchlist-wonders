@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Play, Plus, Check, Clock, Calendar, MoreHorizontal, ExternalLink, Trash2, Undo2, Eye } from "lucide-react";
+import { Play, Plus, Check, Calendar, MoreHorizontal, ExternalLink, Trash2, Undo2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -168,8 +168,9 @@ export function PosterCard({
             <Button
               variant="default"
               size="icon"
-              className="h-8 w-8 rounded-full"
+              className="h-8 w-8 rounded-full focus-visible:ring-2 focus-visible:ring-ring"
               onClick={handlePlay}
+              aria-label={`Play ${bookmark.title}`}
             >
               <Play className="w-4 h-4 fill-current" />
             </Button>
@@ -178,12 +179,13 @@ export function PosterCard({
               <Button
                 variant="secondary"
                 size="icon"
-                className="h-8 w-8 rounded-full"
+                className="h-8 w-8 rounded-full focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   onSchedule?.();
                 }}
+                aria-label={`Schedule ${bookmark.title}`}
               >
                 <Calendar className="w-4 h-4" />
               </Button>
@@ -193,8 +195,9 @@ export function PosterCard({
                   <Button
                     variant="secondary"
                     size="icon"
-                    className="h-8 w-8 rounded-full"
+                    className="h-8 w-8 rounded-full focus-visible:ring-2 focus-visible:ring-ring"
                     onClick={(e) => e.preventDefault()}
+                    aria-label="More options"
                   >
                     <MoreHorizontal className="w-4 h-4" />
                   </Button>

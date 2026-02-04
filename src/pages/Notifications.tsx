@@ -1,4 +1,5 @@
-import { Bell, Check, CheckCheck, Trash2, Clock, Loader2 } from "lucide-react";
+import { Bell, Check, CheckCheck, Trash2, Clock } from "lucide-react";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { TopNav } from "@/components/layout/TopNav";
@@ -56,7 +57,7 @@ const Notifications = () => {
       <div className="min-h-screen bg-background">
         <TopNav onSearchClick={openSearch} />
         <div className="flex items-center justify-center pt-32">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <LoadingSpinner size="lg" />
         </div>
       </div>
     );
@@ -145,9 +146,10 @@ const Notifications = () => {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8"
+                      className="h-8 w-8 focus-visible:ring-2 focus-visible:ring-ring"
                       onClick={() => markAsReadMutation.mutate(notification.id)}
                       disabled={markAsReadMutation.isPending}
+                      aria-label="Mark as read"
                     >
                       <Check className="w-4 h-4" />
                     </Button>
@@ -155,9 +157,10 @@ const Notifications = () => {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring"
                     onClick={() => deleteMutation.mutate(notification.id)}
                     disabled={deleteMutation.isPending}
+                    aria-label="Delete notification"
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>

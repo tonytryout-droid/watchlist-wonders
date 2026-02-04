@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
-  ArrowLeft, Play, Calendar, Check, Trash2, Edit2, 
-  Clock, Tag, ExternalLink, Loader2, Save, X 
+  ArrowLeft, Play, Check, Trash2, Edit2, 
+  Clock, Tag, ExternalLink, Save, X 
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,9 +11,21 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { bookmarkService } from "@/services/bookmarks";
 import { useToast } from "@/hooks/use-toast";
-import { cn, formatRuntime, getMoodEmoji } from "@/lib/utils";
+import { formatRuntime, getMoodEmoji } from "@/lib/utils";
 import type { Bookmark } from "@/types/database";
 
 const STATUS_OPTIONS: { value: Bookmark["status"]; label: string }[] = [
@@ -97,7 +109,7 @@ const BookmarkDetail = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <LoadingSpinner size="lg" />
       </div>
     );
   }
@@ -136,8 +148,9 @@ const BookmarkDetail = () => {
         <Button
           variant="ghost"
           size="icon"
-          className="absolute top-4 left-4 bg-background/80 backdrop-blur"
+          className="absolute top-4 left-4 bg-background/80 backdrop-blur focus-visible:ring-2 focus-visible:ring-ring"
           onClick={() => navigate(-1)}
+          aria-label="Go back"
         >
           <ArrowLeft className="w-5 h-5" />
         </Button>
@@ -147,19 +160,41 @@ const BookmarkDetail = () => {
           <Button
             variant="ghost"
             size="icon"
-            className="bg-background/80 backdrop-blur"
+            className="bg-background/80 backdrop-blur focus-visible:ring-2 focus-visible:ring-ring"
             onClick={handleStartEdit}
+            aria-label="Edit bookmark"
           >
             <Edit2 className="w-5 h-5" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="bg-background/80 backdrop-blur text-destructive hover:text-destructive"
-            onClick={() => deleteMutation.mutate()}
-          >
-            <Trash2 className="w-5 h-5" />
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="bg-background/80 backdrop-blur text-destructive hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Delete bookmark"
+              >
+                <Trash2 className="w-5 h-5" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete bookmark?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete "{bookmark.title}" from your watchlist. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => deleteMutation.mutate()}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 

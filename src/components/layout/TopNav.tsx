@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Search, Bell, Calendar, User, Menu, X, Plus, Sparkles, LogOut } from "lucide-react";
+import { Search, Bell, Calendar, Menu, X, Plus, Sparkles, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -30,7 +30,7 @@ export function TopNav({ notificationCount = 0, onSearchClick }: TopNavProps) {
         description: "You have been successfully signed out.",
       });
       navigate("/auth");
-    } catch (error) {
+    } catch {
       toast({
         title: "Error signing out",
         description: "Something went wrong. Please try again.",
@@ -90,11 +90,14 @@ export function TopNav({ notificationCount = 0, onSearchClick }: TopNavProps) {
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
-              size="icon"
               onClick={onSearchClick}
-              className="text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground gap-2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              aria-label="Search bookmarks (Ctrl+K or Cmd+K)"
             >
               <Search className="w-5 h-5" />
+              <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border border-border bg-muted px-1.5 text-[10px] font-medium text-muted-foreground">
+                <span className="text-xs">⌘</span>K
+              </kbd>
             </Button>
 
             <Link to="/new">
@@ -105,10 +108,15 @@ export function TopNav({ notificationCount = 0, onSearchClick }: TopNavProps) {
             </Link>
 
             <Link to="/notifications" className="relative">
-              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                aria-label={notificationCount > 0 ? `${notificationCount} unread notifications` : "Notifications"}
+              >
                 <Bell className="w-5 h-5" />
                 {notificationCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-primary text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center">
+                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-primary text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center" aria-hidden="true">
                     {notificationCount > 9 ? "9+" : notificationCount}
                   </span>
                 )}
@@ -129,8 +137,8 @@ export function TopNav({ notificationCount = 0, onSearchClick }: TopNavProps) {
                   variant="ghost" 
                   size="icon" 
                   onClick={handleSignOut}
-                  className="text-muted-foreground hover:text-foreground"
-                  title="Sign out"
+                  className="text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  aria-label="Sign out"
                 >
                   <LogOut className="w-5 h-5" />
                 </Button>
@@ -147,8 +155,10 @@ export function TopNav({ notificationCount = 0, onSearchClick }: TopNavProps) {
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden text-muted-foreground hover:text-foreground"
+              className="md:hidden text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+              aria-expanded={mobileMenuOpen}
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </Button>
