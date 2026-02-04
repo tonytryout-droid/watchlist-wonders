@@ -54,25 +54,29 @@ export function FilterChips({
 
   return (
     <div className={cn("container mx-auto px-4 lg:px-8", className)}>
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3" role="toolbar" aria-label="Filter bookmarks">
         {/* Type filters */}
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by type">
           {typeFilters.map((filter) => (
             <Badge
               key={filter.value}
               variant={activeType === filter.value ? "default" : "outline"}
               className={cn(
-                "cursor-pointer transition-all hover:bg-primary/80",
+                "cursor-pointer transition-all hover:bg-primary/80 min-h-[44px] px-4 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 activeType === filter.value
                   ? "bg-primary text-primary-foreground"
                   : "bg-transparent hover:bg-muted"
               )}
               onClick={() => onTypeChange(filter.value)}
+              tabIndex={0}
+              role="button"
+              aria-pressed={activeType === filter.value}
+              onKeyDown={(e) => e.key === "Enter" && onTypeChange(filter.value)}
             >
-              {filter.icon && <filter.icon className="w-3 h-3 mr-1" />}
+              {filter.icon && <filter.icon className="w-3 h-3 mr-1" aria-hidden="true" />}
               {filter.label}
               {filter.count !== undefined && filter.count > 0 && (
-                <span className="ml-1 opacity-70">({filter.count})</span>
+                <span className="ml-1 opacity-70" aria-label={`${filter.count} items`}>({filter.count})</span>
               )}
             </Badge>
           ))}
@@ -81,22 +85,26 @@ export function FilterChips({
         <div className="w-px h-5 bg-border mx-1 hidden sm:block" />
 
         {/* Status filters */}
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
           {statusFilters.map((filter) => (
             <Badge
               key={filter.value}
               variant={activeStatus === filter.value ? "secondary" : "outline"}
               className={cn(
-                "cursor-pointer transition-all",
+                "cursor-pointer transition-all min-h-[44px] px-4 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 activeStatus === filter.value
                   ? "bg-secondary text-secondary-foreground"
                   : "bg-transparent hover:bg-muted"
               )}
               onClick={() => onStatusChange(filter.value)}
+              tabIndex={0}
+              role="button"
+              aria-pressed={activeStatus === filter.value}
+              onKeyDown={(e) => e.key === "Enter" && onStatusChange(filter.value)}
             >
               {filter.label}
               {filter.count !== undefined && filter.count > 0 && (
-                <span className="ml-1 opacity-70">({filter.count})</span>
+                <span className="ml-1 opacity-70" aria-label={`${filter.count} items`}>({filter.count})</span>
               )}
             </Badge>
           ))}
@@ -106,10 +114,14 @@ export function FilterChips({
         {hasActiveFilters && (
           <Badge
             variant="outline"
-            className="cursor-pointer hover:bg-destructive/20 text-muted-foreground"
+            className="cursor-pointer hover:bg-destructive/20 text-muted-foreground min-h-[44px] px-4 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             onClick={clearFilters}
+            tabIndex={0}
+            role="button"
+            aria-label="Clear all filters"
+            onKeyDown={(e) => e.key === "Enter" && clearFilters()}
           >
-            <X className="w-3 h-3 mr-1" />
+            <X className="w-3 h-3 mr-1" aria-hidden="true" />
             Clear
           </Badge>
         )}
