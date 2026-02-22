@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -6,46 +7,66 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import PageTransition from "@/components/layout/PageTransition";
-import Index from "./pages/Index";
-import Dashboard from "./pages/Dashboard";
-import Auth from "./pages/Auth";
-import NewBookmark from "./pages/NewBookmark";
-import TonightPick from "./pages/TonightPick";
-import Plans from "./pages/Plans";
-import Notifications from "./pages/Notifications";
-import Calendar from "./pages/Calendar";
-import BookmarkDetail from "./pages/BookmarkDetail";
-import Settings from "./pages/Settings";
-import NotFound from "./pages/NotFound";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { NotificationListenerMount } from "@/hooks/useNotificationListener";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+
+const Index = lazy(() => import("./pages/Index"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Auth = lazy(() => import("./pages/Auth"));
+const NewBookmark = lazy(() => import("./pages/NewBookmark"));
+const TonightPick = lazy(() => import("./pages/TonightPick"));
+const Plans = lazy(() => import("./pages/Plans"));
+const PlanDetail = lazy(() => import("./pages/PlanDetail"));
+const Notifications = lazy(() => import("./pages/Notifications"));
+const Calendar = lazy(() => import("./pages/Calendar"));
+const BookmarkDetail = lazy(() => import("./pages/BookmarkDetail"));
+const Settings = lazy(() => import("./pages/Settings"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const PublicProfile = lazy(() => import("./pages/PublicProfile"));
+const ShareView = lazy(() => import("./pages/ShareView"));
 
 const queryClient = new QueryClient();
+
+const PageLoader = () => (
+  <div className="min-h-screen bg-background flex items-center justify-center">
+    <LoadingSpinner size="lg" />
+  </div>
+);
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
+      <NotificationListenerMount />
       <TooltipProvider>
         <Toaster />
         <Sonner />
         <BrowserRouter>
           <div className="dark">
-          <PageTransition>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/auth" element={<Auth />} />
-              <Route element={<ProtectedRoute />}>
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/new" element={<NewBookmark />} />
-                <Route path="/tonight" element={<TonightPick />} />
-                <Route path="/plans" element={<Plans />} />
-                <Route path="/notifications" element={<Notifications />} />
-                <Route path="/calendar" element={<Calendar />} />
-                <Route path="/b/:id" element={<BookmarkDetail />} />
-                <Route path="/settings" element={<Settings />} />
-              </Route>
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </PageTransition>
+            <PageTransition>
+              <Suspense fallback={<PageLoader />}>
+                <Routes>
+                  <Route path="/" element={<ErrorBoundary><Index /></ErrorBoundary>} />
+                  <Route path="/auth" element={<ErrorBoundary><Auth /></ErrorBoundary>} />
+                  {/* Public routes */}
+                  <Route path="/u/:uid" element={<ErrorBoundary><PublicProfile /></ErrorBoundary>} />
+                  <Route path="/share/:token" element={<ErrorBoundary><ShareView /></ErrorBoundary>} />
+                  <Route element={<ProtectedRoute />}>
+                    <Route path="/dashboard" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+                    <Route path="/new" element={<ErrorBoundary><NewBookmark /></ErrorBoundary>} />
+                    <Route path="/tonight" element={<ErrorBoundary><TonightPick /></ErrorBoundary>} />
+                    <Route path="/plans" element={<ErrorBoundary><Plans /></ErrorBoundary>} />
+                    <Route path="/plans/:id" element={<ErrorBoundary><PlanDetail /></ErrorBoundary>} />
+                    <Route path="/notifications" element={<ErrorBoundary><Notifications /></ErrorBoundary>} />
+                    <Route path="/calendar" element={<ErrorBoundary><Calendar /></ErrorBoundary>} />
+                    <Route path="/b/:id" element={<ErrorBoundary><BookmarkDetail /></ErrorBoundary>} />
+                    <Route path="/settings" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
+                  </Route>
+                  {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                  <Route path="*" element={<ErrorBoundary><NotFound /></ErrorBoundary>} />
+                </Routes>
+              </Suspense>
+            </PageTransition>
           </div>
         </BrowserRouter>
       </TooltipProvider>

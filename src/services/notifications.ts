@@ -1,111 +1,135 @@
-import { supabase } from '@/integrations/supabase/client';
+import {
+  collection,
+  doc,
+  updateDoc,
+  deleteDoc,
+  getDocs,
+  getDoc,
+  query,
+  where,
+  orderBy,
+  limit,
+  onSnapshot,
+  writeBatch,
+} from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
 import type { Notification, Bookmark } from '@/types/database';
 
 type NotificationWithBookmark = Notification & { bookmarks?: Bookmark };
+
+function getUid(): string {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not authenticated');
+  return user.uid;
+}
+
+function notificationsCol(uid: string) {
+  return collection(db, 'users', uid, 'notifications');
+}
+
+async function attachBookmark(uid: string, notif: Notification): Promise<NotificationWithBookmark> {
+  if (!notif.bookmark_id) return notif;
+  try {
+    const snap = await getDoc(doc(db, 'users', uid, 'bookmarks', notif.bookmark_id));
+    if (snap.exists()) {
+      return { ...notif, bookmarks: { id: snap.id, ...snap.data() } as Bookmark };
+    }
+  } catch {}
+  return notif;
+}
+
+function docToNotification(snap: any): Notification {
+  return { id: snap.id, ...snap.data() } as Notification;
+}
 
 export const notificationService = {
   /**
    * Get all notifications for the current user
    */
-  async getNotifications(limit = 50): Promise<NotificationWithBookmark[]> {
-    const { data, error } = await supabase
-      .from('notifications')
-      .select('*, bookmarks(*)')
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    if (error) throw error;
-    return (data || []) as NotificationWithBookmark[];
+  async getNotifications(lim = 50): Promise<NotificationWithBookmark[]> {
+    const uid = getUid();
+    const q = query(notificationsCol(uid), orderBy('created_at', 'desc'), limit(lim));
+    const snap = await getDocs(q);
+    const notifications = snap.docs.map(docToNotification);
+    return Promise.all(notifications.map((n) => attachBookmark(uid, n)));
   },
 
   /**
    * Get unread notifications
    */
   async getUnreadNotifications(): Promise<NotificationWithBookmark[]> {
-    const { data, error } = await supabase
-      .from('notifications')
-      .select('*, bookmarks(*)')
-      .is('read_at', null)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    return (data || []) as NotificationWithBookmark[];
+    const uid = getUid();
+    const q = query(
+      notificationsCol(uid),
+      where('read_at', '==', null),
+      orderBy('created_at', 'desc'),
+    );
+    const snap = await getDocs(q);
+    const notifications = snap.docs.map(docToNotification);
+    return Promise.all(notifications.map((n) => attachBookmark(uid, n)));
   },
 
   /**
    * Get unread notification count
    */
   async getUnreadCount(): Promise<number> {
-    const { count, error } = await supabase
-      .from('notifications')
-      .select('*', { count: 'exact', head: true })
-      .is('read_at', null);
-
-    if (error) throw error;
-    return count || 0;
+    const uid = getUid();
+    const q = query(notificationsCol(uid), where('read_at', '==', null));
+    const snap = await getDocs(q);
+    return snap.size;
   },
 
   /**
    * Mark notification as read
    */
   async markAsRead(id: string): Promise<Notification> {
-    const { data, error } = await supabase
-      .from('notifications')
-      .update({ read_at: new Date().toISOString() })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data as Notification;
+    const uid = getUid();
+    const ref = doc(db, 'users', uid, 'notifications', id);
+    await updateDoc(ref, { read_at: new Date().toISOString() });
+    const snap = await getDoc(ref);
+    return docToNotification(snap);
   },
 
   /**
    * Mark all notifications as read
    */
   async markAllAsRead(): Promise<void> {
-    const { error } = await supabase
-      .from('notifications')
-      .update({ read_at: new Date().toISOString() })
-      .is('read_at', null);
-
-    if (error) throw error;
+    const uid = getUid();
+    const q = query(notificationsCol(uid), where('read_at', '==', null));
+    const snap = await getDocs(q);
+    const batch = writeBatch(db);
+    const now = new Date().toISOString();
+    snap.docs.forEach((d) => batch.update(d.ref, { read_at: now }));
+    await batch.commit();
   },
 
   /**
    * Delete a notification
    */
   async deleteNotification(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('notifications')
-      .delete()
-      .eq('id', id);
-
-    if (error) throw error;
+    const uid = getUid();
+    await deleteDoc(doc(db, 'users', uid, 'notifications', id));
   },
 
   /**
    * Subscribe to real-time notifications
    */
   subscribeToNotifications(userId: string, callback: (notification: Notification) => void) {
-    const channel = supabase
-      .channel('notifications')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${userId}`,
-        },
-        (payload) => {
-          callback(payload.new as Notification);
-        }
-      )
-      .subscribe();
+    const q = query(
+      collection(db, 'users', userId, 'notifications'),
+      orderBy('created_at', 'desc'),
+      limit(1),
+    );
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const notif = { id: change.doc.id, ...change.doc.data() } as Notification;
+          callback(notif);
+        }
+      });
+    });
+
+    return unsubscribe;
   },
 };

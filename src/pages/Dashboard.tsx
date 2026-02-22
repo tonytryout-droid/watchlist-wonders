@@ -6,9 +6,11 @@ import { Rail } from "@/components/bookmarks/Rail";
 import { SearchOverlay } from "@/components/search/SearchOverlay";
 import { StatsBar } from "@/components/dashboard/StatsBar";
 import { FilterChips } from "@/components/dashboard/FilterChips";
+import { FilterPanel, type AdvancedFilters } from "@/components/dashboard/FilterPanel";
+import { BulkActionBar } from "@/components/dashboard/BulkActionBar";
 import { SkeletonRail } from "@/components/ui/skeleton-card";
 import { bookmarkService } from "@/services/bookmarks";
-import { scheduleService } from "@/services/schedules";
+import { ScheduleDialog } from "@/components/schedules/ScheduleDialog";
 import { watchPlanService } from "@/services/watchPlans";
 import { notificationService } from "@/services/notifications";
 import { useToast } from "@/hooks/use-toast";
@@ -32,7 +34,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -45,13 +46,19 @@ const Dashboard = () => {
   const [planOpen, setPlanOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedBookmark, setSelectedBookmark] = useState<Bookmark | null>(null);
-  const [scheduleDate, setScheduleDate] = useState("");
-  const [scheduleTime, setScheduleTime] = useState("20:00");
   const [selectedPlanId, setSelectedPlanId] = useState("");
   
   // Filter state
   const [filterType, setFilterType] = useState<FilterType>("all");
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>({
+    providers: [], moods: [], runtimeMin: null, runtimeMax: null,
+  });
+
+  // Bulk select state
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -98,12 +105,27 @@ const Dashboard = () => {
 
   // Apply filters
   const filteredBookmarks = useMemo(() => {
+    const hasAdvanced =
+      advancedFilters.providers.length > 0 ||
+      advancedFilters.moods.length > 0 ||
+      advancedFilters.runtimeMin !== null ||
+      advancedFilters.runtimeMax !== null;
+
     return bookmarks.filter((b) => {
       const typeMatch = filterType === "all" || b.type === filterType;
       const statusMatch = filterStatus === "all" || b.status === filterStatus;
-      return typeMatch && statusMatch;
+      if (!typeMatch || !statusMatch) return false;
+      if (!hasAdvanced) return true;
+      const providerMatch = advancedFilters.providers.length === 0 || advancedFilters.providers.includes(b.provider);
+      const moodMatch = advancedFilters.moods.length === 0 || (b.mood_tags || []).some((m) => advancedFilters.moods.includes(m));
+      const rtMin = advancedFilters.runtimeMin;
+      const rtMax = advancedFilters.runtimeMax;
+      const runtimeMatch =
+        (rtMin === null || (b.runtime_minutes !== null && b.runtime_minutes >= rtMin)) &&
+        (rtMax === null || (b.runtime_minutes !== null && b.runtime_minutes <= rtMax));
+      return providerMatch && moodMatch && runtimeMatch;
     });
-  }, [bookmarks, filterType, filterStatus]);
+  }, [bookmarks, filterType, filterStatus, advancedFilters]);
 
   // Mark as done mutation
   const markDoneMutation = useMutation({
@@ -162,28 +184,6 @@ const Dashboard = () => {
     },
   });
 
-  // Schedule mutation
-  const scheduleMutation = useMutation({
-    mutationFn: (data: { bookmark_id: string; scheduled_for: string }) => 
-      scheduleService.createSchedule(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['schedules'] });
-      setScheduleOpen(false);
-      setSelectedBookmark(null);
-      toast({
-        title: "Scheduled!",
-        description: "Added to your calendar.",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error scheduling",
-        description: error.message || "Something went wrong.",
-        variant: "destructive",
-      });
-    },
-  });
-
   // Add to plan mutation
   const addToPlanMutation = useMutation({
     mutationFn: ({ planId, bookmarkId }: { planId: string; bookmarkId: string }) => 
@@ -207,18 +207,7 @@ const Dashboard = () => {
 
   const handleSchedule = (bookmark: Bookmark) => {
     setSelectedBookmark(bookmark);
-    const today = new Date();
-    setScheduleDate(today.toISOString().split('T')[0]);
     setScheduleOpen(true);
-  };
-
-  const handleScheduleSubmit = () => {
-    if (!selectedBookmark || !scheduleDate) return;
-    const scheduledFor = new Date(`${scheduleDate}T${scheduleTime}`).toISOString();
-    scheduleMutation.mutate({
-      bookmark_id: selectedBookmark.id,
-      scheduled_for: scheduledFor,
-    });
   };
 
   const handleMarkDone = (bookmark: Bookmark) => {
@@ -257,6 +246,38 @@ const Dashboard = () => {
     });
   };
 
+  const toggleSelect = (bookmarkId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(bookmarkId)) next.delete(bookmarkId);
+      else next.add(bookmarkId);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    const count = selectedIds.size;
+    await Promise.all(Array.from(selectedIds).map((id) => bookmarkService.deleteBookmark(id)));
+    queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
+    setSelectedIds(new Set());
+    toast({ title: `Deleted ${count} bookmark${count !== 1 ? "s" : ""}` });
+  };
+
+  const handleBulkMarkDone = async () => {
+    const count = selectedIds.size;
+    await Promise.all(Array.from(selectedIds).map((id) => bookmarkService.updateStatus(id, 'done')));
+    queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
+    setSelectedIds(new Set());
+    toast({ title: `Marked ${count} as done` });
+  };
+
+  const handleBulkAddToPlan = async (planId: string) => {
+    const count = selectedIds.size;
+    await Promise.all(Array.from(selectedIds).map((id) => watchPlanService.addBookmarkToPlan(planId, id)));
+    setSelectedIds(new Set());
+    toast({ title: `Added ${count} to plan` });
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
@@ -281,8 +302,14 @@ const Dashboard = () => {
     );
   }
 
-  // Check if filters are active
-  const hasActiveFilters = filterType !== "all" || filterStatus !== "all";
+  // Check if filters are active (basic or advanced)
+  const hasActiveFilters =
+    filterType !== "all" ||
+    filterStatus !== "all" ||
+    advancedFilters.providers.length > 0 ||
+    advancedFilters.moods.length > 0 ||
+    advancedFilters.runtimeMin !== null ||
+    advancedFilters.runtimeMax !== null;
 
   // Group bookmarks (use filtered if filters active, otherwise use all)
   const displayBookmarks = hasActiveFilters ? filteredBookmarks : bookmarks;
@@ -339,16 +366,51 @@ const Dashboard = () => {
           />
         )}
 
-        {/* Filter Chips */}
+        {/* Filter Chips + Toolbar */}
         {bookmarks.length > 0 && (
-          <FilterChips
-            activeType={filterType}
-            activeStatus={filterStatus}
-            onTypeChange={setFilterType}
-            onStatusChange={setFilterStatus}
-            counts={filterCounts}
-            className="animate-fade-in"
-          />
+          <div className="space-y-2 animate-fade-in">
+            <div className="container mx-auto px-4 lg:px-8 flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <FilterChips
+                  activeType={filterType}
+                  activeStatus={filterStatus}
+                  onTypeChange={setFilterType}
+                  onStatusChange={setFilterStatus}
+                  counts={filterCounts}
+                  className="!px-0"
+                />
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant={filterPanelOpen ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => setFilterPanelOpen((v) => !v)}
+                  className="h-8 gap-1 text-xs"
+                >
+                  Filters
+                  {(advancedFilters.providers.length + advancedFilters.moods.length + (advancedFilters.runtimeMin !== null ? 1 : 0) + (advancedFilters.runtimeMax !== null ? 1 : 0)) > 0 && (
+                    <span className="bg-primary text-primary-foreground rounded-full w-4 h-4 text-[10px] flex items-center justify-center">
+                      {advancedFilters.providers.length + advancedFilters.moods.length + (advancedFilters.runtimeMin !== null ? 1 : 0) + (advancedFilters.runtimeMax !== null ? 1 : 0)}
+                    </span>
+                  )}
+                </Button>
+                <Button
+                  variant={selectMode ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => { setSelectMode((v) => !v); setSelectedIds(new Set()); }}
+                  className="h-8 text-xs"
+                >
+                  {selectMode ? "Cancel" : "Select"}
+                </Button>
+              </div>
+            </div>
+            {filterPanelOpen && (
+              <FilterPanel
+                onApply={(f) => { setAdvancedFilters(f); }}
+                onReset={() => setAdvancedFilters({ providers: [], moods: [], runtimeMin: null, runtimeMax: null })}
+              />
+            )}
+          </div>
         )}
 
         {/* Rails */}
@@ -363,6 +425,9 @@ const Dashboard = () => {
               onDelete={handleDelete}
               onUndoDone={handleUndoDone}
               onSetWatching={handleSetWatching}
+              isSelectable={selectMode}
+              selectedIds={selectedIds}
+              onSelect={toggleSelect}
             />
           )}
 
@@ -377,6 +442,9 @@ const Dashboard = () => {
               onDelete={handleDelete}
               onUndoDone={handleUndoDone}
               onSetWatching={handleSetWatching}
+              isSelectable={selectMode}
+              selectedIds={selectedIds}
+              onSelect={toggleSelect}
             />
           )}
 
@@ -395,6 +463,9 @@ const Dashboard = () => {
                 onDelete={handleDelete}
                 onUndoDone={handleUndoDone}
                 onSetWatching={handleSetWatching}
+                isSelectable={selectMode}
+                selectedIds={selectedIds}
+                onSelect={toggleSelect}
               />
             ))}
 
@@ -408,6 +479,9 @@ const Dashboard = () => {
               onDelete={handleDelete}
               onUndoDone={handleUndoDone}
               onSetWatching={handleSetWatching}
+              isSelectable={selectMode}
+              selectedIds={selectedIds}
+              onSelect={toggleSelect}
             />
           )}
 
@@ -446,47 +520,14 @@ const Dashboard = () => {
       />
 
       {/* Schedule Dialog */}
-      <Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Schedule "{selectedBookmark?.title}"</DialogTitle>
-            <DialogDescription>
-              Pick a date and time to watch this.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label htmlFor="schedule-date">Date</Label>
-              <Input
-                id="schedule-date"
-                type="date"
-                value={scheduleDate}
-                onChange={(e) => setScheduleDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="schedule-time">Time</Label>
-              <Input
-                id="schedule-time"
-                type="time"
-                value={scheduleTime}
-                onChange={(e) => setScheduleTime(e.target.value)}
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-4">
-              <Button variant="ghost" onClick={() => setScheduleOpen(false)}>
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleScheduleSubmit} 
-                disabled={scheduleMutation.isPending || !scheduleDate}
-              >
-                {scheduleMutation.isPending ? "Scheduling..." : "Schedule"}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ScheduleDialog
+        bookmark={selectedBookmark}
+        open={scheduleOpen}
+        onOpenChange={(open) => {
+          setScheduleOpen(open);
+          if (!open) setSelectedBookmark(null);
+        }}
+      />
 
       {/* Add to Plan Dialog */}
       <Dialog open={planOpen} onOpenChange={setPlanOpen}>
@@ -538,6 +579,16 @@ const Dashboard = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk Action Bar */}
+      <BulkActionBar
+        selectedCount={selectedIds.size}
+        plans={plans}
+        onDeleteAll={handleBulkDelete}
+        onMarkDone={handleBulkMarkDone}
+        onAddToPlan={handleBulkAddToPlan}
+        onClear={() => { setSelectedIds(new Set()); setSelectMode(false); }}
+      />
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>

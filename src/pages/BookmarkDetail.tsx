@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { 
-  ArrowLeft, Play, Check, Trash2, Edit2, 
-  Clock, Tag, ExternalLink, Save, X 
+import {
+  ArrowLeft, Play, Check, Trash2, Edit2,
+  Clock, Tag, ExternalLink, Save, X,
+  Paperclip, FileText, Download, Upload, Loader2, Star,
+  Share2, Globe, Lock, Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { sharingService } from "@/services/sharing";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +27,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { bookmarkService } from "@/services/bookmarks";
+import { attachmentService } from "@/services/attachments";
 import { useToast } from "@/hooks/use-toast";
 import { formatRuntime, getMoodEmoji } from "@/lib/utils";
 import type { Bookmark } from "@/types/database";
@@ -41,7 +45,8 @@ const BookmarkDetail = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
-  
+  const attachFileRef = useRef<HTMLInputElement>(null);
+
   // Edit form state
   const [editTitle, setEditTitle] = useState("");
   const [editNotes, setEditNotes] = useState("");
@@ -52,6 +57,34 @@ const BookmarkDetail = () => {
     queryFn: () => bookmarkService.getBookmark(id!),
     enabled: !!id,
   });
+
+  const { data: attachments = [], refetch: refetchAttachments } = useQuery({
+    queryKey: ['attachments', id],
+    queryFn: () => attachmentService.getAttachments(id!),
+    enabled: !!id,
+  });
+
+  const deleteAttachmentMutation = useMutation({
+    mutationFn: (attachmentId: string) => attachmentService.deleteAttachment(attachmentId),
+    onSuccess: () => {
+      refetchAttachments();
+      toast({ title: "Attachment deleted" });
+    },
+  });
+
+  const handleAttachFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !id) return;
+    try {
+      await attachmentService.createAttachment(file, id);
+      refetchAttachments();
+      toast({ title: "Attachment uploaded", description: file.name });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    }
+    // Reset file input
+    if (attachFileRef.current) attachFileRef.current.value = "";
+  };
 
   const updateMutation = useMutation({
     mutationFn: (updates: Partial<Bookmark>) => bookmarkService.updateBookmark(id!, updates),
@@ -82,6 +115,24 @@ const BookmarkDetail = () => {
         description: "The bookmark has been removed.",
       });
       navigate("/dashboard");
+    },
+  });
+
+  const makePublicMutation = useMutation({
+    mutationFn: () => sharingService.makeBookmarkPublic(id!),
+    onSuccess: (token) => {
+      queryClient.invalidateQueries({ queryKey: ['bookmark', id] });
+      const shareUrl = `${window.location.origin}/share/${token}`;
+      navigator.clipboard.writeText(shareUrl).catch(() => {});
+      toast({ title: "Share link copied!", description: shareUrl });
+    },
+  });
+
+  const makePrivateMutation = useMutation({
+    mutationFn: () => sharingService.makeBookmarkPrivate(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bookmark', id] });
+      toast({ title: "Sharing disabled" });
     },
   });
 
@@ -123,7 +174,10 @@ const BookmarkDetail = () => {
     );
   }
 
-  const imageUrl = bookmark.backdrop_url || bookmark.poster_url;
+  const imageUrl = bookmark.backdrop_url
+    || (bookmark.metadata?.backdrop_url as string | undefined)
+    || bookmark.poster_url;
+  const voteAverage = bookmark.metadata?.vote_average as number | undefined;
 
   return (
     <div className="min-h-screen bg-background">
@@ -272,6 +326,15 @@ const BookmarkDetail = () => {
                     </span>
                   </>
                 )}
+                {voteAverage != null && voteAverage > 0 && (
+                  <>
+                    <span>•</span>
+                    <span className="flex items-center gap-1 text-yellow-500 font-medium">
+                      <Star className="w-4 h-4 fill-yellow-500" />
+                      {voteAverage.toFixed(1)}
+                    </span>
+                  </>
+                )}
               </div>
 
               {/* Status Badge */}
@@ -347,7 +410,7 @@ const BookmarkDetail = () => {
 
               {/* Source Link */}
               {bookmark.source_url && (
-                <div>
+                <div className="mb-6">
                   <h3 className="text-sm font-medium text-muted-foreground mb-2">Source</h3>
                   <a
                     href={bookmark.source_url}
@@ -360,6 +423,139 @@ const BookmarkDetail = () => {
                   </a>
                 </div>
               )}
+
+              {/* Sharing */}
+              <div className="mb-6">
+                <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1">
+                  <Share2 className="w-4 h-4" />
+                  Sharing
+                </h3>
+                {bookmark.is_public && bookmark.share_token ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary" className="gap-1">
+                      <Globe className="w-3 h-3" />
+                      Public
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        const url = `${window.location.origin}/share/${bookmark.share_token}`;
+                        navigator.clipboard.writeText(url).catch(() => {});
+                        toast({ title: "Link copied!" });
+                      }}
+                    >
+                      <Copy className="w-3 h-3 mr-1" />
+                      Copy link
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-muted-foreground"
+                      onClick={() => makePrivateMutation.mutate()}
+                      disabled={makePrivateMutation.isPending}
+                    >
+                      <Lock className="w-3 h-3 mr-1" />
+                      Make private
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => makePublicMutation.mutate()}
+                    disabled={makePublicMutation.isPending}
+                  >
+                    <Globe className="w-4 h-4 mr-2" />
+                    Make public & copy link
+                  </Button>
+                )}
+              </div>
+
+              {/* Attachments */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                    <Paperclip className="w-4 h-4" />
+                    Attachments {attachments.length > 0 && `(${attachments.length})`}
+                  </h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => attachFileRef.current?.click()}
+                  >
+                    <Upload className="w-3 h-3 mr-1" />
+                    Add
+                  </Button>
+                  <input
+                    ref={attachFileRef}
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={handleAttachFile}
+                  />
+                </div>
+                {attachments.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => attachFileRef.current?.click()}
+                    className="w-full border border-dashed border-border rounded-lg p-4 text-center text-sm text-muted-foreground hover:border-primary/50 transition-colors"
+                  >
+                    No attachments yet — click to upload
+                  </button>
+                ) : (
+                  <div className="space-y-2">
+                    {attachments.map((att) => (
+                      <div
+                        key={att.id}
+                        className="flex items-center gap-3 p-3 bg-secondary rounded-lg"
+                      >
+                        {att.file_type?.startsWith("image/") ? (
+                          <img
+                            src={att.file_url}
+                            alt={att.file_name}
+                            className="w-10 h-10 object-cover rounded"
+                          />
+                        ) : (
+                          <FileText className="w-8 h-8 text-muted-foreground shrink-0" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{att.file_name}</p>
+                          {att.size && (
+                            <p className="text-xs text-muted-foreground">
+                              {(att.size / 1024).toFixed(1)} KB
+                            </p>
+                          )}
+                        </div>
+                        <a
+                          href={att.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1.5 hover:bg-background rounded transition-colors"
+                          title="Download"
+                        >
+                          <Download className="w-4 h-4 text-muted-foreground" />
+                        </a>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => deleteAttachmentMutation.mutate(att.id)}
+                          disabled={deleteAttachmentMutation.isPending}
+                        >
+                          {deleteAttachmentMutation.isPending ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <X className="w-3 h-3" />
+                          )}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>

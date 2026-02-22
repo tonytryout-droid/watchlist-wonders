@@ -31,6 +31,9 @@ interface RailProps {
   onSetWatching?: (bookmark: Bookmark) => void;
   emptyMessage?: string;
   className?: string;
+  isSelectable?: boolean;
+  selectedIds?: Set<string>;
+  onSelect?: (bookmarkId: string) => void;
 }
 
 export function Rail({
@@ -46,6 +49,9 @@ export function Rail({
   onSetWatching,
   emptyMessage = "No items yet",
   className,
+  isSelectable,
+  selectedIds,
+  onSelect,
 }: RailProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
@@ -135,6 +141,9 @@ export function Rail({
               onDelete={() => onDelete?.(bookmark)}
               onUndoDone={() => onUndoDone?.(bookmark)}
               onSetWatching={() => onSetWatching?.(bookmark)}
+              isSelectable={isSelectable}
+              isSelected={selectedIds?.has(bookmark.id)}
+              onSelect={() => onSelect?.(bookmark.id)}
             />
           ))}
         </div>

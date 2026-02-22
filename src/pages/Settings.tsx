@@ -13,9 +13,13 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
-import { User, Mail, LogOut, Shield, Bell, Camera, Trash2 } from "lucide-react";
+import { User, Mail, LogOut, Shield, Bell, Camera, Trash2, Loader2, Globe, ExternalLink } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { bookmarkService } from "@/services/bookmarks";
+import { authService } from "@/services/auth";
+import { socialService } from "@/services/social";
+import { fcmService } from "@/services/fcm";
 
 const Settings = () => {
   const { user, signOut } = useAuth();
@@ -24,6 +28,14 @@ const Settings = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [bio, setBio] = useState("");
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: bookmarks = [] } = useQuery({
@@ -85,6 +97,75 @@ const Settings = () => {
       });
     }
   };
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 6) {
+      toast({ title: "Password too short", description: "Password must be at least 6 characters.", variant: "destructive" });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast({ title: "Passwords don't match", description: "Please make sure both passwords match.", variant: "destructive" });
+      return;
+    }
+    setPasswordLoading(true);
+    try {
+      await authService.updatePassword(newPassword);
+      toast({ title: "Password updated", description: "Your password has been changed successfully." });
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error: any) {
+      toast({ title: "Failed to update password", description: error.message || "Please try again.", variant: "destructive" });
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
+  const handlePushToggle = async (enabled: boolean) => {
+    setPushLoading(true);
+    try {
+      if (enabled) {
+        const token = await fcmService.requestPermissionAndGetToken();
+        if (token) {
+          setPushEnabled(true);
+          toast({ title: "Push notifications enabled" });
+        } else {
+          toast({ title: "Permission denied", description: "Please allow notifications in your browser settings.", variant: "destructive" });
+        }
+      } else {
+        await fcmService.disablePushNotifications();
+        setPushEnabled(false);
+        toast({ title: "Push notifications disabled" });
+      }
+    } catch (err: any) {
+      toast({ title: "Failed to update notifications", description: err.message, variant: "destructive" });
+    } finally {
+      setPushLoading(false);
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileLoading(true);
+    try {
+      await socialService.savePublicProfile({ display_name: displayName || null, bio: bio || null });
+      toast({ title: "Profile saved", description: "Your public profile has been updated." });
+    } catch (error: any) {
+      toast({ title: "Failed to save profile", description: error.message, variant: "destructive" });
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  const handleResetViaEmail = async () => {
+    if (!user?.email) return;
+    try {
+      await authService.resetPassword(user.email);
+      toast({ title: "Reset email sent", description: "Check your inbox for a password reset link." });
+    } catch (error: any) {
+      toast({ title: "Failed to send reset email", description: error.message || "Please try again.", variant: "destructive" });
+    }
+  };
+
   const handleSignOut = async () => {
     setIsLoading(true);
     try {
@@ -191,17 +272,17 @@ const Settings = () => {
                 </div>
                 <div className="space-y-2">
                   <Label>User ID</Label>
-                  <Input 
-                    value={user?.id || ""} 
-                    disabled 
+                  <Input
+                    value={user?.uid || ""}
+                    disabled
                     className="bg-muted font-mono text-xs"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>Member since</Label>
-                  <Input 
-                    value={user?.created_at ? new Date(user.created_at).toLocaleDateString() : ""} 
-                    disabled 
+                  <Input
+                    value={user?.metadata?.creationTime ? new Date(user.metadata.creationTime).toLocaleDateString() : ""}
+                    disabled
                     className="bg-muted"
                   />
                 </div>
@@ -235,8 +316,64 @@ const Settings = () => {
                       Get notified when it's time to watch
                     </p>
                   </div>
-                  <Switch disabled />
+                  <Switch
+                    checked={pushEnabled}
+                    onCheckedChange={handlePushToggle}
+                    disabled={pushLoading || !("Notification" in window)}
+                  />
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Public Profile */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Globe className="w-5 h-5" />
+                  Public Profile
+                </CardTitle>
+                <CardDescription>
+                  Customize how others see you when you share bookmarks
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSaveProfile} className="space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="display-name">Display name</Label>
+                    <Input
+                      id="display-name"
+                      placeholder="Your name"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="bio">Bio</Label>
+                    <Textarea
+                      id="bio"
+                      placeholder="Tell others about yourself..."
+                      value={bio}
+                      onChange={(e) => setBio(e.target.value)}
+                      rows={2}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <a
+                      href={`/u/${user?.uid}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary flex items-center gap-1 hover:underline"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      View public profile
+                    </a>
+                    <Button type="submit" size="sm" disabled={profileLoading}>
+                      {profileLoading ? (
+                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</>
+                      ) : "Save profile"}
+                    </Button>
+                  </div>
+                </form>
               </CardContent>
             </Card>
 
@@ -250,12 +387,39 @@ const Settings = () => {
                 <CardDescription>Manage your account security</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <Button variant="outline" disabled className="w-full justify-start">
-                  Change password
+                <form onSubmit={handleChangePassword} className="space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="new-password">New password</Label>
+                    <Input
+                      id="new-password"
+                      type="password"
+                      placeholder="Min. 6 characters"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm-password">Confirm new password</Label>
+                    <Input
+                      id="confirm-password"
+                      type="password"
+                      placeholder="Re-enter new password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <Button type="submit" variant="outline" className="w-full" disabled={passwordLoading}>
+                    {passwordLoading ? (
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Updating...</>
+                    ) : "Update password"}
+                  </Button>
+                </form>
+                <Separator />
+                <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={handleResetViaEmail}>
+                  Send password reset email instead
                 </Button>
-                <p className="text-xs text-muted-foreground">
-                  Password changes are handled via email. Contact support if you need to reset your password.
-                </p>
               </CardContent>
             </Card>
 

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Play, Plus, Check, Calendar, MoreHorizontal, ExternalLink, Trash2, Undo2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +38,9 @@ interface PosterCardProps {
   onSetWatching?: () => void;
   variant?: "poster" | "backdrop";
   className?: string;
+  isSelectable?: boolean;
+  isSelected?: boolean;
+  onSelect?: () => void;
 }
 
 export function PosterCard({
@@ -50,6 +54,9 @@ export function PosterCard({
   onSetWatching,
   variant = "poster",
   className,
+  isSelectable,
+  isSelected,
+  onSelect,
 }: PosterCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [imageError, setImageError] = useState(false);
@@ -98,17 +105,26 @@ export function PosterCard({
     return colors[mood.toLowerCase()] || "bg-muted text-muted-foreground";
   };
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    if (isSelectable) {
+      e.preventDefault();
+      onSelect?.();
+    }
+  };
+
   return (
     <Link
       to={`/b/${bookmark.id}`}
       className={cn(
         "group relative block flex-shrink-0 rounded-lg overflow-hidden transition-all duration-300",
         variant === "poster" ? "w-32 sm:w-36 md:w-40 lg:w-44" : "w-60 sm:w-72 md:w-80",
-        isHovered && "scale-105 z-10 shadow-2xl ring-2 ring-primary/50",
+        isHovered && !isSelectable && "scale-105 z-10 shadow-2xl ring-2 ring-primary/50",
+        isSelected && "ring-2 ring-primary",
         className
       )}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onClick={handleCardClick}
     >
       {/* Image Container */}
       <div className={cn("relative bg-secondary", aspectRatio)}>
@@ -133,8 +149,21 @@ export function PosterCard({
           <div className={cn("w-2 h-2 rounded-full", getProviderColor(bookmark.provider))} />
         </div>
 
+        {/* Select checkbox overlay */}
+        {isSelectable && (
+          <div
+            className="absolute top-2 right-2 z-20"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSelect?.(); }}
+          >
+            <Checkbox
+              checked={isSelected}
+              className="bg-background/80 backdrop-blur-sm data-[state=checked]:bg-primary"
+            />
+          </div>
+        )}
+
         {/* Status Badge */}
-        {bookmark.status === "watching" && (
+        {!isSelectable && bookmark.status === "watching" && (
           <div className="absolute top-2 right-2">
             <Badge variant="default" className="text-[10px] px-1.5 py-0.5">
               Watching
