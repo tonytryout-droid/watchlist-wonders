@@ -11,6 +11,7 @@ import {
   where,
   writeBatch,
   documentId,
+  deleteField,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { WatchPlan, Bookmark } from '@/types/database';
@@ -20,7 +21,7 @@ type WatchPlanBookmarkRow = {
   bookmark_id: string;
   user_id: string;
   position: number;
-  bookmarks: Bookmark;
+  bookmarks: Bookmark | null;
 };
 
 function getUid(): string {
@@ -142,7 +143,7 @@ export const watchPlanService = {
       bookmark_id: pd.data.bookmark_id as string,
       user_id: uid,
       position: pd.data.position as number,
-      bookmarks: (bookmarkMap.get(pd.data.bookmark_id as string) ?? null) as Bookmark,
+      bookmarks: bookmarkMap.get(pd.data.bookmark_id as string) ?? null,
     } as WatchPlanBookmarkRow));
   },
 
@@ -192,22 +193,53 @@ export const watchPlanService = {
       });
       await batch.commit();
     } else {
-      // Chunked: delete first, then insert
-      for (let i = 0; i < existingSnap.docs.length; i += CHUNK) {
-        const batch = writeBatch(db);
-        existingSnap.docs.slice(i, i + CHUNK).forEach((d) => batch.delete(d.ref));
-        await batch.commit();
-      }
-      for (let i = 0; i < bookmarkIds.length; i += CHUNK) {
-        const batch = writeBatch(db);
-        bookmarkIds.slice(i, i + CHUNK).forEach((bookmarkId, idx) => {
-          batch.set(doc(planBookmarksCol(uid, planId)), {
-            bookmark_id: bookmarkId,
-            user_id: uid,
-            position: i + idx,
+      // Chunked insert-before-delete to prevent data loss if inserts fail.
+      // Phase 1: Insert new docs with a pending marker.
+      const newRefs: ReturnType<typeof doc>[] = [];
+      try {
+        for (let i = 0; i < bookmarkIds.length; i += CHUNK) {
+          const batch = writeBatch(db);
+          bookmarkIds.slice(i, i + CHUNK).forEach((bookmarkId, idx) => {
+            const ref = doc(planBookmarksCol(uid, planId));
+            newRefs.push(ref);
+            batch.set(ref, {
+              bookmark_id: bookmarkId,
+              user_id: uid,
+              position: i + idx,
+              pending: true,
+            });
           });
-        });
-        await batch.commit();
+          await batch.commit();
+        }
+
+        // Phase 2: Delete old docs now that new ones are safely written.
+        for (let i = 0; i < existingSnap.docs.length; i += CHUNK) {
+          const batch = writeBatch(db);
+          existingSnap.docs.slice(i, i + CHUNK).forEach((d) => batch.delete(d.ref));
+          await batch.commit();
+        }
+
+        // Phase 3: Remove the pending marker from new docs.
+        for (let i = 0; i < newRefs.length; i += CHUNK) {
+          const batch = writeBatch(db);
+          newRefs.slice(i, i + CHUNK).forEach((ref) => {
+            batch.update(ref, { pending: deleteField() });
+          });
+          await batch.commit();
+        }
+      } catch (err) {
+        // Rollback: delete any pending docs that were already inserted.
+        console.error('reorderPlanBookmarks failed, attempting rollback:', err);
+        try {
+          for (let i = 0; i < newRefs.length; i += CHUNK) {
+            const batch = writeBatch(db);
+            newRefs.slice(i, i + CHUNK).forEach((ref) => batch.delete(ref));
+            await batch.commit();
+          }
+        } catch (rollbackErr) {
+          console.error('Rollback of pending inserts also failed:', rollbackErr);
+        }
+        throw err;
       }
     }
   },

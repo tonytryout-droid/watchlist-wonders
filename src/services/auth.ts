@@ -48,6 +48,9 @@ export const authService = {
     const origin =
       import.meta.env.VITE_APP_URL ||
       (typeof window !== 'undefined' ? window.location.origin : '');
+    if (!origin) {
+      throw new Error('App URL is not configured. Cannot send password reset email.');
+    }
     await sendPasswordResetEmail(auth, email, {
       url: `${origin}/auth`,
     });

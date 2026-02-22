@@ -89,6 +89,7 @@ export const socialService = {
   /**
    * Publish a feed item to current user's own feed and each follower's feed.
    * Chunks into batches of 499 to respect Firestore's 500-op limit.
+   * Retries each chunk with exponential backoff before failing.
    */
   async publishFeedItem(
     item: Omit<FeedItem, 'id'>,
@@ -99,13 +100,41 @@ export const socialService = {
     const payload = { ...item, created_at };
     const allUids = [myUid, ...followerUids];
     const CHUNK_SIZE = 499;
+    const MAX_RETRIES = 3;
+
     for (let i = 0; i < allUids.length; i += CHUNK_SIZE) {
+      const chunkIndex = Math.floor(i / CHUNK_SIZE);
       const chunk = allUids.slice(i, i + CHUNK_SIZE);
       const batch = writeBatch(db);
       chunk.forEach((uid) =>
         batch.set(doc(collection(db, 'feed', uid, 'items')), payload),
       );
-      await batch.commit();
+
+      let lastError: unknown;
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        try {
+          await batch.commit();
+          lastError = undefined;
+          break;
+        } catch (err) {
+          lastError = err;
+          if (attempt < MAX_RETRIES - 1) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, Math.pow(2, attempt) * 200),
+            );
+          }
+        }
+      }
+
+      if (lastError !== undefined) {
+        console.error(
+          `Feed fan-out failed at chunk ${chunkIndex} after ${MAX_RETRIES} attempts:`,
+          lastError,
+        );
+        throw new Error(
+          `Feed fan-out failed at chunk ${chunkIndex}: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+        );
+      }
     }
   },
 

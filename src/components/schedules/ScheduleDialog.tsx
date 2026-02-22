@@ -76,10 +76,20 @@ export function ScheduleDialog({ bookmark, open, onOpenChange, onScheduled }: Sc
         const rejected = results.filter((r) => r.status === 'rejected');
         if (rejected.length > 0) {
           // Rollback: delete the primary and any successfully created recurring schedules
-          await Promise.allSettled([
-            scheduleService.deleteSchedule(primary.id),
-            ...fulfilled.map((r) => scheduleService.deleteSchedule(r.value.id)),
-          ]);
+          const idsToDelete = [primary.id, ...fulfilled.map((r) => r.value.id)];
+          const rollbackResults = await Promise.allSettled(
+            idsToDelete.map((id) => scheduleService.deleteSchedule(id))
+          );
+          const failedRollbackIds = rollbackResults
+            .map((r, i) => ({ result: r, id: idsToDelete[i] }))
+            .filter(({ result }) => result.status === 'rejected')
+            .map(({ id }) => id);
+          if (failedRollbackIds.length > 0) {
+            console.error('Rollback failed for schedule IDs:', failedRollbackIds);
+            throw new Error(
+              `Failed to create ${rejected.length} recurring schedule(s). Partial rollback: ${failedRollbackIds.length} deletion(s) failed (IDs: ${failedRollbackIds.join(', ')}).`
+            );
+          }
           throw new Error(
             `Failed to create ${rejected.length} recurring schedule(s). All changes rolled back.`
           );
