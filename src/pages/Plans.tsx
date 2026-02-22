@@ -181,9 +181,10 @@ const Plans = () => {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {plans.map((plan) => (
-              <div
+              <Link
+                to={`/plans/${plan.id}`}
                 key={plan.id}
-                className="group bg-card border border-border rounded-xl p-5 hover:border-primary/50 transition-colors"
+                className="group bg-card border border-border rounded-xl p-5 hover:border-primary/50 transition-colors block"
               >
                 <div className="flex items-start justify-between mb-4">
                   <h3 className="text-lg font-semibold text-foreground">
@@ -258,7 +259,7 @@ const Plans = () => {
                     )}
                   </div>
                 )}
-              </div>
+              </Link>
             ))}
           </div>
         )}

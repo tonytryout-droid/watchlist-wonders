@@ -1,15 +1,16 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { Mail, Lock, Loader2, Eye, EyeOff } from "lucide-react";
+import { Mail, Lock, Loader2, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { authService } from "@/services/auth";
 import { z } from "zod";
 
-type AuthMode = "login" | "signup";
+type AuthMode = "login" | "signup" | "forgot";
 
 const authSchema = z.object({
   email: z
@@ -57,9 +58,38 @@ const Auth = () => {
     return true;
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) {
+      setErrors({ email: "Email is required" });
+      return;
+    }
+    setIsLoading(true);
+    try {
+      await authService.resetPassword(email.trim());
+      toast({
+        title: "Reset email sent",
+        description: "Check your inbox for a password reset link.",
+      });
+      setMode("login");
+    } catch (error: any) {
+      toast({
+        title: "Failed to send reset email",
+        description: error.message || "Something went wrong. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
+    if (mode === "forgot") {
+      return handleForgotPassword(e);
+    }
+
     if (!validateForm()) {
       return;
     }
@@ -84,20 +114,17 @@ const Auth = () => {
       }
     } catch (error: any) {
       let errorMessage = "Something went wrong. Please try again.";
-      
-      // Handle specific Supabase error messages
-      if (error.message?.includes("Invalid login credentials")) {
+
+      if (error.message?.includes("Invalid login credentials") || error.code === "auth/invalid-credential") {
         errorMessage = "Invalid email or password. Please try again.";
       } else if (error.message?.includes("Email not confirmed")) {
         errorMessage = "Please verify your email before signing in.";
-      } else if (error.message?.includes("User already registered")) {
+      } else if (error.code === "auth/email-already-in-use") {
         errorMessage = "An account with this email already exists. Please sign in instead.";
-      } else if (error.message?.includes("Password should be")) {
-        errorMessage = error.message;
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
+
       toast({
         title: mode === "login" ? "Sign in failed" : "Sign up failed",
         description: errorMessage,
@@ -132,12 +159,18 @@ const Auth = () => {
         {/* Auth Card */}
         <div className="bg-card border border-border rounded-xl p-8 shadow-lg">
           <h1 className="text-2xl font-bold text-foreground mb-2">
-            {mode === "login" ? "Sign in to your account" : "Create your account"}
+            {mode === "login"
+              ? "Sign in to your account"
+              : mode === "signup"
+              ? "Create your account"
+              : "Reset your password"}
           </h1>
           <p className="text-muted-foreground mb-8">
             {mode === "login"
               ? "Welcome back! Enter your credentials to continue."
-              : "Join WatchMarks and start organizing your watchlist."}
+              : mode === "signup"
+              ? "Join WatchMarks and start organizing your watchlist."
+              : "Enter your email and we'll send you a reset link."}
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -164,51 +197,74 @@ const Auth = () => {
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    if (errors.password) setErrors({ ...errors, password: undefined });
-                  }}
-                  className={`pl-10 pr-10 ${errors.password ? "border-destructive" : ""}`}
-                  disabled={isLoading}
-                  autoComplete={mode === "login" ? "current-password" : "new-password"}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
-                  onClick={() => setShowPassword(!showPassword)}
-                  tabIndex={-1}
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
+            {mode !== "forgot" && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password">Password</Label>
+                  {mode === "login" && (
+                    <button
+                      type="button"
+                      onClick={() => { setMode("forgot"); setErrors({}); }}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      Forgot password?
+                    </button>
                   )}
-                </Button>
+                </div>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (errors.password) setErrors({ ...errors, password: undefined });
+                    }}
+                    className={`pl-10 pr-10 ${errors.password ? "border-destructive" : ""}`}
+                    disabled={isLoading}
+                    autoComplete={mode === "login" ? "current-password" : "new-password"}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                    onClick={() => setShowPassword(!showPassword)}
+                    tabIndex={-1}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </Button>
+                </div>
+                {errors.password && (
+                  <p className="text-sm text-destructive">{errors.password}</p>
+                )}
               </div>
-              {errors.password && (
-                <p className="text-sm text-destructive">{errors.password}</p>
-              )}
-            </div>
+            )}
 
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {mode === "login" ? "Signing in..." : "Creating account..."}
+                  {mode === "login"
+                    ? "Signing in..."
+                    : mode === "signup"
+                    ? "Creating account..."
+                    : "Sending reset email..."}
                 </>
               ) : (
-                <>{mode === "login" ? "Sign In" : "Create Account"}</>
+                <>
+                  {mode === "login"
+                    ? "Sign In"
+                    : mode === "signup"
+                    ? "Create Account"
+                    : "Send Reset Link"}
+                </>
               )}
             </Button>
           </form>
@@ -219,29 +275,32 @@ const Auth = () => {
                 Don't have an account?{" "}
                 <button
                   type="button"
-                  onClick={() => {
-                    setMode("signup");
-                    setErrors({});
-                  }}
+                  onClick={() => { setMode("signup"); setErrors({}); }}
                   className="text-primary hover:underline font-medium"
                 >
                   Sign up
                 </button>
               </>
-            ) : (
+            ) : mode === "signup" ? (
               <>
                 Already have an account?{" "}
                 <button
                   type="button"
-                  onClick={() => {
-                    setMode("login");
-                    setErrors({});
-                  }}
+                  onClick={() => { setMode("login"); setErrors({}); }}
                   className="text-primary hover:underline font-medium"
                 >
                   Sign in
                 </button>
               </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { setMode("login"); setErrors({}); }}
+                className="text-primary hover:underline font-medium inline-flex items-center gap-1"
+              >
+                <ArrowLeft className="w-3 h-3" />
+                Back to sign in
+              </button>
             )}
           </div>
         </div>

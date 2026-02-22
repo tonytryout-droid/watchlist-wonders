@@ -9,9 +9,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import { detectProvider, getMoodEmoji } from "@/lib/utils";
 import { bookmarkService } from "@/services/bookmarks";
+import { attachmentService } from "@/services/attachments";
+import { enrichWithTMDB, enrichWithYouTube, extractYouTubeVideoId } from "@/services/enrichment";
 import { ConfirmMetadataDialog, type ConfirmMetadataPayload } from "@/components/bookmarks/ConfirmMetadataDialog";
 import type { Bookmark } from "@/types/database";
 
@@ -55,6 +56,7 @@ const NewBookmark = () => {
 
   // Attachment state
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   // Confirm metadata dialog state
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -62,9 +64,21 @@ const NewBookmark = () => {
 
   // Create bookmark mutation
   const createBookmarkMutation = useMutation({
-    mutationFn: (bookmarkData: any) => bookmarkService.createBookmark(bookmarkData),
+    mutationFn: async (bookmarkData: any) => {
+      const bookmark = await bookmarkService.createBookmark(bookmarkData);
+      // Upload attachments if any
+      if (attachments.length > 0) {
+        setUploadProgress(0);
+        for (let i = 0; i < attachments.length; i++) {
+          await attachmentService.createAttachment(attachments[i], bookmark.id);
+          setUploadProgress(i + 1);
+        }
+      }
+      return bookmark;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
+      setUploadProgress(0);
       toast({
         title: "Bookmark saved!",
         description: `"${title}" has been added to your library.`,
@@ -72,6 +86,7 @@ const NewBookmark = () => {
       navigate("/");
     },
     onError: (error: any) => {
+      setUploadProgress(0);
       toast({
         title: "Error saving bookmark",
         description: error.message || "Something went wrong. Please try again.",
@@ -88,7 +103,16 @@ const NewBookmark = () => {
     setProvider(detectedProvider);
 
     try {
-      const { data, error } = await supabase.functions.invoke<{
+      const res = await fetch(
+        import.meta.env.VITE_ENRICH_URL,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: url.trim() }),
+        },
+      );
+
+      type EnrichResult = {
         ok: boolean;
         provider: Bookmark["provider"] | "unknown";
         canonicalUrl: string;
@@ -98,11 +122,13 @@ const NewBookmark = () => {
         metadata?: Record<string, unknown>;
         blocked?: boolean;
         error?: { message: string; step?: string; status?: number };
-      }>("enrich", { body: { url: url.trim() } });
+      };
 
-      if (error || !data) {
-        throw new Error(error?.message || "Server misconfigured");
+      if (!res.ok) {
+        throw new Error(`Enrich request failed: ${res.status}`);
       }
+
+      const data: EnrichResult = await res.json();
 
       const resolvedProvider = data.provider === "unknown" ? detectedProvider : data.provider;
       setProvider(resolvedProvider);
@@ -160,6 +186,45 @@ const NewBookmark = () => {
         setType("movie");
       } else if (detectedProvider === "youtube") {
         setType("video");
+      }
+
+      // Secondary enrichment: TMDB for movies/series, YouTube for videos
+      const resolvedType =
+        ogMetadata?.type?.includes("movie") ? "movie"
+        : ogMetadata?.type?.includes("episode") ? "series"
+        : detectedProvider === "youtube" ? "video"
+        : type;
+
+      if ((resolvedType === "movie" || resolvedType === "series") && data.title) {
+        const tmdb = await enrichWithTMDB(
+          data.title,
+          resolvedType === "series" ? "tv" : "movie",
+          null,
+        );
+        if (tmdb) {
+          if (!posterUrl.trim() && tmdb.poster_url) setPosterUrl(tmdb.poster_url);
+          if (tmdb.release_year && !releaseYear) setReleaseYear(tmdb.release_year);
+          setMetadata((prev) => ({
+            ...prev,
+            tmdb_id: tmdb.tmdb_id,
+            vote_average: tmdb.vote_average,
+            backdrop_url: tmdb.backdrop_url,
+          }));
+        }
+      } else if (resolvedType === "video" && detectedProvider === "youtube") {
+        const videoId = extractYouTubeVideoId(url.trim());
+        if (videoId) {
+          const ytData = await enrichWithYouTube(videoId);
+          if (ytData) {
+            if (!title.trim() && ytData.title) setTitle(ytData.title);
+            if (!posterUrl.trim() && ytData.thumbnail_url) setPosterUrl(ytData.thumbnail_url);
+            if (!runtimeMinutes && ytData.duration_minutes) setRuntimeMinutes(ytData.duration_minutes);
+            setMetadata((prev) => ({
+              ...prev,
+              channel_name: ytData.channel_name,
+            }));
+          }
+        }
       }
 
       toast({
@@ -271,7 +336,9 @@ const NewBookmark = () => {
               {createBookmarkMutation.isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Saving...
+                  {uploadProgress > 0
+                    ? `Uploading ${uploadProgress}/${attachments.length}...`
+                    : "Saving..."}
                 </>
               ) : (
                 "Save Bookmark"

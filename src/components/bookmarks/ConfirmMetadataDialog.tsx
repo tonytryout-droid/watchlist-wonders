@@ -19,7 +19,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Film, Tv, Play, FileText, Link as LinkIcon, Upload, Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { auth, storage } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import type { Bookmark } from "@/types/database";
 
@@ -103,21 +104,14 @@ export function ConfirmMetadataDialog({ open, onOpenChange, initial, onConfirm }
 
     setIsUploading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = auth.currentUser;
       if (!user) throw new Error("Not authenticated");
 
       const fileExt = file.name.split(".").pop();
-      const fileName = `${user.id}/posters/${Date.now()}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("attachments")
-        .upload(fileName, file, { upsert: true });
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from("attachments")
-        .getPublicUrl(fileName);
+      const filePath = `attachments/${user.uid}/posters/${Date.now()}.${fileExt}`;
+      const fileRef = ref(storage, filePath);
+      await uploadBytes(fileRef, file);
+      const publicUrl = await getDownloadURL(fileRef);
 
       setPosterUrl(publicUrl);
       toast({

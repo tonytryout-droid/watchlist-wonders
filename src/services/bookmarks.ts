@@ -1,107 +1,117 @@
-import { supabase } from '@/integrations/supabase/client';
+import {
+  collection,
+  doc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  getDocs,
+  getDoc,
+  query,
+  where,
+  orderBy,
+  limit,
+} from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
 import type { Bookmark } from '@/types/database';
+
+function getUid(): string {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not authenticated');
+  return user.uid;
+}
+
+function bookmarksCol(uid: string) {
+  return collection(db, 'users', uid, 'bookmarks');
+}
+
+function docToBookmark(snap: any): Bookmark {
+  return { id: snap.id, ...snap.data() } as Bookmark;
+}
 
 export const bookmarkService = {
   /**
    * Get all bookmarks for the current user
    */
   async getBookmarks(): Promise<Bookmark[]> {
-    const { data, error } = await supabase
-      .from('bookmarks')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    return (data || []) as Bookmark[];
+    const uid = getUid();
+    const q = query(bookmarksCol(uid), orderBy('created_at', 'desc'));
+    const snap = await getDocs(q);
+    return snap.docs.map(docToBookmark);
   },
 
   /**
    * Get bookmarks by status
    */
   async getBookmarksByStatus(status: Bookmark['status']): Promise<Bookmark[]> {
-    const { data, error } = await supabase
-      .from('bookmarks')
-      .select('*')
-      .eq('status', status)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    return (data || []) as Bookmark[];
+    const uid = getUid();
+    const q = query(
+      bookmarksCol(uid),
+      where('status', '==', status),
+      orderBy('created_at', 'desc'),
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(docToBookmark);
   },
 
   /**
    * Get a single bookmark by ID
    */
   async getBookmark(id: string): Promise<Bookmark> {
-    const { data, error } = await supabase
-      .from('bookmarks')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (error) throw error;
-    return data as Bookmark;
+    const uid = getUid();
+    const snap = await getDoc(doc(db, 'users', uid, 'bookmarks', id));
+    if (!snap.exists()) throw new Error('Bookmark not found');
+    return docToBookmark(snap);
   },
 
   /**
    * Create a new bookmark
    */
   async createBookmark(bookmark: Partial<Bookmark> & { title: string }): Promise<Bookmark> {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
-
-    const { data, error } = await supabase
-      .from('bookmarks')
-      .insert({
-        title: bookmark.title,
-        type: bookmark.type || 'movie',
-        provider: bookmark.provider || 'generic',
-        source_url: bookmark.source_url ?? null,
-        canonical_url: bookmark.canonical_url ?? null,
-        platform_label: bookmark.platform_label ?? null,
-        status: bookmark.status || 'backlog',
-        runtime_minutes: bookmark.runtime_minutes ?? null,
-        release_year: bookmark.release_year ?? null,
-        poster_url: bookmark.poster_url ?? null,
-        backdrop_url: bookmark.backdrop_url ?? null,
-        tags: bookmark.tags || [],
-        mood_tags: bookmark.mood_tags || [],
-        notes: bookmark.notes ?? null,
-        metadata: (bookmark.metadata || {}) as Record<string, unknown>,
-        user_id: user.id,
-      } as any)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data as Bookmark;
+    const uid = getUid();
+    const now = new Date().toISOString();
+    const data = {
+      title: bookmark.title,
+      type: bookmark.type || 'movie',
+      provider: bookmark.provider || 'generic',
+      source_url: bookmark.source_url ?? null,
+      canonical_url: bookmark.canonical_url ?? null,
+      platform_label: bookmark.platform_label ?? null,
+      status: bookmark.status || 'backlog',
+      runtime_minutes: bookmark.runtime_minutes ?? null,
+      release_year: bookmark.release_year ?? null,
+      poster_url: bookmark.poster_url ?? null,
+      backdrop_url: bookmark.backdrop_url ?? null,
+      tags: bookmark.tags || [],
+      mood_tags: bookmark.mood_tags || [],
+      notes: bookmark.notes ?? null,
+      metadata: bookmark.metadata || {},
+      user_id: uid,
+      last_shown_at: null,
+      shown_count: 0,
+      created_at: now,
+      updated_at: now,
+    };
+    const ref = await addDoc(bookmarksCol(uid), data);
+    return { id: ref.id, ...data } as Bookmark;
   },
 
   /**
    * Update an existing bookmark
    */
   async updateBookmark(id: string, updates: Partial<Bookmark>): Promise<Bookmark> {
-    const { data, error } = await supabase
-      .from('bookmarks')
-      .update(updates as any)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data as Bookmark;
+    const uid = getUid();
+    const ref = doc(db, 'users', uid, 'bookmarks', id);
+    await updateDoc(ref, { ...updates, updated_at: new Date().toISOString() });
+    const snap = await getDoc(ref);
+    return docToBookmark(snap);
   },
 
   /**
    * Delete a bookmark
    */
   async deleteBookmark(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('bookmarks')
-      .delete()
-      .eq('id', id);
-
-    if (error) throw error;
+    const uid = getUid();
+    await deleteDoc(doc(db, 'users', uid, 'bookmarks', id));
   },
 
   /**
@@ -112,47 +122,48 @@ export const bookmarkService = {
   },
 
   /**
-   * Search bookmarks by title or notes
+   * Search bookmarks by title or notes (client-side filtering)
    */
-  async searchBookmarks(query: string): Promise<Bookmark[]> {
-    const { data, error } = await supabase
-      .from('bookmarks')
-      .select('*')
-      .or(`title.ilike.%${query}%,notes.ilike.%${query}%`)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    return (data || []) as Bookmark[];
+  async searchBookmarks(queryStr: string): Promise<Bookmark[]> {
+    const bookmarks = await this.getBookmarks();
+    const lower = queryStr.toLowerCase();
+    return bookmarks.filter(
+      (b) =>
+        b.title.toLowerCase().includes(lower) ||
+        (b.notes && b.notes.toLowerCase().includes(lower)),
+    );
   },
 
   /**
    * Get backlog items for Tonight Pick (runtime <= 90 minutes)
    */
   async getTonightCandidates(): Promise<Bookmark[]> {
-    const { data, error } = await supabase
-      .from('bookmarks')
-      .select('*')
-      .eq('status', 'backlog')
-      .or('runtime_minutes.is.null,runtime_minutes.lte.90')
-      .order('shown_count', { ascending: true })
-      .limit(20);
-
-    if (error) throw error;
-    return (data || []) as Bookmark[];
+    const uid = getUid();
+    const q = query(
+      bookmarksCol(uid),
+      where('status', '==', 'backlog'),
+      orderBy('shown_count', 'asc'),
+      limit(50),
+    );
+    const snap = await getDocs(q);
+    const bookmarks = snap.docs.map(docToBookmark);
+    return bookmarks
+      .filter((b) => b.runtime_minutes === null || b.runtime_minutes <= 90)
+      .slice(0, 20);
   },
 
   /**
    * Update shown tracking for Tonight Pick
    */
   async markAsShown(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('bookmarks')
-      .update({ 
-        last_shown_at: new Date().toISOString(),
-      } as any)
-      .eq('id', id);
-
-    if (error) throw error;
+    const uid = getUid();
+    const ref = doc(db, 'users', uid, 'bookmarks', id);
+    const snap = await getDoc(ref);
+    const current = snap.exists() ? (snap.data().shown_count || 0) : 0;
+    await updateDoc(ref, {
+      last_shown_at: new Date().toISOString(),
+      shown_count: current + 1,
+    });
   },
 
   /**
@@ -161,14 +172,12 @@ export const bookmarkService = {
   async getBookmarksByMood(): Promise<Record<string, Bookmark[]>> {
     const bookmarks = await this.getBookmarks();
     const byMood: Record<string, Bookmark[]> = {};
-
     bookmarks.forEach((bookmark) => {
       (bookmark.mood_tags || []).forEach((mood) => {
         if (!byMood[mood]) byMood[mood] = [];
         byMood[mood].push(bookmark);
       });
     });
-
     return byMood;
   },
 
@@ -177,7 +186,6 @@ export const bookmarkService = {
    */
   async getStats() {
     const bookmarks = await this.getBookmarks();
-    
     return {
       total: bookmarks.length,
       backlog: bookmarks.filter((b) => b.status === 'backlog').length,

@@ -20,6 +20,9 @@ export interface Bookmark {
   shown_count: number;
   created_at: string;
   updated_at: string;
+  // Sharing
+  is_public?: boolean;
+  share_token?: string;
 }
 
 export interface Attachment {
@@ -39,6 +42,7 @@ export interface Schedule {
   bookmark_id: string;
   scheduled_for: string;
   reminder_offset_minutes: number;
+  recurrence_type?: 'none' | 'daily' | 'weekly' | 'monthly';
   state: "scheduled" | "fired" | "snoozed" | "cancelled";
   created_at: string;
   updated_at: string;
@@ -88,4 +92,26 @@ export interface EnrichmentResult {
   canonical_url: string | null;
   platform_label: string | null;
   metadata: Record<string, unknown>;
+}
+
+export interface PublicProfile {
+  uid: string;
+  display_name: string | null;
+  bio: string | null;
+  avatar_url: string | null;
+  bookmarks_count?: number;
+}
+
+export interface UserFollow {
+  follower_uid: string;
+  following_uid: string;
+  created_at: string;
+}
+
+export interface FeedItem {
+  id: string;
+  actor_uid: string;
+  action: 'added' | 'done' | 'shared';
+  bookmark_id: string | null;
+  created_at: string;
 }
