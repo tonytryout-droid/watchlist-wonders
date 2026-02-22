@@ -104,6 +104,7 @@ export default function PlanDetail() {
     },
     onError: () => {
       setRemovingBookmarkId(null);
+      toast({ title: "Failed to remove bookmark", variant: "destructive" });
     },
   });
 

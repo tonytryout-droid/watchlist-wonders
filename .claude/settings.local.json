@@ -9,20 +9,9 @@
       "Bash(python3 -c \":*)",
       "Bash(node --version:*)",
       "Bash(node -e:*)",
-      "Bash(node:*)",
       "Bash(printf:*)",
       "Bash(set +H)",
-      "Bash(/tmp/fix_services.js:*)",
-      "Bash(/tmp/fix_services2.js:*)",
-      "Bash(python3:*)",
-      "Bash(/tmp/apply_fixes.py:*)",
-      "Bash(/c/Users/Kekab/AppData/Local/Microsoft/WindowsApps/python3.exe:*)",
-      "Bash(python:*)",
-      "Bash(/tmp/fix_sw.js:*)",
-      "Bash(py:*)",
-      "Bash(where:*)",
-      "Bash(/tmp/patch_files.py:*)",
-      "Bash(/tmp/patch1_auth.js:*)"
+      "Bash(where:*)"
     ]
   }
 }

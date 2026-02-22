@@ -44,8 +44,8 @@ export function FilterPanel({ onApply, onReset, className }: FilterPanelProps) {
   const handleApply = () => {
     const parsedMin = runtimeMin.trim() ? parseInt(runtimeMin.trim(), 10) : null;
     const parsedMax = runtimeMax.trim() ? parseInt(runtimeMax.trim(), 10) : null;
-    let finalMin = parsedMin !== null && Number.isFinite(parsedMin) ? parsedMin : null;
-    let finalMax = parsedMax !== null && Number.isFinite(parsedMax) ? parsedMax : null;
+    let finalMin = parsedMin !== null && Number.isFinite(parsedMin) && parsedMin >= 0 ? parsedMin : null;
+    let finalMax = parsedMax !== null && Number.isFinite(parsedMax) && parsedMax >= 0 ? parsedMax : null;
     if (finalMin !== null && finalMax !== null && finalMin > finalMax) {
       [finalMin, finalMax] = [finalMax, finalMin];
     }
