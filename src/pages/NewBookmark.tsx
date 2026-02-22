@@ -98,19 +98,34 @@ const NewBookmark = () => {
   const handleUrlPaste = async () => {
     if (!url.trim()) return;
 
+    const enrichUrl = import.meta.env.VITE_ENRICH_URL;
+    if (!enrichUrl) {
+      toast({
+        title: "Configuration error",
+        description: "Enrichment service URL is not configured.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsEnriching(true);
     const detectedProvider = detectProvider(url);
     setProvider(detectedProvider);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
     try {
       const res = await fetch(
-        import.meta.env.VITE_ENRICH_URL,
+        enrichUrl,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url: url.trim() }),
+          signal: controller.signal,
         },
       );
+      clearTimeout(timeoutId);
 
       type EnrichResult = {
         ok: boolean;
@@ -196,33 +211,41 @@ const NewBookmark = () => {
         : type;
 
       if ((resolvedType === "movie" || resolvedType === "series") && data.title) {
-        const tmdb = await enrichWithTMDB(
-          data.title,
-          resolvedType === "series" ? "tv" : "movie",
-          null,
-        );
-        if (tmdb) {
-          if (!posterUrl.trim() && tmdb.poster_url) setPosterUrl(tmdb.poster_url);
-          if (tmdb.release_year && !releaseYear) setReleaseYear(tmdb.release_year);
-          setMetadata((prev) => ({
-            ...prev,
-            tmdb_id: tmdb.tmdb_id,
-            vote_average: tmdb.vote_average,
-            backdrop_url: tmdb.backdrop_url,
-          }));
+        try {
+          const tmdb = await enrichWithTMDB(
+            data.title,
+            resolvedType === "series" ? "tv" : "movie",
+            null,
+          );
+          if (tmdb) {
+            if (!posterUrl.trim() && tmdb.poster_url) setPosterUrl(tmdb.poster_url);
+            if (tmdb.release_year && !releaseYear) setReleaseYear(tmdb.release_year);
+            setMetadata((prev) => ({
+              ...prev,
+              tmdb_id: tmdb.tmdb_id,
+              vote_average: tmdb.vote_average,
+              backdrop_url: tmdb.backdrop_url,
+            }));
+          }
+        } catch (err) {
+          console.error('TMDB enrichment failed:', err);
         }
       } else if (resolvedType === "video" && detectedProvider === "youtube") {
         const videoId = extractYouTubeVideoId(url.trim());
         if (videoId) {
-          const ytData = await enrichWithYouTube(videoId);
-          if (ytData) {
-            if (!title.trim() && ytData.title) setTitle(ytData.title);
-            if (!posterUrl.trim() && ytData.thumbnail_url) setPosterUrl(ytData.thumbnail_url);
-            if (!runtimeMinutes && ytData.duration_minutes) setRuntimeMinutes(ytData.duration_minutes);
-            setMetadata((prev) => ({
-              ...prev,
-              channel_name: ytData.channel_name,
-            }));
+          try {
+            const ytData = await enrichWithYouTube(videoId);
+            if (ytData) {
+              if (!title.trim() && ytData.title) setTitle(ytData.title);
+              if (!posterUrl.trim() && ytData.thumbnail_url) setPosterUrl(ytData.thumbnail_url);
+              if (!runtimeMinutes && ytData.duration_minutes) setRuntimeMinutes(ytData.duration_minutes);
+              setMetadata((prev) => ({
+                ...prev,
+                channel_name: ytData.channel_name,
+              }));
+            }
+          } catch (err) {
+            console.error('YouTube enrichment failed:', err);
           }
         }
       }
@@ -232,6 +255,7 @@ const NewBookmark = () => {
         description: `Loaded metadata from ${ogMetadata?.siteName || detectedProvider}.`,
       });
     } catch (error: any) {
+      clearTimeout(timeoutId);
       // On complete failure, open confirm dialog
       setConfirmInitial({
         url: url.trim(),

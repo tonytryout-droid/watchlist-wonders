@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { TopNav } from "@/components/layout/TopNav";
@@ -42,6 +42,22 @@ const Settings = () => {
     queryKey: ['bookmarks'],
     queryFn: () => bookmarkService.getBookmarks(),
   });
+
+  const { data: publicProfile } = useQuery({
+    queryKey: ['public-profile', user?.uid],
+    queryFn: () => socialService.getUserPublicProfile(user!.uid),
+    enabled: !!user,
+  });
+
+  useEffect(() => {
+    if (publicProfile) {
+      setDisplayName(publicProfile.display_name || '');
+      setBio(publicProfile.bio || '');
+      if (typeof publicProfile.push_enabled === 'boolean') {
+        setPushEnabled(publicProfile.push_enabled);
+      }
+    }
+  }, [publicProfile]);
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -358,15 +374,17 @@ const Settings = () => {
                     />
                   </div>
                   <div className="flex items-center justify-between pt-1">
-                    <a
-                      href={`/u/${user?.uid}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-primary flex items-center gap-1 hover:underline"
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                      View public profile
-                    </a>
+                    {user && (
+                      <a
+                        href={`/u/${user.uid}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary flex items-center gap-1 hover:underline"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        View public profile
+                      </a>
+                    )}
                     <Button type="submit" size="sm" disabled={profileLoading}>
                       {profileLoading ? (
                         <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</>

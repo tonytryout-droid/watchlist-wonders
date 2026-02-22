@@ -10,6 +10,7 @@ import {
   orderBy,
   where,
   writeBatch,
+  documentId,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { WatchPlan, Bookmark } from '@/types/database';
@@ -98,6 +99,14 @@ export const watchPlanService = {
    */
   async deleteWatchPlan(id: string): Promise<void> {
     const uid = getUid();
+    // Delete all bookmarks subcollection docs first
+    const bookmarksSnap = await getDocs(planBookmarksCol(uid, id));
+    const CHUNK = 500;
+    for (let i = 0; i < bookmarksSnap.docs.length; i += CHUNK) {
+      const batch = writeBatch(db);
+      bookmarksSnap.docs.slice(i, i + CHUNK).forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
     await deleteDoc(doc(db, 'users', uid, 'watchPlans', id));
   },
 
@@ -108,23 +117,33 @@ export const watchPlanService = {
     const uid = getUid();
     const q = query(planBookmarksCol(uid, planId), orderBy('position', 'asc'));
     const snap = await getDocs(q);
+    if (snap.empty) return [];
 
-    const rows = await Promise.all(
-      snap.docs.map(async (d) => {
-        const data = d.data();
-        const bookmarkSnap = await getDoc(doc(db, 'users', uid, 'bookmarks', data.bookmark_id));
-        const bookmark = { id: bookmarkSnap.id, ...bookmarkSnap.data() } as Bookmark;
-        return {
-          plan_id: planId,
-          bookmark_id: data.bookmark_id,
-          user_id: uid,
-          position: data.position,
-          bookmarks: bookmark,
-        } as WatchPlanBookmarkRow;
-      }),
-    );
+    const planDocs = snap.docs.map((d) => ({ id: d.id, data: d.data() }));
+    const bookmarkIds = planDocs.map((d) => d.data.bookmark_id as string);
 
-    return rows;
+    // Fetch all bookmarks in chunks of 30 (Firestore 'in' limit)
+    const CHUNK = 30;
+    const bookmarkMap = new Map<string, Bookmark>();
+    for (let i = 0; i < bookmarkIds.length; i += CHUNK) {
+      const chunk = bookmarkIds.slice(i, i + CHUNK);
+      const bq = query(
+        collection(db, 'users', uid, 'bookmarks'),
+        where(documentId(), 'in', chunk),
+      );
+      const bSnap = await getDocs(bq);
+      bSnap.docs.forEach((d) => {
+        bookmarkMap.set(d.id, { id: d.id, ...d.data() } as Bookmark);
+      });
+    }
+
+    return planDocs.map((pd) => ({
+      plan_id: planId,
+      bookmark_id: pd.data.bookmark_id as string,
+      user_id: uid,
+      position: pd.data.position as number,
+      bookmarks: (bookmarkMap.get(pd.data.bookmark_id as string) ?? null) as Bookmark,
+    } as WatchPlanBookmarkRow));
   },
 
   /**
@@ -157,17 +176,39 @@ export const watchPlanService = {
   async reorderPlanBookmarks(planId: string, bookmarkIds: string[]): Promise<void> {
     const uid = getUid();
     const existingSnap = await getDocs(planBookmarksCol(uid, planId));
-    const batch = writeBatch(db);
-    existingSnap.docs.forEach((d) => batch.delete(d.ref));
-    await batch.commit();
+    const totalOps = existingSnap.docs.length + bookmarkIds.length;
+    const CHUNK = 500;
 
-    if (bookmarkIds.length > 0) {
-      const insertBatch = writeBatch(db);
+    if (totalOps <= CHUNK) {
+      // Single atomic batch
+      const batch = writeBatch(db);
+      existingSnap.docs.forEach((d) => batch.delete(d.ref));
       bookmarkIds.forEach((bookmarkId, index) => {
-        const newRef = doc(planBookmarksCol(uid, planId));
-        insertBatch.set(newRef, { bookmark_id: bookmarkId, user_id: uid, position: index });
+        batch.set(doc(planBookmarksCol(uid, planId)), {
+          bookmark_id: bookmarkId,
+          user_id: uid,
+          position: index,
+        });
       });
-      await insertBatch.commit();
+      await batch.commit();
+    } else {
+      // Chunked: delete first, then insert
+      for (let i = 0; i < existingSnap.docs.length; i += CHUNK) {
+        const batch = writeBatch(db);
+        existingSnap.docs.slice(i, i + CHUNK).forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+      }
+      for (let i = 0; i < bookmarkIds.length; i += CHUNK) {
+        const batch = writeBatch(db);
+        bookmarkIds.slice(i, i + CHUNK).forEach((bookmarkId, idx) => {
+          batch.set(doc(planBookmarksCol(uid, planId)), {
+            bookmark_id: bookmarkId,
+            user_id: uid,
+            position: i + idx,
+          });
+        });
+        await batch.commit();
+      }
     }
   },
 };

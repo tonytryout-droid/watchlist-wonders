@@ -10,6 +10,7 @@ import {
   query,
   orderBy,
   limit,
+  getCountFromServer,
 } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import type { UserFollow, FeedItem, PublicProfile } from '@/types/database';
@@ -24,6 +25,7 @@ export const socialService = {
   /** Follow a user — writes to both follower's following list and target's followers list. */
   async followUser(targetUid: string): Promise<void> {
     const myUid = getUid();
+    if (myUid === targetUid) throw new Error('Cannot follow yourself');
     const batch = writeBatch(db);
     const now = new Date().toISOString();
     batch.set(doc(db, 'users', myUid, 'following', targetUid), {
@@ -63,14 +65,14 @@ export const socialService = {
 
   /** Get follower count for a user. */
   async getFollowerCount(uid: string): Promise<number> {
-    const snap = await getDocs(collection(db, 'users', uid, 'followers'));
-    return snap.size;
+    const snap = await getCountFromServer(collection(db, 'users', uid, 'followers'));
+    return snap.data().count;
   },
 
   /** Get following count for a user. */
   async getFollowingCount(uid: string): Promise<number> {
-    const snap = await getDocs(collection(db, 'users', uid, 'following'));
-    return snap.size;
+    const snap = await getCountFromServer(collection(db, 'users', uid, 'following'));
+    return snap.data().count;
   },
 
   /** Get the current user's feed (last 50 items). */
@@ -86,22 +88,25 @@ export const socialService = {
 
   /**
    * Publish a feed item to current user's own feed and each follower's feed.
-   * ⚠️ writeBatch is limited to 500 ops — fine for <400 followers.
+   * Chunks into batches of 499 to respect Firestore's 500-op limit.
    */
   async publishFeedItem(
     item: Omit<FeedItem, 'id'>,
     followerUids: string[],
   ): Promise<void> {
     const myUid = getUid();
-    const batch = writeBatch(db);
-    const addItem = (uid: string) =>
-      batch.set(doc(collection(db, 'feed', uid, 'items')), {
-        ...item,
-        created_at: item.created_at || new Date().toISOString(),
-      });
-    addItem(myUid);
-    followerUids.forEach(addItem);
-    await batch.commit();
+    const created_at = item.created_at || new Date().toISOString();
+    const payload = { ...item, created_at };
+    const allUids = [myUid, ...followerUids];
+    const CHUNK_SIZE = 499;
+    for (let i = 0; i < allUids.length; i += CHUNK_SIZE) {
+      const chunk = allUids.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      chunk.forEach((uid) =>
+        batch.set(doc(collection(db, 'feed', uid, 'items')), payload),
+      );
+      await batch.commit();
+    }
   },
 
   /** Read public profile for a user. */

@@ -25,7 +25,8 @@ function parseDurationMinutes(iso: string): number | null {
   if (!m) return null;
   const hours = parseInt(m[1] || '0', 10);
   const mins = parseInt(m[2] || '0', 10);
-  return hours * 60 + mins || null;
+  const secs = parseInt(m[3] || '0', 10);
+  return hours * 60 + mins + (secs > 0 ? 1 : 0);
 }
 
 /** Extract YouTube video ID from various URL formats */

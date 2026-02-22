@@ -55,16 +55,18 @@ export const sharingService = {
     if (snap.empty) return null;
     const d = snap.docs[0];
     // Path is users/{uid}/bookmarks/{id}
-    const owner_uid = d.ref.parent.parent?.id ?? '';
+    const owner_uid = d.ref.parent.parent?.id;
+    if (!owner_uid) throw new Error('malformed bookmark path: missing owner uid');
     return { id: d.id, owner_uid, ...d.data() } as Bookmark & { owner_uid: string };
   },
 
   /** Fetch all public bookmarks by a specific user. */
-  async getPublicBookmarksByUser(uid: string): Promise<Bookmark[]> {
+  async getPublicBookmarksByUser(uid: string, lim = 50): Promise<Bookmark[]> {
     const q = query(
       collectionGroup(db, 'bookmarks'),
       where('user_id', '==', uid),
       where('is_public', '==', true),
+      limit(lim),
     );
     const snap = await getDocs(q);
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Bookmark);

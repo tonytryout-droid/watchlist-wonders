@@ -36,7 +36,8 @@ export const authService = {
   /**
    * Get the current user
    */
-  getUser(): User | null {
+  async getUser(): Promise<User | null> {
+    await auth.authStateReady();
     return auth.currentUser;
   },
 
@@ -44,8 +45,11 @@ export const authService = {
    * Reset password via email
    */
   async resetPassword(email: string) {
+    const origin =
+      import.meta.env.VITE_APP_URL ||
+      (typeof window !== 'undefined' ? window.location.origin : '');
     await sendPasswordResetEmail(auth, email, {
-      url: `${window.location.origin}/auth`,
+      url: `${origin}/auth`,
     });
   },
 
