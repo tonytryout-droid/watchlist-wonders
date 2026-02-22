@@ -27,5 +27,7 @@ enableIndexedDbPersistence(db).catch((err) => {
   } else if (err.code === 'unimplemented') {
     // Browser doesn't support IndexedDB
     console.warn('[Firebase] Offline persistence not supported in this browser');
+  } else {
+    console.error('[Firebase] Unexpected error enabling offline persistence:', err);
   }
 });

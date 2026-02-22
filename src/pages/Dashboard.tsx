@@ -256,26 +256,56 @@ const Dashboard = () => {
   };
 
   const handleBulkDelete = async () => {
-    const count = selectedIds.size;
-    await Promise.all(Array.from(selectedIds).map((id) => bookmarkService.deleteBookmark(id)));
-    queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
-    setSelectedIds(new Set());
-    toast({ title: `Deleted ${count} bookmark${count !== 1 ? "s" : ""}` });
+    const ids = Array.from(selectedIds);
+    const results = await Promise.allSettled(ids.map((id) => bookmarkService.deleteBookmark(id)));
+    const succeeded = ids.filter((_, i) => results[i].status === 'fulfilled');
+    const failedIds = ids.filter((_, i) => results[i].status === 'rejected');
+    if (succeeded.length > 0) queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
+    setSelectedIds(new Set(failedIds));
+    if (failedIds.length === 0) {
+      toast({ title: `Deleted ${succeeded.length} bookmark${succeeded.length !== 1 ? "s" : ""}` });
+    } else {
+      toast({
+        title: `Deleted ${succeeded.length} of ${ids.length}`,
+        description: `${failedIds.length} could not be deleted`,
+        variant: "destructive",
+      });
+    }
   };
 
   const handleBulkMarkDone = async () => {
-    const count = selectedIds.size;
-    await Promise.all(Array.from(selectedIds).map((id) => bookmarkService.updateStatus(id, 'done')));
-    queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
-    setSelectedIds(new Set());
-    toast({ title: `Marked ${count} as done` });
+    const ids = Array.from(selectedIds);
+    const results = await Promise.allSettled(ids.map((id) => bookmarkService.updateStatus(id, 'done')));
+    const succeeded = ids.filter((_, i) => results[i].status === 'fulfilled');
+    const failedIds = ids.filter((_, i) => results[i].status === 'rejected');
+    if (succeeded.length > 0) queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
+    setSelectedIds(new Set(failedIds));
+    if (failedIds.length === 0) {
+      toast({ title: `Marked ${succeeded.length} as done` });
+    } else {
+      toast({
+        title: `Marked ${succeeded.length} of ${ids.length} as done`,
+        description: `${failedIds.length} could not be updated`,
+        variant: "destructive",
+      });
+    }
   };
 
   const handleBulkAddToPlan = async (planId: string) => {
-    const count = selectedIds.size;
-    await Promise.all(Array.from(selectedIds).map((id) => watchPlanService.addBookmarkToPlan(planId, id)));
-    setSelectedIds(new Set());
-    toast({ title: `Added ${count} to plan` });
+    const ids = Array.from(selectedIds);
+    const results = await Promise.allSettled(ids.map((id) => watchPlanService.addBookmarkToPlan(planId, id)));
+    const succeeded = ids.filter((_, i) => results[i].status === 'fulfilled');
+    const failedIds = ids.filter((_, i) => results[i].status === 'rejected');
+    setSelectedIds(new Set(failedIds));
+    if (failedIds.length === 0) {
+      toast({ title: `Added ${succeeded.length} to plan` });
+    } else {
+      toast({
+        title: `Added ${succeeded.length} of ${ids.length} to plan`,
+        description: `${failedIds.length} could not be added`,
+        variant: "destructive",
+      });
+    }
   };
 
   if (isLoading) {

@@ -53,6 +53,7 @@ export default function PlanDetail() {
   const { isSearchOpen, openSearch, closeSearch } = useSearchShortcut();
   const [addOpen, setAddOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [removingBookmarkId, setRemovingBookmarkId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -97,8 +98,12 @@ export default function PlanDetail() {
     mutationFn: (bookmarkId: string) =>
       watchPlanService.removeBookmarkFromPlan(id!, bookmarkId),
     onSuccess: () => {
+      setRemovingBookmarkId(null);
       queryClient.invalidateQueries({ queryKey: ["plan-bookmarks", id] });
       toast({ title: "Removed from plan" });
+    },
+    onError: () => {
+      setRemovingBookmarkId(null);
     },
   });
 
@@ -127,6 +132,7 @@ export default function PlanDetail() {
     const items = [...planBookmarks];
     const oldIndex = items.findIndex((pb) => pb.bookmark_id === active.id);
     const newIndex = items.findIndex((pb) => pb.bookmark_id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
     const reordered = arrayMove(items, oldIndex, newIndex);
     queryClient.setQueryData(["plan-bookmarks", id], reordered);
     reorderMutation.mutate(reordered.map((pb) => pb.bookmark_id));
@@ -275,8 +281,8 @@ export default function PlanDetail() {
                       type={pb.bookmarks?.type}
                       runtimeMinutes={pb.bookmarks?.runtime_minutes}
                       status={pb.bookmarks?.status}
-                      onRemove={() => removeMutation.mutate(pb.bookmark_id)}
-                      isRemoving={removeMutation.isPending}
+                      onRemove={() => { setRemovingBookmarkId(pb.bookmark_id); removeMutation.mutate(pb.bookmark_id); }}
+                      isRemoving={removingBookmarkId === pb.bookmark_id}
                     />
                   ))}
                 </div>

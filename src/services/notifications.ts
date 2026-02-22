@@ -34,7 +34,9 @@ async function attachBookmark(uid: string, notif: Notification): Promise<Notific
     if (snap.exists()) {
       return { ...notif, bookmarks: { id: snap.id, ...snap.data() } as Bookmark };
     }
-  } catch {}
+  } catch (err) {
+    console.error('Notification service error', err);
+  }
   return notif;
 }
 
@@ -97,10 +99,14 @@ export const notificationService = {
     const uid = getUid();
     const q = query(notificationsCol(uid), where('read_at', '==', null));
     const snap = await getDocs(q);
-    const batch = writeBatch(db);
     const now = new Date().toISOString();
-    snap.docs.forEach((d) => batch.update(d.ref, { read_at: now }));
-    await batch.commit();
+    const CHUNK_SIZE = 500;
+    for (let i = 0; i < snap.docs.length; i += CHUNK_SIZE) {
+      const chunk = snap.docs.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      chunk.forEach((d) => batch.update(d.ref, { read_at: now }));
+      await batch.commit();
+    }
   },
 
   /**
@@ -114,14 +120,20 @@ export const notificationService = {
   /**
    * Subscribe to real-time notifications
    */
-  subscribeToNotifications(userId: string, callback: (notification: Notification) => void) {
+  subscribeToNotifications(callback: (notification: Notification) => void) {
+    const uid = getUid();
     const q = query(
-      collection(db, 'users', userId, 'notifications'),
+      collection(db, 'users', uid, 'notifications'),
       orderBy('created_at', 'desc'),
       limit(1),
     );
 
+    let initialLoad = true;
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (initialLoad) {
+        initialLoad = false;
+        return;
+      }
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const notif = { id: change.doc.id, ...change.doc.data() } as Notification;

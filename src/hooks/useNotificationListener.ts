@@ -15,11 +15,17 @@ export function useNotificationListener() {
     const mountTime = mountTimeRef.current;
 
     const unsubscribe = notificationService.subscribeToNotifications(
-      user.uid,
       (notif) => {
         // Only show toast for notifications created after the listener was mounted
         // and that are unread
-        if (notif.created_at > mountTime && notif.read_at === null) {
+        const createdTs =
+          typeof notif.created_at === 'number'
+            ? notif.created_at
+            : notif.created_at instanceof Date
+            ? notif.created_at.getTime()
+            : Date.parse(String(notif.created_at));
+        const mountTs = Date.parse(mountTime);
+        if (createdTs > mountTs && notif.read_at == null) {
           toast(notif.title, {
             description: notif.body,
             duration: 6000,

@@ -1,18 +1,15 @@
-import { getMessaging, getToken, onMessage, type MessagePayload } from 'firebase/messaging';
+import { getMessaging, getToken, deleteToken, onMessage, type MessagePayload } from 'firebase/messaging';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { initializeApp, getApps } from 'firebase/app';
 
 // Re-use the already-initialized Firebase app
-const app = getApps()[0];
-
-let messaging: ReturnType<typeof getMessaging> | null = null;
-
 function getMessagingInstance() {
-  if (!messaging) {
-    messaging = getMessaging(app);
+  const apps = getApps();
+  if (apps.length === 0) {
+    throw new Error('[FCM] Firebase app has not been initialized. Call initializeApp() first.');
   }
-  return messaging;
+  return getMessaging(apps[0]);
 }
 
 export const fcmService = {
@@ -25,6 +22,11 @@ export const fcmService = {
     const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
     if (!vapidKey) {
       console.warn('[FCM] VITE_FIREBASE_VAPID_KEY is not set');
+      return null;
+    }
+
+    if (!('Notification' in window) || !navigator.serviceWorker) {
+      console.warn('[FCM] Push notifications not supported in this environment');
       return null;
     }
 
@@ -65,6 +67,11 @@ export const fcmService = {
   async disablePushNotifications(): Promise<void> {
     const user = auth.currentUser;
     if (!user) return;
+    try {
+      await deleteToken(getMessagingInstance());
+    } catch (err) {
+      console.error('[FCM] Failed to delete FCM token:', err);
+    }
     await setDoc(
       doc(db, 'users', user.uid, 'profile', 'public'),
       { fcm_token: null, push_enabled: false },

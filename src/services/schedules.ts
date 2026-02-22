@@ -28,6 +28,9 @@ function schedulesCol(uid: string) {
 
 async function attachBookmark(uid: string, schedule: Schedule): Promise<ScheduleWithBookmark> {
   const bookmarkSnap = await getDoc(doc(db, 'users', uid, 'bookmarks', schedule.bookmark_id));
+  if (!bookmarkSnap.exists()) {
+    throw new Error(`Bookmark ${schedule.bookmark_id} not found for schedule`);
+  }
   const bookmark = { id: bookmarkSnap.id, ...bookmarkSnap.data() } as Bookmark;
   return { ...schedule, bookmarks: bookmark };
 }
@@ -84,13 +87,14 @@ export const scheduleService = {
     bookmark_id: string;
     scheduled_for: string;
     reminder_offset_minutes?: number;
+    recurrence_type?: string;
   }): Promise<Schedule> {
     const uid = getUid();
     const now = new Date().toISOString();
     const data = {
       ...schedule,
       user_id: uid,
-      reminder_offset_minutes: schedule.reminder_offset_minutes || 60,
+      reminder_offset_minutes: schedule.reminder_offset_minutes ?? 60,
       state: 'scheduled',
       created_at: now,
       updated_at: now,
@@ -131,6 +135,7 @@ export const scheduleService = {
   async snoozeSchedule(id: string, snoozeMinutes: number): Promise<Schedule> {
     const uid = getUid();
     const snap = await getDoc(doc(db, 'users', uid, 'schedules', id));
+    if (!snap.exists()) throw new Error('Schedule not found');
     const schedule = docToSchedule(snap);
     const newScheduledFor = new Date(schedule.scheduled_for);
     newScheduledFor.setMinutes(newScheduledFor.getMinutes() + snoozeMinutes);

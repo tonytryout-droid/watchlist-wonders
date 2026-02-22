@@ -10,6 +10,7 @@ import {
   where,
   orderBy,
   limit,
+  increment,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { Bookmark } from '@/types/database';
@@ -103,6 +104,7 @@ export const bookmarkService = {
     const ref = doc(db, 'users', uid, 'bookmarks', id);
     await updateDoc(ref, { ...updates, updated_at: new Date().toISOString() });
     const snap = await getDoc(ref);
+    if (!snap.exists()) throw new Error('Bookmark not found after update');
     return docToBookmark(snap);
   },
 
@@ -158,11 +160,9 @@ export const bookmarkService = {
   async markAsShown(id: string): Promise<void> {
     const uid = getUid();
     const ref = doc(db, 'users', uid, 'bookmarks', id);
-    const snap = await getDoc(ref);
-    const current = snap.exists() ? (snap.data().shown_count || 0) : 0;
     await updateDoc(ref, {
       last_shown_at: new Date().toISOString(),
-      shown_count: current + 1,
+      shown_count: increment(1),
     });
   },
 

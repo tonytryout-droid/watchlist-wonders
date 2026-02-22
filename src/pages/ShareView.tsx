@@ -99,6 +99,7 @@ const ShareView = () => {
           size="icon"
           className="absolute top-4 left-4 bg-background/80 backdrop-blur"
           onClick={() => history.back()}
+          aria-label="Go back"
         >
           <ArrowLeft className="w-5 h-5" />
         </Button>
@@ -191,9 +192,13 @@ const ShareView = () => {
         {/* Shared by */}
         <div className="mt-8 pt-6 border-t border-border text-sm text-muted-foreground">
           Shared via{" "}
-          <Link to={`/u/${bookmark.owner_uid}`} className="text-primary hover:underline">
-            this profile
-          </Link>
+          {bookmark.owner_uid ? (
+            <Link to={`/u/${bookmark.owner_uid}`} className="text-primary hover:underline">
+              this profile
+            </Link>
+          ) : (
+            <span>a shared profile</span>
+          )}
         </div>
       </div>
     </div>

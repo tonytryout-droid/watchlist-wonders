@@ -1,4 +1,4 @@
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, UserPlus, UserMinus, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { formatRuntime } from "@/lib/utils";
 
 const PublicProfile = () => {
   const { uid } = useParams<{ uid: string }>();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -53,6 +54,13 @@ const PublicProfile = () => {
       queryClient.invalidateQueries({ queryKey: ["follower-count", uid] });
       toast({ title: "Following!" });
     },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to follow",
+        description: error.message || "Something went wrong.",
+        variant: "destructive",
+      });
+    },
   });
 
   const unfollowMutation = useMutation({
@@ -61,6 +69,13 @@ const PublicProfile = () => {
       queryClient.invalidateQueries({ queryKey: ["is-following", uid] });
       queryClient.invalidateQueries({ queryKey: ["follower-count", uid] });
       toast({ title: "Unfollowed" });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to unfollow",
+        description: error.message || "Something went wrong.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -81,7 +96,7 @@ const PublicProfile = () => {
       <div className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border">
         <div className="container mx-auto px-4 lg:px-8">
           <div className="flex items-center h-16 gap-4">
-            <Button variant="ghost" size="icon" onClick={() => history.back()}>
+            <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <h1 className="text-xl font-semibold truncate">{displayName}</h1>

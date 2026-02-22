@@ -45,6 +45,7 @@ const BookmarkDetail = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
+  const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
   const attachFileRef = useRef<HTMLInputElement>(null);
 
   // Edit form state
@@ -67,8 +68,17 @@ const BookmarkDetail = () => {
   const deleteAttachmentMutation = useMutation({
     mutationFn: (attachmentId: string) => attachmentService.deleteAttachment(attachmentId),
     onSuccess: () => {
+      setDeletingAttachmentId(null);
       refetchAttachments();
       toast({ title: "Attachment deleted" });
+    },
+    onError: (error: any) => {
+      setDeletingAttachmentId(null);
+      toast({
+        title: "Failed to delete attachment",
+        description: error.message || "Something went wrong.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -126,6 +136,13 @@ const BookmarkDetail = () => {
       navigator.clipboard.writeText(shareUrl).catch(() => {});
       toast({ title: "Share link copied!", description: shareUrl });
     },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to share bookmark",
+        description: error.message || "Something went wrong.",
+        variant: "destructive",
+      });
+    },
   });
 
   const makePrivateMutation = useMutation({
@@ -133,6 +150,13 @@ const BookmarkDetail = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bookmark', id] });
       toast({ title: "Sharing disabled" });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to disable sharing",
+        description: error.message || "Something went wrong.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -542,10 +566,10 @@ const BookmarkDetail = () => {
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={() => deleteAttachmentMutation.mutate(att.id)}
-                          disabled={deleteAttachmentMutation.isPending}
+                          onClick={() => { setDeletingAttachmentId(att.id); deleteAttachmentMutation.mutate(att.id); }}
+                          disabled={deletingAttachmentId === att.id}
                         >
-                          {deleteAttachmentMutation.isPending ? (
+                          {deletingAttachmentId === att.id ? (
                             <Loader2 className="w-3 h-3 animate-spin" />
                           ) : (
                             <X className="w-3 h-3" />

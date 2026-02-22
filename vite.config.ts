@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => ({
     mode === "development" && componentTagger(),
     VitePWA({
       registerType: "autoUpdate",
-      // Don't generate manifest here — use existing public/manifest.json if present
+      // Manifest defined inline; this overrides public/manifest.json if present
       manifest: {
         name: "Watchlist Wonders",
         short_name: "Watchlist",

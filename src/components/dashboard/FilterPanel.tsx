@@ -42,12 +42,14 @@ export function FilterPanel({ onApply, onReset, className }: FilterPanelProps) {
     setMoods((prev) => prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]);
 
   const handleApply = () => {
-    onApply({
-      providers,
-      moods,
-      runtimeMin: runtimeMin ? parseInt(runtimeMin) : null,
-      runtimeMax: runtimeMax ? parseInt(runtimeMax) : null,
-    });
+    const parsedMin = runtimeMin.trim() ? parseInt(runtimeMin.trim(), 10) : null;
+    const parsedMax = runtimeMax.trim() ? parseInt(runtimeMax.trim(), 10) : null;
+    let finalMin = parsedMin !== null && Number.isFinite(parsedMin) ? parsedMin : null;
+    let finalMax = parsedMax !== null && Number.isFinite(parsedMax) ? parsedMax : null;
+    if (finalMin !== null && finalMax !== null && finalMin > finalMax) {
+      [finalMin, finalMax] = [finalMax, finalMin];
+    }
+    onApply({ providers, moods, runtimeMin: finalMin, runtimeMax: finalMax });
   };
 
   const handleReset = () => {
@@ -114,6 +116,14 @@ export function FilterPanel({ onApply, onReset, className }: FilterPanelProps) {
                 variant={moods.includes(mood) ? "default" : "outline"}
                 className="cursor-pointer select-none text-xs"
                 onClick={() => toggleMood(mood)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleMood(mood);
+                  }
+                }}
               >
                 {getMoodEmoji(mood)} {mood}
               </Badge>

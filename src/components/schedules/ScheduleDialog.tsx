@@ -39,15 +39,17 @@ export function ScheduleDialog({ bookmark, open, onOpenChange, onScheduled }: Sc
   const mutation = useMutation({
     mutationFn: async () => {
       if (!bookmark) throw new Error("No bookmark selected");
+      if (!scheduleDate || !scheduleTime) throw new Error("Date and time are required");
       const baseDate = new Date(`${scheduleDate}T${scheduleTime}`);
+      if (isNaN(baseDate.getTime())) throw new Error("Invalid date or time");
 
       // Create the primary schedule
-      await scheduleService.createSchedule({
+      const primary = await scheduleService.createSchedule({
         bookmark_id: bookmark.id,
         scheduled_for: baseDate.toISOString(),
         reminder_offset_minutes: parseInt(reminderOffset),
         recurrence_type: recurrence,
-      } as any);
+      });
 
       // Create 3 additional occurrences for recurring schedules
       if (recurrence !== 'none') {
@@ -57,16 +59,31 @@ export function ScheduleDialog({ bookmark, open, onOpenChange, onScheduled }: Sc
           else if (recurrence === 'weekly') dates.push(addWeeks(baseDate, i));
           else if (recurrence === 'monthly') dates.push(addMonths(baseDate, i));
         }
-        await Promise.all(
+        const results = await Promise.allSettled(
           dates.map((d) =>
             scheduleService.createSchedule({
               bookmark_id: bookmark.id,
               scheduled_for: d.toISOString(),
               reminder_offset_minutes: parseInt(reminderOffset),
               recurrence_type: recurrence,
-            } as any)
+            })
           )
         );
+        const fulfilled = results.filter(
+          (r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof scheduleService.createSchedule>>> =>
+            r.status === 'fulfilled'
+        );
+        const rejected = results.filter((r) => r.status === 'rejected');
+        if (rejected.length > 0) {
+          // Rollback: delete the primary and any successfully created recurring schedules
+          await Promise.allSettled([
+            scheduleService.deleteSchedule(primary.id),
+            ...fulfilled.map((r) => scheduleService.deleteSchedule(r.value.id)),
+          ]);
+          throw new Error(
+            `Failed to create ${rejected.length} recurring schedule(s). All changes rolled back.`
+          );
+        }
       }
     },
     onSuccess: () => {
@@ -92,7 +109,7 @@ export function ScheduleDialog({ bookmark, open, onOpenChange, onScheduled }: Sc
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Schedule "{bookmark?.title}"</DialogTitle>
+          <DialogTitle>Schedule "{bookmark?.title ?? 'Untitled'}"</DialogTitle>
           <DialogDescription>Pick a date, time, and recurrence.</DialogDescription>
         </DialogHeader>
 
@@ -154,7 +171,7 @@ export function ScheduleDialog({ bookmark, open, onOpenChange, onScheduled }: Sc
             </Button>
             <Button
               onClick={() => mutation.mutate()}
-              disabled={mutation.isPending || !scheduleDate}
+              disabled={mutation.isPending || !scheduleDate || !scheduleTime}
             >
               {mutation.isPending ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Scheduling...</>

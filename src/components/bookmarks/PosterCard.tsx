@@ -157,6 +157,7 @@ export function PosterCard({
           >
             <Checkbox
               checked={isSelected}
+              onCheckedChange={() => onSelect?.()}
               className="bg-background/80 backdrop-blur-sm data-[state=checked]:bg-primary"
             />
           </div>

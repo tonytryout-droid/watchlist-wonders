@@ -64,6 +64,11 @@ const Auth = () => {
       setErrors({ email: "Email is required" });
       return;
     }
+    const emailResult = authSchema.shape.email.safeParse(email.trim());
+    if (!emailResult.success) {
+      setErrors({ email: emailResult.error.errors[0]?.message || "Please enter a valid email address" });
+      return;
+    }
     setIsLoading(true);
     try {
       await authService.resetPassword(email.trim());
