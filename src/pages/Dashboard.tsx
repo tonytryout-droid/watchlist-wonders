@@ -1,5 +1,8 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { format } from "date-fns";
+import { CalendarClock } from "lucide-react";
 import { TopNav } from "@/components/layout/TopNav";
 import { HeroBanner } from "@/components/layout/HeroBanner";
 import { Rail } from "@/components/bookmarks/Rail";
@@ -9,12 +12,16 @@ import { FilterChips } from "@/components/dashboard/FilterChips";
 import { FilterPanel, type AdvancedFilters } from "@/components/dashboard/FilterPanel";
 import { BulkActionBar } from "@/components/dashboard/BulkActionBar";
 import { SkeletonRail } from "@/components/ui/skeleton-card";
+import { QuickAddBar } from "@/components/QuickAddBar";
+import { EmptyStateGuide } from "@/components/EmptyStateGuide";
 import { bookmarkService } from "@/services/bookmarks";
+import { scheduleService } from "@/services/schedules";
 import { ScheduleDialog } from "@/components/schedules/ScheduleDialog";
 import { watchPlanService } from "@/services/watchPlans";
 import { notificationService } from "@/services/notifications";
 import { useToast } from "@/hooks/use-toast";
 import { useSearchShortcut } from "@/hooks/useSearchShortcut";
+import { cn } from "@/lib/utils";
 import type { Bookmark } from "@/types/database";
 import {
   Dialog,
@@ -63,10 +70,16 @@ const Dashboard = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Fetch bookmarks from Supabase
+  // Fetch bookmarks
   const { data: bookmarks = [], isLoading, error } = useQuery({
     queryKey: ['bookmarks'],
     queryFn: () => bookmarkService.getBookmarks(),
+  });
+
+  // Fetch upcoming schedules for "Up Next" rail
+  const { data: upcomingSchedules = [] } = useQuery({
+    queryKey: ['schedules', 'upcoming'],
+    queryFn: () => scheduleService.getUpcomingSchedules(8),
   });
 
   // Fetch notification count
@@ -312,8 +325,11 @@ const Dashboard = () => {
     return (
       <div className="min-h-screen bg-background">
         <TopNav onSearchClick={openSearch} notificationCount={0} />
-        <div className="h-[70vh] min-h-[500px] bg-muted/30 animate-pulse" />
-        <div className="relative z-10 -mt-24 pb-16 space-y-2">
+        <div className="container mx-auto px-4 lg:px-8 pt-24 pb-8 space-y-4">
+          <div className="h-14 bg-wm-surface rounded-xl animate-pulse" />
+          <div className="h-10 bg-wm-surface rounded-lg animate-pulse w-2/3" />
+        </div>
+        <div className="space-y-2">
           <SkeletonRail count={6} />
           <SkeletonRail count={6} />
         </div>
@@ -347,8 +363,8 @@ const Dashboard = () => {
   const backlog = displayBookmarks.filter((b) => b.status === "backlog");
   const completed = displayBookmarks.filter((b) => b.status === "done");
 
-  // Hero bookmark (next scheduled or first watching)
-  const heroBookmark = continueWatching[0] || backlog[0] || null;
+  // Hero bookmark: only show when actively watching something
+  const heroBookmark = continueWatching[0] || null;
 
   // Group by mood
   const byMood: Record<string, Bookmark[]> = {};
@@ -371,19 +387,35 @@ const Dashboard = () => {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-background">
-      <TopNav onSearchClick={openSearch} notificationCount={unreadCount} />
-      
-      {/* Hero Banner */}
-      <HeroBanner
-        bookmark={heroBookmark}
-        onPlay={handlePlay}
-        onMoreInfo={handleMoreInfo}
-      />
+  // Empty state check
+  const isEmpty = bookmarks.length === 0;
 
-      {/* Content */}
-      <div className="relative z-10 -mt-24 pb-16 space-y-8">
+  return (
+    <div className="min-h-screen bg-background pb-20 md:pb-0">
+      <TopNav onSearchClick={openSearch} notificationCount={unreadCount} />
+
+      {/* Hero Banner — only when actively watching */}
+      {heroBookmark && (
+        <HeroBanner
+          bookmark={heroBookmark}
+          onPlay={handlePlay}
+          onMoreInfo={handleMoreInfo}
+        />
+      )}
+
+      {/* Main content area */}
+      <div className={cn(
+        "relative z-10 pb-16 space-y-8",
+        heroBookmark ? "-mt-24" : "pt-20"
+      )}>
+
+        {/* QuickAddBar — shown at top when no hero */}
+        {!heroBookmark && !isEmpty && (
+          <div className="container mx-auto px-4 lg:px-8 animate-fade-in">
+            <QuickAddBar />
+          </div>
+        )}
+
         {/* Stats Bar */}
         {bookmarks.length > 0 && (
           <StatsBar
@@ -394,6 +426,13 @@ const Dashboard = () => {
             totalMinutes={stats.totalMinutes}
             className="animate-fade-in"
           />
+        )}
+
+        {/* QuickAddBar — shown below stats when hero is visible */}
+        {heroBookmark && (
+          <div className="container mx-auto px-4 lg:px-8 animate-fade-in">
+            <QuickAddBar />
+          </div>
         )}
 
         {/* Filter Chips + Toolbar */}
@@ -445,6 +484,74 @@ const Dashboard = () => {
 
         {/* Rails */}
         <div className="space-y-4 animate-fade-in">
+          {/* Up Next — upcoming scheduled items */}
+          {upcomingSchedules.length > 0 && (
+            <section className="py-4">
+              <div className="container mx-auto px-4 lg:px-8 mb-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-semibold flex items-center gap-2">
+                      <CalendarClock className="w-5 h-5 text-wm-gold" />
+                      Up Next
+                    </h2>
+                    <p className="text-sm text-muted-foreground mt-0.5">Scheduled & coming up</p>
+                  </div>
+                  <Link to="/calendar" className="text-xs text-primary hover:underline">
+                    View calendar
+                  </Link>
+                </div>
+              </div>
+              <div className="flex gap-3 overflow-x-auto px-4 lg:px-8 pb-2" style={{ scrollbarWidth: "none" }}>
+                {upcomingSchedules.map((sched) => {
+                  const bm = sched.bookmarks;
+                  const scheduledDate = new Date(sched.scheduled_for);
+                  const isToday = scheduledDate.toDateString() === new Date().toDateString();
+                  return (
+                    <Link
+                      key={sched.id}
+                      to={`/b/${bm.id}`}
+                      className="shrink-0 w-56 bg-wm-surface border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-all group"
+                    >
+                      {/* Poster strip */}
+                      <div className="relative h-28 bg-muted overflow-hidden">
+                        {bm.backdrop_url || bm.poster_url ? (
+                          <img
+                            src={bm.backdrop_url || bm.poster_url || ""}
+                            alt={bm.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <span className="text-3xl font-bold text-muted-foreground">{bm.title.charAt(0)}</span>
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
+                        {/* Time badge */}
+                        <div className={cn(
+                          "absolute bottom-2 left-2 text-[10px] font-semibold px-2 py-0.5 rounded-full",
+                          isToday ? "bg-primary text-primary-foreground" : "bg-wm-gold text-background"
+                        )}>
+                          {isToday ? `Today ${format(scheduledDate, "h:mm a")}` : format(scheduledDate, "EEE, MMM d")}
+                        </div>
+                      </div>
+                      {/* Info */}
+                      <div className="p-3">
+                        <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
+                          {bm.title}
+                        </p>
+                        {bm.runtime_minutes && (
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            {bm.runtime_minutes < 60 ? `${bm.runtime_minutes}m` : `${Math.floor(bm.runtime_minutes / 60)}h ${bm.runtime_minutes % 60}m`}
+                          </p>
+                        )}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
           {continueWatching.length > 0 && (
             <Rail
               title="Continue Watching"
@@ -463,8 +570,8 @@ const Dashboard = () => {
 
           {backlog.length > 0 && (
             <Rail
-              title="Your Backlog"
-              subtitle="Ready to watch"
+              title="Saved for Later"
+              subtitle="Your backlog — ready to watch"
               bookmarks={backlog}
               onSchedule={handleSchedule}
               onMarkDone={handleMarkDone}
@@ -519,8 +626,8 @@ const Dashboard = () => {
           {hasActiveFilters && filteredBookmarks.length === 0 && (
             <div className="container mx-auto px-4 lg:px-8 text-center py-16">
               <p className="text-muted-foreground mb-4">No bookmarks match your filters</p>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => {
                   setFilterType("all");
                   setFilterStatus("all");
@@ -531,13 +638,10 @@ const Dashboard = () => {
             </div>
           )}
 
-          {/* Empty state */}
-          {bookmarks.length === 0 && (
-            <div className="container mx-auto px-4 lg:px-8 text-center py-16">
-              <p className="text-muted-foreground mb-4">Your watchlist is empty</p>
-              <Button onClick={() => window.location.href = '/new'}>
-                Add your first bookmark
-              </Button>
+          {/* Empty state — new user */}
+          {isEmpty && (
+            <div className="container mx-auto px-4 lg:px-8">
+              <EmptyStateGuide />
             </div>
           )}
         </div>

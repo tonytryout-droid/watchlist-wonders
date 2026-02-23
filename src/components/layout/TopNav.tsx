@@ -1,12 +1,15 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Search, Bell, Calendar, Menu, X, Plus, Sparkles, LogOut } from "lucide-react";
+import { Search, Bell, Calendar, Plus, Sparkles, LogOut, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAvatar } from "@/hooks/useAvatar";
 import { useToast } from "@/hooks/use-toast";
+import { QuickAddBar } from "@/components/QuickAddBar";
+import { BottomNav } from "@/components/layout/BottomNav";
 
 interface TopNavProps {
   notificationCount?: number;
@@ -15,7 +18,7 @@ interface TopNavProps {
 
 export function TopNav({ notificationCount = 0, onSearchClick }: TopNavProps) {
   const [scrolled, setScrolled] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [addPopoverOpen, setAddPopoverOpen] = useState(false);
   const location = useLocation();
   const { user, signOut } = useAuth();
   const { avatarUrl } = useAvatar();
@@ -25,187 +28,169 @@ export function TopNav({ notificationCount = 0, onSearchClick }: TopNavProps) {
   const handleSignOut = async () => {
     try {
       await signOut();
-      toast({
-        title: "Signed out",
-        description: "You have been successfully signed out.",
-      });
+      toast({ title: "Signed out", description: "You have been successfully signed out." });
       navigate("/auth");
     } catch {
-      toast({
-        title: "Error signing out",
-        description: "Something went wrong. Please try again.",
-        variant: "destructive",
-      });
+      toast({ title: "Error signing out", description: "Something went wrong.", variant: "destructive" });
     }
   };
 
   useEffect(() => {
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 20);
-    };
+    const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   const navLinks = [
-    { href: "/dashboard", label: "Home" },
-    { href: "/tonight", label: "Tonight", icon: Sparkles },
-    { href: "/plans", label: "Plans" },
-    { href: "/calendar", label: "Calendar", icon: Calendar },
+    { href: "/dashboard",  label: "Home" },
+    { href: "/tonight",    label: "Tonight", icon: Sparkles },
+    { href: "/plans",      label: "Plans" },
+    { href: "/calendar",   label: "Calendar", icon: Calendar },
   ];
 
+  const handleMobileAdd = () => {
+    navigate("/new");
+  };
+
   return (
-    <nav
-      className={cn(
-        "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
-        scrolled ? "bg-background/95 backdrop-blur-md border-b border-border" : "bg-gradient-to-b from-background to-transparent"
-      )}
-    >
-      <div className="container mx-auto px-4 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-2">
-            <span className="text-2xl font-bold text-primary">W</span>
-            <span className="text-xl font-semibold text-foreground hidden sm:inline">WatchMarks</span>
-          </Link>
-
-          {/* Desktop Nav Links */}
-          <div className="hidden md:flex items-center gap-6">
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                to={link.href}
-                className={cn(
-                  "flex items-center gap-1.5 text-sm font-medium transition-colors hover:text-foreground",
-                  location.pathname === link.href ? "text-foreground" : "text-muted-foreground"
-                )}
-              >
-                {link.icon && <link.icon className="w-4 h-4" />}
-                {link.label}
-              </Link>
-            ))}
-          </div>
-
-          {/* Right Actions */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              onClick={onSearchClick}
-              className="text-muted-foreground hover:text-foreground gap-2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              aria-label="Search bookmarks (Ctrl+K or Cmd+K)"
-            >
-              <Search className="w-5 h-5" />
-              <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border border-border bg-muted px-1.5 text-[10px] font-medium text-muted-foreground">
-                <span className="text-xs">⌘</span>K
-              </kbd>
-            </Button>
-
-            <Link to="/new">
-              <Button variant="default" size="sm" className="hidden sm:flex items-center gap-1.5">
-                <Plus className="w-4 h-4" />
-                Add
-              </Button>
+    <>
+      <nav
+        className={cn(
+          "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
+          scrolled
+            ? "bg-background/95 backdrop-blur-md border-b border-border"
+            : "bg-gradient-to-b from-background to-transparent"
+        )}
+      >
+        <div className="container mx-auto px-4 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            {/* Logo */}
+            <Link to="/" className="flex items-center gap-2">
+              <span className="text-2xl font-bold text-primary">W</span>
+              <span className="text-xl font-semibold hidden sm:inline">WatchMarks</span>
             </Link>
 
-            <Link to="/notifications" className="relative">
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                aria-label={notificationCount > 0 ? `${notificationCount} unread notifications` : "Notifications"}
-              >
-                <Bell className="w-5 h-5" />
-                {notificationCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-primary text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center" aria-hidden="true">
-                    {notificationCount > 9 ? "9+" : notificationCount}
-                  </span>
-                )}
-              </Button>
-            </Link>
-
-            {user ? (
-              <div className="flex items-center gap-2">
-                <Link to="/settings">
-                  <Avatar className="h-8 w-8 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all">
-                    <AvatarImage src={avatarUrl || undefined} alt="Profile" />
-                    <AvatarFallback className="bg-primary/10 text-primary text-sm">
-                      {user.email?.charAt(0).toUpperCase() || 'U'}
-                    </AvatarFallback>
-                  </Avatar>
-                </Link>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={handleSignOut}
-                  className="text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  aria-label="Sign out"
-                >
-                  <LogOut className="w-5 h-5" />
-                </Button>
-              </div>
-            ) : (
-              <Link to="/auth" className="hidden sm:block">
-                <Button variant="secondary" size="sm">
-                  Sign In
-                </Button>
-              </Link>
-            )}
-
-            {/* Mobile Menu Toggle */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="md:hidden text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
-              aria-expanded={mobileMenuOpen}
-            >
-              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </Button>
-          </div>
-        </div>
-
-        {/* Mobile Menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden py-4 border-t border-border animate-in slide-in-from-top-2">
-            <div className="flex flex-col gap-2">
+            {/* Desktop Nav Links */}
+            <div className="hidden md:flex items-center gap-6">
               {navLinks.map((link) => (
                 <Link
                   key={link.href}
                   to={link.href}
-                  onClick={() => setMobileMenuOpen(false)}
                   className={cn(
-                    "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                    location.pathname === link.href
-                      ? "bg-secondary text-foreground"
-                      : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    "flex items-center gap-1.5 text-sm font-medium transition-colors hover:text-foreground",
+                    location.pathname === link.href ? "text-foreground" : "text-muted-foreground"
                   )}
                 >
                   {link.icon && <link.icon className="w-4 h-4" />}
                   {link.label}
                 </Link>
               ))}
-              <Link
-                to="/new"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-primary"
+            </div>
+
+            {/* Right Actions */}
+            <div className="flex items-center gap-2">
+              {/* Search */}
+              <Button
+                variant="ghost"
+                onClick={onSearchClick}
+                className="text-muted-foreground hover:text-foreground gap-2"
+                aria-label="Search (⌘K)"
               >
-                <Plus className="w-4 h-4" />
-                Add Bookmark
-              </Link>
-              {!user && (
-                <Link
-                  to="/auth"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+                <Search className="w-5 h-5" />
+                <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border border-border bg-muted px-1.5 text-[10px] font-medium text-muted-foreground">
+                  <span className="text-xs">⌘</span>K
+                </kbd>
+              </Button>
+
+              {/* Add button — desktop: popover with QuickAddBar */}
+              <Popover open={addPopoverOpen} onOpenChange={setAddPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="default" size="sm" className="hidden sm:flex items-center gap-1.5">
+                    <Plus className="w-4 h-4" />
+                    Add
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-96 p-4" sideOffset={8}>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold">Quick Add</p>
+                      <button
+                        type="button"
+                        onClick={() => setAddPopoverOpen(false)}
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <QuickAddBar />
+                    <div className="text-center pt-1">
+                      <Link
+                        to="/new"
+                        onClick={() => setAddPopoverOpen(false)}
+                        className="text-xs text-primary hover:underline"
+                      >
+                        Open full add page →
+                      </Link>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              {/* Notifications */}
+              <Link to="/notifications" className="relative">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-muted-foreground hover:text-foreground"
+                  aria-label={notificationCount > 0 ? `${notificationCount} unread notifications` : "Notifications"}
                 >
-                  Sign In
+                  <Bell className="w-5 h-5" />
+                  {notificationCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-primary text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center">
+                      {notificationCount > 9 ? "9+" : notificationCount}
+                    </span>
+                  )}
+                </Button>
+              </Link>
+
+              {/* Avatar + Sign out */}
+              {user ? (
+                <div className="flex items-center gap-2">
+                  <Link to="/settings">
+                    <Avatar className="h-8 w-8 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all">
+                      <AvatarImage src={avatarUrl || undefined} alt="Profile" />
+                      <AvatarFallback className="bg-primary/10 text-primary text-sm">
+                        {user.email?.charAt(0).toUpperCase() || "U"}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Link>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleSignOut}
+                    className="text-muted-foreground hover:text-foreground hidden md:flex"
+                    aria-label="Sign out"
+                  >
+                    <LogOut className="w-5 h-5" />
+                  </Button>
+                </div>
+              ) : (
+                <Link to="/auth" className="hidden sm:block">
+                  <Button variant="secondary" size="sm">Sign In</Button>
                 </Link>
               )}
             </div>
           </div>
-        )}
-      </div>
-    </nav>
+        </div>
+      </nav>
+
+      {/* Mobile Bottom Nav */}
+      {user && (
+        <BottomNav
+          onSearchClick={onSearchClick}
+          onAddClick={handleMobileAdd}
+        />
+      )}
+    </>
   );
 }
