@@ -3,9 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link as LinkIcon, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn, detectProvider } from "@/lib/utils";
+import { cn, detectProvider, extractYouTubeVideoId } from "@/lib/utils";
 import { bookmarkService } from "@/services/bookmarks";
 import { ConfirmMetadataDialog, type ConfirmMetadataPayload } from "@/components/bookmarks/ConfirmMetadataDialog";
+import { enrichWithYouTube, enrichWithTMDB, extractYouTubeVideoId as enrichExtractYT } from "@/services/enrichment";
 import { toast } from "sonner";
 import type { Bookmark } from "@/types/database";
 
@@ -78,57 +79,117 @@ export function QuickAddBar({ className }: QuickAddBarProps) {
     const trimmed = url.trim();
     if (!trimmed) return;
 
-    const enrichUrl = import.meta.env.VITE_ENRICH_URL;
-    if (!enrichUrl) {
-      // No enrichment configured — open manual confirm dialog
-      const dp = detectProvider(trimmed);
-      setConfirmInitial({
-        url: trimmed,
-        provider: dp,
-        type: dp === "youtube" ? "video" : "movie",
-      });
-      setConfirmOpen(true);
-      return;
-    }
-
     setIsEnriching(true);
     const dp = detectProvider(trimmed);
 
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
-      const res = await fetch(enrichUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: trimmed }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
+      // Try remote enrichment first if configured
+      const enrichUrl = import.meta.env.VITE_ENRICH_URL;
+      if (enrichUrl) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 15000);
+          const res = await fetch(enrichUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: trimmed }),
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
 
-      if (!res.ok) throw new Error(`Enrich failed: ${res.status}`);
+          if (res.ok) {
+            const data = await res.json();
+            const resolvedProvider = data.provider === "unknown" ? dp : data.provider;
 
-      const data = await res.json();
-      const resolvedProvider = data.provider === "unknown" ? dp : data.provider;
+            setConfirmInitial({
+              url: trimmed,
+              provider: resolvedProvider,
+              title: data.title,
+              posterUrl: data.posterUrl,
+              runtimeMinutes: data.runtimeMinutes ?? null,
+              type: dp === "youtube" ? "video" : "movie",
+              blocked: data.blocked,
+              debugMessage: data.error?.message,
+            });
+            setConfirmOpen(true);
+            return;
+          }
+        } catch (err) {
+          // Remote enrichment failed, fall through to local enrichment
+          console.warn("Remote enrichment failed, falling back to local enrichment", err);
+        }
+      }
 
-      setConfirmInitial({
-        url: trimmed,
-        provider: resolvedProvider,
-        title: data.title,
-        posterUrl: data.posterUrl,
-        runtimeMinutes: data.runtimeMinutes ?? null,
-        type: dp === "youtube" ? "video" : "movie",
-        blocked: data.blocked,
-        debugMessage: data.error?.message,
-      });
-      setConfirmOpen(true);
-    } catch {
-      // Fallback to manual entry
+      // Fallback to local enrichment
+      let enrichedData: {
+        title?: string;
+        posterUrl?: string;
+        runtimeMinutes?: number | null;
+      } = {};
+
+      if (dp === "youtube") {
+        // Try YouTube enrichment
+        const videoId = enrichExtractYT(trimmed);
+        if (videoId) {
+          try {
+            const ytData = await enrichWithYouTube(videoId);
+            if (ytData) {
+              enrichedData = {
+                title: ytData.title,
+                posterUrl: ytData.thumbnail_url || undefined,
+                runtimeMinutes: ytData.duration_minutes,
+              };
+            }
+          } catch (err) {
+            console.warn("YouTube enrichment failed:", err);
+          }
+        }
+      } else if (dp === "netflix" || dp === "imdb" || dp === "instagram" || dp === "facebook" || dp === "x") {
+        // For other providers, try to extract title from URL or use TMDB
+        let possibleTitle: string | undefined;
+        
+        // Try to extract from URL patterns
+        if (dp === "imdb") {
+          // IMDb URL patterns: /title/tt1234567 or ?title=Movie%20Name
+          const idMatch = trimmed.match(/\/title\/(tt\d+)/);
+          if (idMatch) {
+            possibleTitle = idMatch[1];
+          }
+        } else if (dp === "netflix") {
+          // Netflix URL patterns: /watch/1234567 or contains show/movie name
+          possibleTitle = trimmed.match(/\/watch\/(\d+)|\/[a-z-]+\/([0-9]+)|title=([^&]*)/i)?.[3];
+        } else if (dp === "instagram" || dp === "facebook" || dp === "x") {
+          // Social media - try to extract video title from URL or use domain
+          // These typically don't have extractable titles, so we'll let user fill it in
+          possibleTitle = undefined;
+        }
+        
+        // Try TMDB enrichment if we have a potential title
+        if (possibleTitle) {
+          try {
+            const tmdbData = await enrichWithTMDB(possibleTitle, "movie");
+            if (tmdbData) {
+              enrichedData = {
+                title: possibleTitle,
+                posterUrl: tmdbData.poster_url || undefined,
+                runtimeMinutes: null,
+              };
+            }
+          } catch (err) {
+            console.warn("TMDB enrichment failed:", err);
+          }
+        }
+      }
+
       setConfirmInitial({
         url: trimmed,
         provider: dp,
+        title: enrichedData.title,
+        posterUrl: enrichedData.posterUrl,
+        runtimeMinutes: enrichedData.runtimeMinutes,
         type: dp === "youtube" ? "video" : "movie",
         blocked: false,
-        debugMessage: "Could not fetch details automatically.",
+        debugMessage: enrichedData.title ? undefined : "Could not fetch details automatically.",
       });
       setConfirmOpen(true);
     } finally {

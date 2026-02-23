@@ -1,19 +1,19 @@
 # WatchMarks - Your Personal Watchlist Manager
 
-A Netflix-style watchlist manager built with React, TypeScript, Supabase, and shadcn/ui. Organize movies, series, videos, and content with powerful scheduling, social features, and metadata enrichment.
+A Netflix-style watchlist manager built with React, TypeScript, Firebase, and shadcn/ui. Organize movies, series, videos, and content with powerful scheduling, social features, and metadata enrichment.
 
 ## 🚀 Features Implemented
 
 ### ✅ Phase 1: Core Infrastructure
-- **Complete Supabase Database Schema** with 13+ tables
-- **Row Level Security (RLS)** policies for all tables
-- **Storage buckets** configuration (attachments, avatars, posters)
-- **Type-safe database layer** with generated TypeScript types
+- **Complete Firebase Database Schema** with Firestore collections
+- **Security Rules** for all Firestore collections
+- **Firebase Storage** buckets configuration (attachments, avatars, posters)
+- **Type-safe database layer** with TypeScript types
 - **Service layer architecture** for all major features
 - **React Query** integration for data fetching and caching
 
 ### ✅ Phase 2: Authentication & User Management
-- **Supabase Auth** integration (email/password)
+- **Firebase Auth** integration (email/password)
 - **Protected routes** with automatic redirects
 - **Session persistence** across page reloads
 - **Auth context** providing user state throughout the app
@@ -21,7 +21,7 @@ A Netflix-style watchlist manager built with React, TypeScript, Supabase, and sh
 - **User profiles** with automatic creation on signup
 
 ### ✅ Phase 3: Bookmark Management (Partial)
-- **Dashboard** fetching real data from Supabase
+- **Dashboard** fetching real data from Firestore
 - **Create bookmarks** with full metadata
 - **Bookmark grouping** by status (Backlog, Watching, Done)
 - **Mood-based organization** with mood tags
@@ -33,7 +33,7 @@ A Netflix-style watchlist manager built with React, TypeScript, Supabase, and sh
 ### Tech Stack
 - **Frontend**: React 18 + TypeScript + Vite
 - **UI Components**: shadcn/ui + Radix UI + Tailwind CSS
-- **Backend**: Supabase (PostgreSQL + Auth + Storage + Realtime)
+- **Backend**: Firebase (Firestore + Auth + Storage + Hosting + Cloud Functions)
 - **State Management**: React Query (TanStack Query)
 - **Routing**: React Router v6
 
@@ -49,7 +49,7 @@ src/
 │   └── AuthContext.tsx # Authentication state management
 ├── hooks/              # Custom React hooks
 ├── lib/                # Utility functions
-│   ├── supabase.ts    # Supabase client setup
+│   ├── firebase.ts    # Firebase client setup
 │   └── utils.ts       # Helper functions
 ├── pages/              # Page components
 │   ├── Auth.tsx       # Authentication page
@@ -63,15 +63,22 @@ src/
 │   ├── notifications.ts # Notification services
 │   └── watchPlans.ts  # Watch plan services
 └── types/              # TypeScript type definitions
-    ├── database.ts    # Application types
-    └── supabase.ts    # Generated Supabase types
+    └── database.ts    # Application types
+    
+functions/             # Firebase Cloud Functions
+├── src/
+│   ├── enrich.ts      # Metadata enrichment function
+│   └── index.ts       # Function exports
+├── package.json
+└── README.md          # Functions documentation
 ```
 
 ## 🔧 Setup Instructions
 
 ### Prerequisites
 - Node.js 18+ and npm
-- A Supabase account (free tier works)
+- A Firebase account (free tier works)
+- Google Cloud account (for API keys)
 
 ### 1. Clone and Install
 ```bash
@@ -80,22 +87,32 @@ cd watchlist-wonders
 npm install
 ```
 
-### 2. Set Up Supabase
-Follow the detailed guide in `supabase/README.md`:
-1. Create a Supabase project
-2. Run the migration: `supabase/migrations/001_initial_schema.sql`
-3. Create storage buckets (attachments, avatars, posters)
-4. Configure storage policies
+### 2. Set Up Firebase
+1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
+2. Enable Firestore Database
+3. Enable Authentication (Email/Password)
+4. Set up Storage buckets
+5. Deploy Cloud Functions for metadata enrichment
+
+For detailed instructions, see `functions/README.md`
 
 ### 3. Environment Variables
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and add your Supabase credentials:
+Edit `.env` and add your Firebase credentials:
 ```env
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_FIREBASE_API_KEY=your-api-key
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project-id
+VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
+VITE_FIREBASE_APP_ID=your-app-id
+VITE_FIREBASE_MEASUREMENT_ID=your-measurement-id
+VITE_ENRICH_URL=https://us-central1-your-project-id.cloudfunctions.net/enrich
+VITE_YOUTUBE_API_KEY=optional-for-local-fallback
+VITE_TMDB_API_KEY=optional-for-local-fallback
 ```
 
 ### 4. Run Development Server
@@ -107,21 +124,20 @@ Visit `http://localhost:5173` and create an account!
 
 ## 📊 Database Schema
 
-The database includes the following main tables:
+The Firestore database includes the following main collections:
 - **bookmarks** - Core content storage
 - **attachments** - File attachments for bookmarks
 - **schedules** - One-time and recurring schedules
 - **schedule_occurrences** - Generated schedule instances
 - **notifications** - User notifications
 - **watch_plans** - Watch planning and organization
-- **watch_plan_bookmarks** - Junction table for plans
+- **watch_plan_bookmarks** - Junction collection for plans
 - **public_profiles** - User profile information
 - **user_follows** - Social graph
 - **sharing_links** - Public sharing functionality
 - **enrich_cache** - URL metadata cache
-- **bookmark_events** - Audit trail
 
-See `supabase/migrations/001_initial_schema.sql` for the complete schema.
+See service Layer in `src/services/` for collection structure details.
 
 ## 🎯 Roadmap
 
@@ -168,11 +184,12 @@ See `supabase/migrations/001_initial_schema.sql` for the complete schema.
 
 ## 🔐 Security
 
-- **Row Level Security (RLS)** enabled on all tables
+- **Firestore Security Rules** enforced on all collections
 - **User isolation** - users can only access their own data
-- **Secure authentication** via Supabase Auth
+- **Secure authentication** via Firebase Auth
 - **Storage policies** - files scoped to user folders
 - **Type-safe queries** with TypeScript
+- **Cloud Functions** with proper CORS and validation
 
 ## 📝 Available Scripts
 
@@ -183,7 +200,7 @@ See `supabase/migrations/001_initial_schema.sql` for the complete schema.
 
 ## 🤝 Contributing
 
-This is a demonstration project showcasing Supabase integration. Feel free to fork and customize!
+This is a demonstration project showcasing Firebase integration. Feel free to fork and customize!
 
 ## 📄 License
 
