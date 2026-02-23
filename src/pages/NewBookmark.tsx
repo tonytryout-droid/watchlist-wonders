@@ -1,19 +1,28 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Link as LinkIcon, Loader2, Upload, X, Plus, Clock, Tag, FileText, Image, Film, Tv, Play } from "lucide-react";
+import {
+  ArrowLeft, Link as LinkIcon, Loader2, Upload, X, Plus, Clock,
+  Tag, FileText, Film, Tv, Play, ChevronRight, Sparkles,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
-import { detectProvider, getMoodEmoji } from "@/lib/utils";
+import { detectProvider, getMoodEmoji, cn } from "@/lib/utils";
 import { bookmarkService } from "@/services/bookmarks";
 import { attachmentService } from "@/services/attachments";
 import { enrichWithTMDB, enrichWithYouTube, extractYouTubeVideoId } from "@/services/enrichment";
 import { ConfirmMetadataDialog, type ConfirmMetadataPayload } from "@/components/bookmarks/ConfirmMetadataDialog";
+import { QuickScheduleSheet } from "@/components/schedules/QuickScheduleSheet";
 import type { Bookmark } from "@/types/database";
 
 const MOOD_OPTIONS = [
@@ -24,21 +33,51 @@ const MOOD_OPTIONS = [
 ];
 
 const TYPE_OPTIONS: { value: Bookmark["type"]; label: string; icon: React.ElementType }[] = [
-  { value: "movie", label: "Movie", icon: Film },
-  { value: "series", label: "Series", icon: Tv },
-  { value: "episode", label: "Episode", icon: Play },
-  { value: "video", label: "Video", icon: Play },
-  { value: "doc", label: "Document", icon: FileText },
-  { value: "other", label: "Other", icon: LinkIcon },
+  { value: "movie",   label: "Movie",    icon: Film },
+  { value: "series",  label: "Series",   icon: Tv },
+  { value: "episode", label: "Episode",  icon: Play },
+  { value: "video",   label: "Video",    icon: Play },
+  { value: "doc",     label: "Document", icon: FileText },
+  { value: "other",   label: "Other",    icon: LinkIcon },
 ];
+
+const PROVIDER_LABELS: Record<string, string> = {
+  youtube:   "YouTube",
+  instagram: "Instagram",
+  facebook:  "Facebook",
+  x:         "X / Twitter",
+  netflix:   "Netflix",
+  imdb:      "IMDB",
+  generic:   "Website",
+};
+
+const PROVIDER_COLORS: Record<string, string> = {
+  youtube:   "bg-red-600",
+  instagram: "bg-pink-500",
+  facebook:  "bg-blue-600",
+  x:         "bg-neutral-700",
+  netflix:   "bg-red-700",
+  imdb:      "bg-yellow-500",
+  generic:   "bg-muted",
+};
+
+type Step = "paste" | "confirm";
 
 const NewBookmark = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
+  // Step control
+  const [step, setStep] = useState<Step>("paste");
+
+  // URL enrichment state
   const [url, setUrl] = useState("");
   const [isEnriching, setIsEnriching] = useState(false);
+  const [enrichError, setEnrichError] = useState<string | null>(null);
+
+  // Detected provider
+  const detectedProvider = url.trim() ? detectProvider(url.trim()) : null;
 
   // Form state
   const [title, setTitle] = useState("");
@@ -53,6 +92,7 @@ const NewBookmark = () => {
   const [selectedMoods, setSelectedMoods] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
+  const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
 
   // Attachment state
   const [attachments, setAttachments] = useState<File[]>([]);
@@ -62,11 +102,14 @@ const NewBookmark = () => {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmInitial, setConfirmInitial] = useState<ConfirmMetadataPayload>({ url: "" });
 
+  // Schedule after save
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [savedBookmark, setSavedBookmark] = useState<Bookmark | null>(null);
+
   // Create bookmark mutation
   const createBookmarkMutation = useMutation({
-    mutationFn: async (bookmarkData: any) => {
+    mutationFn: async (bookmarkData: Parameters<typeof bookmarkService.createBookmark>[0]) => {
       const bookmark = await bookmarkService.createBookmark(bookmarkData);
-      // Upload attachments if any
       if (attachments.length > 0) {
         setUploadProgress(0);
         for (let i = 0; i < attachments.length; i++) {
@@ -76,93 +119,76 @@ const NewBookmark = () => {
       }
       return bookmark;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
+    onSuccess: (bookmark) => {
+      queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
       setUploadProgress(0);
       toast({
-        title: "Bookmark saved!",
-        description: `"${title}" has been added to your library.`,
+        title: "Saved to watchlist!",
+        description: `"${bookmark.title}" added successfully.`,
       });
-      navigate("/");
+      // Offer to schedule
+      setSavedBookmark(bookmark);
+      setScheduleOpen(true);
     },
     onError: (error: any) => {
       setUploadProgress(0);
       toast({
-        title: "Error saving bookmark",
-        description: error.message || "Something went wrong. Please try again.",
+        title: "Error saving",
+        description: error.message || "Something went wrong.",
         variant: "destructive",
       });
     },
   });
 
-  const handleUrlPaste = async () => {
-    if (!url.trim()) return;
+  // ── Step 1: Fetch enrichment ─────────────────────────────────────
+  const handleFetch = async () => {
+    const trimmed = url.trim();
+    if (!trimmed) return;
 
+    setEnrichError(null);
     const enrichUrl = import.meta.env.VITE_ENRICH_URL;
+
     if (!enrichUrl) {
-      toast({
-        title: "Configuration error",
-        description: "Enrichment service URL is not configured.",
-        variant: "destructive",
-      });
+      const dp = detectProvider(trimmed);
+      setConfirmInitial({ url: trimmed, provider: dp, type: dp === "youtube" ? "video" : "movie" });
+      setConfirmOpen(true);
       return;
     }
 
     setIsEnriching(true);
-    const detectedProvider = detectProvider(url);
-    setProvider(detectedProvider);
+    const dp = detectProvider(trimmed);
+    setProvider(dp);
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
-      const res = await fetch(
-        enrichUrl,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: url.trim() }),
-          signal: controller.signal,
-        },
-      );
+      const res = await fetch(enrichUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: trimmed }),
+        signal: controller.signal,
+      });
       clearTimeout(timeoutId);
 
-      type EnrichResult = {
-        ok: boolean;
-        provider: Bookmark["provider"] | "unknown";
-        canonicalUrl: string;
-        title?: string;
-        posterUrl?: string;
-        runtimeMinutes?: number | null;
-        metadata?: Record<string, unknown>;
-        blocked?: boolean;
-        error?: { message: string; step?: string; status?: number };
-      };
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
 
-      if (!res.ok) {
-        throw new Error(`Enrich request failed: ${res.status}`);
-      }
-
-      const data: EnrichResult = await res.json();
-
-      const resolvedProvider = data.provider === "unknown" ? detectedProvider : data.provider;
+      const data = await res.json();
+      const resolvedProvider = data.provider === "unknown" ? dp : data.provider;
       setProvider(resolvedProvider);
       setCanonicalUrl(data.canonicalUrl || null);
       setMetadata(data.metadata || {});
 
-      // Check if enrichment failed or returned partial data
       const hasTitle = data.ok && data.title;
-      const hasPoster = data.ok && data.posterUrl;
 
       if (!data.ok || !hasTitle) {
-        // Open confirm dialog for user to fill missing data
         setConfirmInitial({
-          url: url.trim(),
+          url: trimmed,
           provider: resolvedProvider,
           title: data.title,
           posterUrl: data.posterUrl,
           runtimeMinutes: data.runtimeMinutes,
-          type: detectedProvider === "youtube" ? "video" : "movie",
+          type: dp === "youtube" ? "video" : "movie",
           blocked: data.blocked,
           debugMessage: data.error?.message,
         });
@@ -170,68 +196,36 @@ const NewBookmark = () => {
         return;
       }
 
-      // Auto-fill form with successful enrichment
-      const ogMetadata = data.metadata?.og as
-        | {
-            title?: string;
-            image?: string;
-            description?: string;
-            siteName?: string;
-            type?: string;
-          }
-        | undefined;
+      const ogMetadata = data.metadata?.og as { title?: string; image?: string; description?: string; type?: string } | undefined;
 
-      if (!title.trim() && data.title) {
-        setTitle(data.title);
-      }
+      if (!title.trim() && data.title) setTitle(data.title);
+      if (!notes.trim() && ogMetadata?.description) setNotes(ogMetadata.description);
+      if (!posterUrl.trim() && data.posterUrl) setPosterUrl(data.posterUrl);
 
-      if (!notes.trim() && ogMetadata?.description) {
-        setNotes(ogMetadata.description);
-      }
+      // Detect type from metadata
+      if (ogMetadata?.type?.includes("video")) setType("video");
+      else if (ogMetadata?.type?.includes("episode")) setType("episode");
+      else if (ogMetadata?.type?.includes("movie")) setType("movie");
+      else if (dp === "youtube") setType("video");
 
-      if (!posterUrl.trim() && data.posterUrl) {
-        setPosterUrl(data.posterUrl);
-      }
-
-      if (ogMetadata?.type?.includes("video")) {
-        setType("video");
-      } else if (ogMetadata?.type?.includes("episode")) {
-        setType("episode");
-      } else if (ogMetadata?.type?.includes("movie")) {
-        setType("movie");
-      } else if (detectedProvider === "youtube") {
-        setType("video");
-      }
-
-      // Secondary enrichment: TMDB for movies/series, YouTube for videos
       const resolvedType =
         ogMetadata?.type?.includes("movie") ? "movie"
         : ogMetadata?.type?.includes("episode") ? "series"
-        : detectedProvider === "youtube" ? "video"
+        : dp === "youtube" ? "video"
         : type;
 
+      // Secondary enrichment
       if ((resolvedType === "movie" || resolvedType === "series") && data.title) {
         try {
-          const tmdb = await enrichWithTMDB(
-            data.title,
-            resolvedType === "series" ? "tv" : "movie",
-            null,
-          );
+          const tmdb = await enrichWithTMDB(data.title, resolvedType === "series" ? "tv" : "movie", null);
           if (tmdb) {
             if (!posterUrl.trim() && tmdb.poster_url) setPosterUrl(tmdb.poster_url);
             if (tmdb.release_year && !releaseYear) setReleaseYear(tmdb.release_year);
-            setMetadata((prev) => ({
-              ...prev,
-              tmdb_id: tmdb.tmdb_id,
-              vote_average: tmdb.vote_average,
-              backdrop_url: tmdb.backdrop_url,
-            }));
+            setMetadata((prev) => ({ ...prev, tmdb_id: tmdb.tmdb_id, vote_average: tmdb.vote_average, backdrop_url: tmdb.backdrop_url }));
           }
-        } catch (err) {
-          console.error('TMDB enrichment failed:', err);
-        }
-      } else if (resolvedType === "video" && detectedProvider === "youtube") {
-        const videoId = extractYouTubeVideoId(url.trim());
+        } catch { /* non-fatal */ }
+      } else if (resolvedType === "video" && dp === "youtube") {
+        const videoId = extractYouTubeVideoId(trimmed);
         if (videoId) {
           try {
             const ytData = await enrichWithYouTube(videoId);
@@ -239,31 +233,18 @@ const NewBookmark = () => {
               if (!title.trim() && ytData.title) setTitle(ytData.title);
               if (!posterUrl.trim() && ytData.thumbnail_url) setPosterUrl(ytData.thumbnail_url);
               if (!runtimeMinutes && ytData.duration_minutes) setRuntimeMinutes(ytData.duration_minutes);
-              setMetadata((prev) => ({
-                ...prev,
-                channel_name: ytData.channel_name,
-              }));
+              setMetadata((prev) => ({ ...prev, channel_name: ytData.channel_name }));
             }
-          } catch (err) {
-            console.error('YouTube enrichment failed:', err);
-          }
+          } catch { /* non-fatal */ }
         }
       }
 
-      toast({
-        title: "Details fetched",
-        description: `Loaded metadata from ${ogMetadata?.siteName || detectedProvider}.`,
-      });
+      // Advance to step 2
+      setStep("confirm");
     } catch (error: any) {
       clearTimeout(timeoutId);
-      // On complete failure, open confirm dialog
-      setConfirmInitial({
-        url: url.trim(),
-        provider: detectedProvider,
-        type: detectedProvider === "youtube" ? "video" : "movie",
-        blocked: false,
-        debugMessage: error?.message || "Unable to fetch metadata",
-      });
+      const dp2 = detectProvider(trimmed);
+      setConfirmInitial({ url: trimmed, provider: dp2, type: dp2 === "youtube" ? "video" : "movie", debugMessage: error?.message });
       setConfirmOpen(true);
     } finally {
       setIsEnriching(false);
@@ -271,28 +252,18 @@ const NewBookmark = () => {
   };
 
   const handleConfirmMetadata = (data: {
-    url: string;
-    provider?: string;
-    title: string;
-    posterUrl?: string;
-    runtimeMinutes: number | null;
-    type: Bookmark["type"];
+    url: string; provider?: string; title: string;
+    posterUrl?: string; runtimeMinutes: number | null; type: Bookmark["type"];
   }) => {
     setTitle(data.title);
     if (data.posterUrl) setPosterUrl(data.posterUrl);
     if (data.runtimeMinutes) setRuntimeMinutes(data.runtimeMinutes);
     setType(data.type);
-    
-    toast({
-      title: "Details confirmed",
-      description: "You can now save the bookmark or add more details.",
-    });
+    setStep("confirm");
   };
 
   const handleMoodToggle = (mood: string) => {
-    setSelectedMoods((prev) =>
-      prev.includes(mood) ? prev.filter((m) => m !== mood) : [...prev, mood]
-    );
+    setSelectedMoods((prev) => prev.includes(mood) ? prev.filter((m) => m !== mood) : [...prev, mood]);
   };
 
   const handleAddTag = () => {
@@ -302,31 +273,12 @@ const NewBookmark = () => {
     }
   };
 
-  const handleRemoveTag = (tag: string) => {
-    setTags(tags.filter((t) => t !== tag));
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    setAttachments([...attachments, ...files]);
-  };
-
-  const handleRemoveAttachment = (index: number) => {
-    setAttachments(attachments.filter((_, i) => i !== index));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!title.trim()) {
-      toast({
-        title: "Title required",
-        description: "Please enter a title for this bookmark.",
-        variant: "destructive",
-      });
+      toast({ title: "Title required", description: "Please enter a title.", variant: "destructive" });
       return;
     }
-
     createBookmarkMutation.mutate({
       title: title.trim(),
       type,
@@ -339,279 +291,389 @@ const NewBookmark = () => {
       notes: notes || null,
       tags,
       mood_tags: selectedMoods,
-      status: 'backlog',
+      status: "backlog",
       metadata,
     });
   };
 
+  // ── Render: Step 1 — Paste ───────────────────────────────────────
+  if (step === "paste") {
+    return (
+      <div className="min-h-screen bg-background">
+        {/* Header */}
+        <div className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border">
+          <div className="container mx-auto px-4 lg:px-8 flex items-center gap-4 h-16">
+            <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <div className="flex-1">
+              <h1 className="text-xl font-semibold">Add to Watchlist</h1>
+              <p className="text-xs text-muted-foreground">Step 1 of 2 — Paste a link</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Step 1 content */}
+        <div className="container mx-auto px-4 lg:px-8 max-w-xl py-16">
+          {/* Big URL input */}
+          <div className="text-center mb-10">
+            <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <LinkIcon className="w-7 h-7 text-primary" />
+            </div>
+            <h2 className="text-2xl font-bold text-foreground mb-2">Paste a link</h2>
+            <p className="text-muted-foreground">
+              Paste any link from YouTube, Instagram, Facebook, X, Netflix, or IMDB — we'll fetch the details automatically.
+            </p>
+          </div>
+
+          {/* Platform icons */}
+          <div className="flex items-center justify-center gap-2 mb-8">
+            {Object.entries(PROVIDER_COLORS).filter(([k]) => k !== "generic").map(([key, color]) => (
+              <div
+                key={key}
+                title={PROVIDER_LABELS[key]}
+                className={cn(
+                  "w-8 h-8 rounded-full text-[10px] font-bold text-white flex items-center justify-center transition-all",
+                  color,
+                  detectedProvider === key ? "scale-125 ring-2 ring-white ring-offset-2 ring-offset-background" : "opacity-60"
+                )}
+              >
+                {PROVIDER_LABELS[key].charAt(0)}
+              </div>
+            ))}
+          </div>
+
+          {/* URL input + button */}
+          <div className="space-y-3">
+            <div className="relative">
+              <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                type="url"
+                placeholder="https://youtube.com/watch?v=..."
+                value={url}
+                onChange={(e) => { setUrl(e.target.value); setEnrichError(null); }}
+                onKeyDown={(e) => { if (e.key === "Enter" && url.trim()) handleFetch(); }}
+                className="pl-10 pr-4 h-12 text-base"
+                autoFocus
+              />
+            </div>
+
+            {detectedProvider && url.trim() && (
+              <p className="text-xs text-muted-foreground px-1">
+                ✓ <span className="text-foreground font-medium">{PROVIDER_LABELS[detectedProvider]}</span> link detected
+              </p>
+            )}
+
+            {enrichError && (
+              <p className="text-xs text-destructive px-1">{enrichError}</p>
+            )}
+
+            <Button
+              className="w-full h-12 text-base"
+              onClick={handleFetch}
+              disabled={!url.trim() || isEnriching}
+            >
+              {isEnriching ? (
+                <><Loader2 className="w-5 h-5 mr-2 animate-spin" />Fetching details…</>
+              ) : (
+                <><Sparkles className="w-5 h-5 mr-2" />Fetch & Continue<ChevronRight className="w-5 h-5 ml-2" /></>
+              )}
+            </Button>
+          </div>
+
+          {/* Loading state message */}
+          {isEnriching && (
+            <div className="mt-6 text-center space-y-3">
+              <div className="flex gap-2 mx-auto max-w-xs">
+                <div className="h-3 bg-muted rounded animate-pulse flex-1" />
+                <div className="h-3 bg-muted rounded animate-pulse w-1/3" />
+              </div>
+              <div className="flex gap-2 mx-auto max-w-xs">
+                <div className="h-3 bg-muted rounded animate-pulse w-1/2" />
+                <div className="h-3 bg-muted rounded animate-pulse flex-1" />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Fetching details from {detectedProvider ? PROVIDER_LABELS[detectedProvider] : "the link"}…
+              </p>
+            </div>
+          )}
+
+          {/* Manual add option */}
+          <div className="mt-8 text-center">
+            <p className="text-sm text-muted-foreground mb-2">Don't have a link?</p>
+            <Button variant="outline" onClick={() => setStep("confirm")}>
+              Add manually without a link
+            </Button>
+          </div>
+        </div>
+
+        <ConfirmMetadataDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          initial={confirmInitial}
+          onConfirm={handleConfirmMetadata}
+        />
+      </div>
+    );
+  }
+
+  // ── Render: Step 2 — Confirm & Save ────────────────────────────
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border">
-        <div className="container mx-auto px-4 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
-                <ArrowLeft className="w-5 h-5" />
-              </Button>
-              <h1 className="text-xl font-semibold">Add Bookmark</h1>
-            </div>
-            <Button type="submit" form="bookmark-form" disabled={createBookmarkMutation.isPending}>
-              {createBookmarkMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {uploadProgress > 0
-                    ? `Uploading ${uploadProgress}/${attachments.length}...`
-                    : "Saving..."}
-                </>
-              ) : (
-                "Save Bookmark"
-              )}
+        <div className="container mx-auto px-4 lg:px-8 flex items-center justify-between h-16">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" onClick={() => setStep("paste")}>
+              <ArrowLeft className="w-5 h-5" />
             </Button>
+            <div>
+              <h1 className="text-xl font-semibold">Confirm Details</h1>
+              <p className="text-xs text-muted-foreground">Step 2 of 2 — Confirm & save</p>
+            </div>
           </div>
+          <Button
+            type="submit"
+            form="bookmark-form"
+            disabled={createBookmarkMutation.isPending || !title.trim()}
+            className="gap-2"
+          >
+            {createBookmarkMutation.isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {uploadProgress > 0 ? `Uploading ${uploadProgress}/${attachments.length}…` : "Saving…"}
+              </>
+            ) : "Save to Watchlist"}
+          </Button>
         </div>
       </div>
 
-      {/* Form */}
-      <div className="container mx-auto px-4 lg:px-8 py-6">
-        <form id="bookmark-form" onSubmit={handleSubmit} className="max-w-2xl mx-auto space-y-6">
-          {/* URL Input */}
-          <div className="space-y-2">
-            <Label htmlFor="url">URL (optional)</Label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="url"
-                  type="url"
-                  placeholder="Paste a URL to auto-fill details..."
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={handleUrlPaste}
-                disabled={!url.trim() || isEnriching}
-              >
-                {isEnriching ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+      {/* Step 2 content */}
+      <div className="container mx-auto px-4 lg:px-8 py-8 max-w-4xl">
+        <form id="bookmark-form" onSubmit={handleSubmit}>
+          <div className="grid md:grid-cols-[200px_1fr] gap-8">
+            {/* Left: Poster preview */}
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-full aspect-[2/3] bg-wm-surface rounded-xl overflow-hidden border border-border relative">
+                {posterUrl ? (
+                  <img
+                    src={posterUrl}
+                    alt={title || "Poster"}
+                    className="w-full h-full object-cover"
+                    onError={() => setPosterUrl("")}
+                  />
                 ) : (
-                  "Fetch"
+                  <div className="w-full h-full flex items-center justify-center">
+                    <span className="text-5xl font-bold text-muted-foreground/30">
+                      {title.charAt(0).toUpperCase() || "?"}
+                    </span>
+                  </div>
                 )}
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Supports YouTube, IMDb, Netflix, and more
-            </p>
-          </div>
-
-          {/* Basic Info */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2 space-y-2">
-              <Label htmlFor="title">Title *</Label>
-              <Input
-                id="title"
-                placeholder="Enter title..."
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="type">Type</Label>
-              <Select value={type} onValueChange={(v) => setType(v as Bookmark["type"])}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TYPE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      <div className="flex items-center gap-2">
-                        <opt.icon className="w-4 h-4" />
-                        {opt.label}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="runtime">Runtime (minutes)</Label>
-              <div className="relative">
-                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="runtime"
-                  type="number"
-                  placeholder="90"
-                  value={runtimeMinutes || ""}
-                  onChange={(e) => setRuntimeMinutes(e.target.value ? parseInt(e.target.value) : null)}
-                  className="pl-10"
-                />
+                {/* Provider badge */}
+                {provider && provider !== "generic" && (
+                  <div className={cn("absolute top-2 left-2 w-3 h-3 rounded-full", PROVIDER_COLORS[provider])} />
+                )}
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="year">Release Year</Label>
-              <Input
-                id="year"
-                type="number"
-                placeholder="2024"
-                value={releaseYear || ""}
-                onChange={(e) => setReleaseYear(e.target.value ? parseInt(e.target.value) : null)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="poster">Poster URL</Label>
-              <div className="relative">
-                <Image className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              {/* Poster URL field (compact) */}
+              <div className="w-full space-y-1">
+                <Label className="text-xs text-muted-foreground">Poster URL</Label>
                 <Input
-                  id="poster"
                   type="url"
-                  placeholder="https://..."
+                  placeholder="https://…"
                   value={posterUrl}
                   onChange={(e) => setPosterUrl(e.target.value)}
-                  className="pl-10"
+                  className="h-8 text-xs"
                 />
               </div>
             </div>
-          </div>
 
-          {/* Notes */}
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea
-              id="notes"
-              placeholder="Add any notes or description..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={3}
-            />
-          </div>
-
-          {/* Mood Tags */}
-          <div className="space-y-3">
-            <Label>Mood Tags</Label>
-            <div className="flex flex-wrap gap-2">
-              {MOOD_OPTIONS.map((mood) => (
-                <Badge
-                  key={mood}
-                  variant={selectedMoods.includes(mood) ? "default" : "outline"}
-                  className="cursor-pointer select-none transition-colors"
-                  onClick={() => handleMoodToggle(mood)}
-                >
-                  {getMoodEmoji(mood)} {mood}
-                </Badge>
-              ))}
-            </div>
-          </div>
-
-          {/* Custom Tags */}
-          <div className="space-y-3">
-            <Label htmlFor="tags">Custom Tags</Label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            {/* Right: Form fields */}
+            <div className="space-y-5">
+              {/* Title */}
+              <div className="space-y-1.5">
+                <Label htmlFor="title" className="text-sm font-medium">Title *</Label>
                 <Input
-                  id="tags"
-                  placeholder="Add a tag..."
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleAddTag();
-                    }
-                  }}
-                  className="pl-10"
+                  id="title"
+                  placeholder="Enter title…"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="h-11 text-base font-medium"
+                  required
                 />
               </div>
-              <Button type="button" variant="secondary" onClick={handleAddTag}>
-                <Plus className="w-4 h-4" />
-              </Button>
-            </div>
-            {tags.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {tags.map((tag) => (
-                  <Badge key={tag} variant="secondary" className="gap-1">
-                    {tag}
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveTag(tag)}
-                      className="ml-1 hover:text-destructive"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
 
-          {/* Attachments */}
-          <div className="space-y-3">
-            <Label>Attachments</Label>
-            <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
-              <input
-                type="file"
-                id="attachments"
-                multiple
-                accept="image/*,.pdf"
-                onChange={handleFileChange}
-                className="hidden"
-              />
-              <label htmlFor="attachments" className="cursor-pointer">
-                <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">
-                  Drop files here or click to upload
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Images and PDFs supported
-                </p>
-              </label>
-            </div>
-
-            {attachments.length > 0 && (
-              <div className="grid gap-2">
-                {attachments.map((file, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between p-3 bg-secondary rounded-lg"
-                  >
-                    <div className="flex items-center gap-3">
-                      {file.type.startsWith("image/") ? (
-                        <Image className="w-5 h-5 text-muted-foreground" />
-                      ) : (
-                        <FileText className="w-5 h-5 text-muted-foreground" />
-                      )}
-                      <span className="text-sm truncate max-w-[200px]">{file.name}</span>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleRemoveAttachment(i)}
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
+              {/* Type + Runtime + Year */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Type</Label>
+                  <Select value={type} onValueChange={(v) => setType(v as Bookmark["type"])}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TYPE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          <div className="flex items-center gap-2">
+                            <opt.icon className="w-3.5 h-3.5" />
+                            {opt.label}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="runtime" className="text-xs text-muted-foreground">Runtime (min)</Label>
+                  <div className="relative">
+                    <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <Input
+                      id="runtime"
+                      type="number"
+                      placeholder="90"
+                      value={runtimeMinutes || ""}
+                      onChange={(e) => setRuntimeMinutes(e.target.value ? parseInt(e.target.value) : null)}
+                      className="h-9 pl-8 text-sm"
+                    />
                   </div>
-                ))}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="year" className="text-xs text-muted-foreground">Year</Label>
+                  <Input
+                    id="year"
+                    type="number"
+                    placeholder="2024"
+                    value={releaseYear || ""}
+                    onChange={(e) => setReleaseYear(e.target.value ? parseInt(e.target.value) : null)}
+                    className="h-9 text-sm"
+                  />
+                </div>
               </div>
-            )}
+
+              {/* Mood tags */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Mood Tags</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {MOOD_OPTIONS.map((mood) => (
+                    <Badge
+                      key={mood}
+                      variant={selectedMoods.includes(mood) ? "default" : "outline"}
+                      className="cursor-pointer select-none text-xs transition-colors"
+                      onClick={() => handleMoodToggle(mood)}
+                    >
+                      {getMoodEmoji(mood)} {mood}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-1.5">
+                <Label htmlFor="notes" className="text-sm font-medium">Notes</Label>
+                <Textarea
+                  id="notes"
+                  placeholder="Why do you want to watch this? Any thoughts…"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  className="resize-none"
+                />
+              </div>
+
+              {/* More options (collapsible) */}
+              <Collapsible open={moreOptionsOpen} onOpenChange={setMoreOptionsOpen}>
+                <CollapsibleTrigger asChild>
+                  <Button type="button" variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground -ml-1">
+                    <ChevronRight className={cn("w-4 h-4 transition-transform", moreOptionsOpen && "rotate-90")} />
+                    {moreOptionsOpen ? "Fewer options" : "More options"}
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-4 mt-3">
+                  {/* Custom tags */}
+                  <div className="space-y-2">
+                    <Label className="text-sm">Custom Tags</Label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                        <Input
+                          placeholder="Add a tag…"
+                          value={tagInput}
+                          onChange={(e) => setTagInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddTag(); } }}
+                          className="pl-9 h-9 text-sm"
+                        />
+                      </div>
+                      <Button type="button" variant="secondary" size="icon" className="h-9 w-9" onClick={handleAddTag}>
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    {tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {tags.map((tag) => (
+                          <Badge key={tag} variant="secondary" className="gap-1 text-xs">
+                            {tag}
+                            <button type="button" onClick={() => setTags(tags.filter((t) => t !== tag))} className="hover:text-destructive">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Attachments */}
+                  <div className="space-y-2">
+                    <Label className="text-sm">Attachments</Label>
+                    <div className="border-2 border-dashed border-border rounded-lg p-4 text-center">
+                      <input
+                        type="file"
+                        id="attachments"
+                        multiple
+                        accept="image/*,.pdf"
+                        onChange={(e) => setAttachments([...attachments, ...Array.from(e.target.files || [])])}
+                        className="hidden"
+                      />
+                      <label htmlFor="attachments" className="cursor-pointer">
+                        <Upload className="w-6 h-6 mx-auto mb-1.5 text-muted-foreground" />
+                        <p className="text-xs text-muted-foreground">Click to upload images or PDFs</p>
+                      </label>
+                    </div>
+                    {attachments.length > 0 && (
+                      <div className="space-y-1.5">
+                        {attachments.map((file, i) => (
+                          <div key={i} className="flex items-center justify-between p-2.5 bg-wm-surface rounded-lg text-sm">
+                            <span className="truncate max-w-[200px] text-xs">{file.name}</span>
+                            <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => setAttachments(attachments.filter((_, idx) => idx !== i))}>
+                              <X className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
           </div>
         </form>
       </div>
 
-      {/* Confirm Metadata Dialog */}
       <ConfirmMetadataDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         initial={confirmInitial}
         onConfirm={handleConfirmMetadata}
+      />
+
+      {/* Schedule after save */}
+      <QuickScheduleSheet
+        bookmark={savedBookmark}
+        open={scheduleOpen}
+        onOpenChange={(open) => {
+          setScheduleOpen(open);
+          if (!open) navigate("/dashboard");
+        }}
+        onScheduled={() => navigate("/dashboard")}
       />
     </div>
   );

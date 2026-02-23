@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Play, Plus, Check, Calendar, MoreHorizontal, ExternalLink, Trash2, Undo2, Eye } from "lucide-react";
+import { Play, Plus, Check, CalendarPlus, MoreHorizontal, ExternalLink, Trash2, Undo2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12,20 +12,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-
-interface Bookmark {
-  id: string;
-  title: string;
-  poster_url?: string | null;
-  backdrop_url?: string | null;
-  runtime_minutes?: number | null;
-  release_year?: number | null;
-  type: string;
-  provider: string;
-  status: string;
-  source_url?: string | null;
-  mood_tags?: string[];
-}
+import { QuickScheduleSheet } from "@/components/schedules/QuickScheduleSheet";
+import type { Bookmark } from "@/types/database";
 
 interface PosterCardProps {
   bookmark: Bookmark;
@@ -41,6 +29,48 @@ interface PosterCardProps {
   isSelectable?: boolean;
   isSelected?: boolean;
   onSelect?: () => void;
+}
+
+const PROVIDER_COLOR: Record<string, string> = {
+  youtube:   "bg-red-600",
+  netflix:   "bg-red-700",
+  imdb:      "bg-yellow-500",
+  instagram: "bg-pink-500",
+  facebook:  "bg-blue-600",
+  x:         "bg-neutral-400",
+  generic:   "bg-muted-foreground",
+};
+
+const PROVIDER_LABEL: Record<string, string> = {
+  youtube:   "YouTube",
+  netflix:   "Netflix",
+  imdb:      "IMDB",
+  instagram: "Instagram",
+  facebook:  "Facebook",
+  x:         "X",
+  generic:   "Web",
+};
+
+const MOOD_COLOR: Record<string, string> = {
+  chill:     "bg-chart-4/20 text-chart-4",
+  intense:   "bg-destructive/20 text-destructive",
+  funny:     "bg-chart-2/20 text-chart-2",
+  romantic:  "bg-pink-500/20 text-pink-400",
+  inspiring: "bg-chart-3/20 text-chart-3",
+  dark:      "bg-chart-5/20 text-chart-5",
+};
+
+function formatRuntime(minutes: number) {
+  if (minutes < 60) return `${minutes}m`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function isNewBookmark(createdAt: string) {
+  const created = new Date(createdAt);
+  const now = new Date();
+  return now.getTime() - created.getTime() < 24 * 60 * 60 * 1000;
 }
 
 export function PosterCard({
@@ -60,236 +90,258 @@ export function PosterCard({
 }: PosterCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [quickScheduleOpen, setQuickScheduleOpen] = useState(false);
 
-  const imageUrl = variant === "poster" ? (bookmark.poster_url || bookmark.backdrop_url) : (bookmark.backdrop_url || bookmark.poster_url);
+  const imageUrl =
+    variant === "poster"
+      ? bookmark.poster_url || bookmark.backdrop_url
+      : bookmark.backdrop_url || bookmark.poster_url;
   const aspectRatio = variant === "poster" ? "aspect-[2/3]" : "aspect-video";
 
   const handlePlay = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (bookmark.source_url) {
-      window.open(bookmark.source_url, "_blank");
-    }
+    if (bookmark.source_url) window.open(bookmark.source_url, "_blank");
     onPlay?.();
   };
 
-  const formatRuntime = (minutes: number) => {
-    if (minutes < 60) return `${minutes}m`;
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    return m > 0 ? `${h}h ${m}m` : `${h}h`;
-  };
-
-  const getProviderColor = (provider: string) => {
-    const colors: Record<string, string> = {
-      youtube: "bg-red-600",
-      netflix: "bg-red-600",
-      imdb: "bg-yellow-500",
-      instagram: "bg-pink-500",
-      facebook: "bg-blue-600",
-      x: "bg-foreground",
-      generic: "bg-muted",
-    };
-    return colors[provider] || colors.generic;
-  };
-
-  const getMoodColor = (mood: string) => {
-    const colors: Record<string, string> = {
-      chill: "bg-chart-4/20 text-chart-4",
-      intense: "bg-destructive/20 text-destructive",
-      funny: "bg-chart-2/20 text-chart-2",
-      romantic: "bg-pink-500/20 text-pink-400",
-      inspiring: "bg-chart-3/20 text-chart-3",
-      dark: "bg-chart-5/20 text-chart-5",
-    };
-    return colors[mood.toLowerCase()] || "bg-muted text-muted-foreground";
+  const handleScheduleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setQuickScheduleOpen(true);
+    onSchedule?.();
   };
 
   const handleCardClick = (e: React.MouseEvent) => {
-    if (isSelectable) {
-      e.preventDefault();
-      onSelect?.();
-    }
+    if (isSelectable) { e.preventDefault(); onSelect?.(); }
   };
 
+  const moodColor = (mood: string) =>
+    MOOD_COLOR[mood.toLowerCase()] || "bg-muted text-muted-foreground";
+
+  const isNew = isNewBookmark(bookmark.created_at);
+
   return (
-    <Link
-      to={`/b/${bookmark.id}`}
-      className={cn(
-        "group relative block flex-shrink-0 rounded-lg overflow-hidden transition-all duration-300",
-        variant === "poster" ? "w-32 sm:w-36 md:w-40 lg:w-44" : "w-60 sm:w-72 md:w-80",
-        isHovered && !isSelectable && "scale-105 z-10 shadow-2xl ring-2 ring-primary/50",
-        isSelected && "ring-2 ring-primary",
-        className
-      )}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      onClick={handleCardClick}
-    >
-      {/* Image Container */}
-      <div className={cn("relative bg-secondary", aspectRatio)}>
-        {imageUrl && !imageError ? (
-          <img
-            src={imageUrl}
-            alt={bookmark.title}
-            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-            onError={() => setImageError(true)}
-            loading="lazy"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-muted">
-            <span className="text-3xl font-bold text-muted-foreground">
-              {bookmark.title.charAt(0).toUpperCase()}
-            </span>
-          </div>
+    <>
+      <Link
+        to={`/b/${bookmark.id}`}
+        className={cn(
+          "group relative block flex-shrink-0 rounded-xl overflow-hidden transition-all duration-300",
+          variant === "poster" ? "w-32 sm:w-36 md:w-40 lg:w-44" : "w-60 sm:w-72 md:w-80",
+          isHovered && !isSelectable && "scale-105 z-10 shadow-2xl ring-2 ring-primary/50",
+          isSelected && "ring-2 ring-primary",
+          className
         )}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        onClick={handleCardClick}
+      >
+        {/* Image Container */}
+        <div className={cn("relative bg-wm-surface", aspectRatio)}>
+          {imageUrl && !imageError ? (
+            <img
+              src={imageUrl}
+              alt={bookmark.title}
+              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+              onError={() => setImageError(true)}
+              loading="lazy"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-wm-surface">
+              <span className="text-3xl font-bold text-muted-foreground/40">
+                {bookmark.title.charAt(0).toUpperCase()}
+              </span>
+            </div>
+          )}
 
-        {/* Provider Badge */}
-        <div className="absolute top-2 left-2">
-          <div className={cn("w-2 h-2 rounded-full", getProviderColor(bookmark.provider))} />
-        </div>
-
-        {/* Select checkbox overlay */}
-        {isSelectable && (
-          <div
-            className="absolute top-2 right-2 z-20"
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSelect?.(); }}
-          >
-            <Checkbox
-              checked={isSelected}
-              onCheckedChange={() => onSelect?.()}
-              className="bg-background/80 backdrop-blur-sm data-[state=checked]:bg-primary"
+          {/* Provider dot (top-left) */}
+          <div className="absolute top-2 left-2 flex items-center gap-1">
+            <div
+              title={PROVIDER_LABEL[bookmark.provider] || "Web"}
+              className={cn("w-3 h-3 rounded-full border border-black/20", PROVIDER_COLOR[bookmark.provider] || "bg-muted-foreground")}
             />
           </div>
-        )}
 
-        {/* Status Badge */}
-        {!isSelectable && bookmark.status === "watching" && (
-          <div className="absolute top-2 right-2">
-            <Badge variant="default" className="text-[10px] px-1.5 py-0.5">
-              Watching
-            </Badge>
-          </div>
-        )}
-
-        {/* Runtime */}
-        {bookmark.runtime_minutes && (
-          <div className="absolute bottom-2 right-2 bg-background/80 backdrop-blur-sm text-foreground text-xs px-1.5 py-0.5 rounded">
-            {formatRuntime(bookmark.runtime_minutes)}
-          </div>
-        )}
-
-        {/* Hover Overlay */}
-        <div
-          className={cn(
-            "absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent opacity-0 transition-opacity duration-300",
-            isHovered && "opacity-100"
+          {/* "New" badge */}
+          {isNew && !isSelectable && (
+            <div className="absolute top-2 right-2">
+              <span className="text-[9px] font-bold bg-wm-gold text-background px-1.5 py-0.5 rounded uppercase tracking-wide">
+                New
+              </span>
+            </div>
           )}
-        />
 
-        {/* Hover Actions */}
-        <div
-          className={cn(
-            "absolute inset-x-0 bottom-0 p-3 transform translate-y-full transition-transform duration-300",
-            isHovered && "translate-y-0"
-          )}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <Button
-              variant="default"
-              size="icon"
-              className="h-8 w-8 rounded-full focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={handlePlay}
-              aria-label={`Play ${bookmark.title}`}
+          {/* Select checkbox */}
+          {isSelectable && (
+            <div
+              className="absolute top-2 right-2 z-20"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSelect?.(); }}
             >
-              <Play className="w-4 h-4 fill-current" />
-            </Button>
+              <Checkbox
+                checked={isSelected}
+                onCheckedChange={() => onSelect?.()}
+                className="bg-background/80 backdrop-blur-sm data-[state=checked]:bg-primary"
+              />
+            </div>
+          )}
 
-            <div className="flex items-center gap-1">
-              <Button
-                variant="secondary"
-                size="icon"
-                className="h-8 w-8 rounded-full focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onSchedule?.();
-                }}
-                aria-label={`Schedule ${bookmark.title}`}
-              >
-                <Calendar className="w-4 h-4" />
-              </Button>
+          {/* Status badge — Watching */}
+          {!isSelectable && bookmark.status === "watching" && !isNew && (
+            <div className="absolute top-2 right-2">
+              <span className="flex items-center gap-1 text-[9px] font-bold bg-primary/90 text-primary-foreground px-1.5 py-0.5 rounded">
+                <span className="w-1.5 h-1.5 bg-primary-foreground rounded-full animate-pulse" />
+                Watching
+              </span>
+            </div>
+          )}
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
+          {/* Scheduled indicator (gold clock badge) */}
+          {!isSelectable && bookmark.status === "scheduled" && (
+            <div className="absolute top-2 right-2">
+              <span className="text-[9px] font-bold bg-wm-gold/90 text-background px-1.5 py-0.5 rounded">
+                Scheduled
+              </span>
+            </div>
+          )}
+
+          {/* Runtime — always visible when card in rail */}
+          {bookmark.runtime_minutes && (
+            <div className="absolute bottom-2 right-2 bg-background/80 backdrop-blur-sm text-foreground text-[10px] font-medium px-1.5 py-0.5 rounded">
+              {formatRuntime(bookmark.runtime_minutes)}
+            </div>
+          )}
+
+          {/* Hover overlay */}
+          <div
+            className={cn(
+              "absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent opacity-0 transition-opacity duration-300",
+              isHovered && "opacity-100"
+            )}
+          />
+
+          {/* Hover Actions */}
+          {!isSelectable && (
+            <div
+              className={cn(
+                "absolute inset-x-0 bottom-0 p-3 transform translate-y-full transition-transform duration-300",
+                isHovered && "translate-y-0"
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                {/* Play button */}
+                <Button
+                  variant="default"
+                  size="icon"
+                  className="h-8 w-8 rounded-full shrink-0"
+                  onClick={handlePlay}
+                  aria-label={`Play ${bookmark.title}`}
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                </Button>
+
+                <div className="flex items-center gap-1">
+                  {/* Quick Schedule button */}
                   <Button
                     variant="secondary"
                     size="icon"
-                    className="h-8 w-8 rounded-full focus-visible:ring-2 focus-visible:ring-ring"
-                    onClick={(e) => e.preventDefault()}
-                    aria-label="More options"
+                    className="h-8 w-8 rounded-full"
+                    onClick={handleScheduleClick}
+                    aria-label={`Schedule ${bookmark.title}`}
                   >
-                    <MoreHorizontal className="w-4 h-4" />
+                    <CalendarPlus className="w-4 h-4" />
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  {bookmark.status !== "watching" && (
-                    <DropdownMenuItem onClick={onSetWatching}>
-                      <Eye className="w-4 h-4 mr-2" />
-                      Set as Watching
-                    </DropdownMenuItem>
-                  )}
-                  {bookmark.status === "done" ? (
-                    <DropdownMenuItem onClick={onUndoDone}>
-                      <Undo2 className="w-4 h-4 mr-2" />
-                      Move to Backlog
-                    </DropdownMenuItem>
-                  ) : (
-                    <DropdownMenuItem onClick={onMarkDone}>
-                      <Check className="w-4 h-4 mr-2" />
-                      Mark as Done
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuItem onClick={onAddToPlan}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add to Plan
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handlePlay}>
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    Open Source
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem 
-                    onClick={onDelete}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+
+                  {/* More options */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="secondary"
+                        size="icon"
+                        className="h-8 w-8 rounded-full"
+                        onClick={(e) => e.preventDefault()}
+                        aria-label="More options"
+                      >
+                        <MoreHorizontal className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      {bookmark.status !== "watching" && (
+                        <DropdownMenuItem onClick={onSetWatching}>
+                          <Eye className="w-4 h-4 mr-2" />
+                          Set as Watching
+                        </DropdownMenuItem>
+                      )}
+                      {bookmark.status === "done" ? (
+                        <DropdownMenuItem onClick={onUndoDone}>
+                          <Undo2 className="w-4 h-4 mr-2" />
+                          Move to Backlog
+                        </DropdownMenuItem>
+                      ) : (
+                        <DropdownMenuItem onClick={onMarkDone}>
+                          <Check className="w-4 h-4 mr-2" />
+                          Mark as Done
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={onAddToPlan}>
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add to Plan
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={handlePlay}>
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        Open Source
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={onDelete}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
             </div>
+          )}
+        </div>
+
+        {/* Title + metadata */}
+        <div className="p-2.5">
+          <h3 className="text-xs font-semibold text-foreground truncate group-hover:text-primary transition-colors leading-tight">
+            {bookmark.title}
+          </h3>
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            {bookmark.release_year && (
+              <span className="text-[10px] text-muted-foreground">{bookmark.release_year}</span>
+            )}
+            {bookmark.mood_tags && bookmark.mood_tags.length > 0 && (
+              <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full font-medium", moodColor(bookmark.mood_tags[0]))}>
+                {bookmark.mood_tags[0]}
+              </span>
+            )}
+            {/* "Schedule" pill on backlog cards — subtle CTA */}
+            {!isSelectable && bookmark.status === "backlog" && (
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setQuickScheduleOpen(true); }}
+                className="text-[9px] text-muted-foreground/60 hover:text-primary flex items-center gap-0.5 transition-colors"
+                title="Schedule this"
+              >
+                <CalendarPlus className="w-2.5 h-2.5" />
+              </button>
+            )}
           </div>
         </div>
-      </div>
+      </Link>
 
-      {/* Title and metadata */}
-      <div className="p-3">
-        <h3 className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
-          {bookmark.title}
-        </h3>
-        <div className="flex items-center gap-2 mt-1.5">
-          {bookmark.release_year && (
-            <span className="text-xs text-muted-foreground">{bookmark.release_year}</span>
-          )}
-          {bookmark.mood_tags && bookmark.mood_tags.length > 0 && (
-            <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", getMoodColor(bookmark.mood_tags[0]))}>
-              {bookmark.mood_tags[0]}
-            </span>
-          )}
-        </div>
-      </div>
-    </Link>
+      {/* Quick Schedule Sheet */}
+      <QuickScheduleSheet
+        bookmark={bookmark}
+        open={quickScheduleOpen}
+        onOpenChange={setQuickScheduleOpen}
+      />
+    </>
   );
 }
