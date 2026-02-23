@@ -1,0 +1,303 @@
+import { onRequest } from 'firebase-functions/v2/https';
+import * as logger from 'firebase-functions/logger';
+import * as functions from 'firebase-functions';
+import cors from 'cors';
+
+const corsHandler = cors({ origin: true });
+
+interface EnrichResponse {
+  title?: string;
+  description?: string;
+  posterUrl?: string;
+  backdropUrl?: string;
+  runtimeMinutes?: number;
+  releaseYear?: number;
+  mediaType?: 'movie' | 'tv' | 'unknown';
+  provider?: string;
+  tmdbId?: number;
+  error?: { message: string };
+}
+
+// --- Platform Detection ---
+
+function detectProvider(url: string): string {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    if (h.includes('youtube.com') || h.includes('youtu.be')) return 'youtube';
+    if (h.includes('netflix.com')) return 'netflix';
+    if (h.includes('imdb.com')) return 'imdb';
+    if (h.includes('letterboxd.com')) return 'letterboxd';
+    if (h.includes('instagram.com')) return 'instagram';
+    if (h.includes('facebook.com') || h.includes('fb.watch')) return 'facebook';
+    if (h.includes('twitter.com') || h.includes('x.com')) return 'twitter';
+    if (h.includes('tiktok.com')) return 'tiktok';
+    if (h.includes('reddit.com')) return 'reddit';
+    if (h.includes('rottentomatoes.com')) return 'rottentomatoes';
+    return 'generic';
+  } catch {
+    return 'generic';
+  }
+}
+
+// --- Title Cleaning ---
+
+function cleanTitleForTMDB(raw: string): string {
+  return raw
+    .replace(/\(?\d{4}\)?/g, '') // remove years
+    .replace(/official\s*(trailer|teaser|clip|video)/gi, '')
+    .replace(/\|\s*.+$/i, '') // strip "| Netflix" suffixes
+    .replace(/[-–]\s*(trailer|teaser|season\s*\d+).*/gi, '')
+    .replace(/[^\w\s']/g, ' ') // strip emoji/symbols
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// --- YouTube ---
+
+function extractYouTubeVideoId(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes('youtu.be')) return u.pathname.slice(1).split('?')[0];
+    if (u.hostname.includes('youtube.com')) return u.searchParams.get('v');
+  } catch {}
+  return null;
+}
+
+async function enrichYouTube(videoId: string): Promise<EnrichResponse> {
+  const apiKey = functions.config().youtube?.api_key;
+  if (!apiKey) return { provider: 'youtube' };
+
+  try {
+    const params = new URLSearchParams({ id: videoId, part: 'snippet,contentDetails', key: apiKey });
+    const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?${params}`);
+    if (!res.ok) return { provider: 'youtube' };
+
+    const data = (await res.json()) as any;
+    const item = data.items?.[0];
+    if (!item) return { provider: 'youtube' };
+
+    const snippet = item.snippet ?? {};
+    const thumbs = snippet.thumbnails ?? {};
+    const posterUrl = thumbs.maxres?.url ?? thumbs.high?.url ?? thumbs.medium?.url;
+
+    const durationMatch = (item.contentDetails?.duration ?? '').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+    let runtimeMinutes: number | undefined;
+    if (durationMatch) {
+      const h = parseInt(durationMatch[1] || '0', 10);
+      const m = parseInt(durationMatch[2] || '0', 10);
+      const s = parseInt(durationMatch[3] || '0', 10);
+      runtimeMinutes = h * 60 + m + (s > 0 ? 1 : 0);
+    }
+
+    // Cross-enrich: use cleaned YouTube title to get TMDB metadata
+    const tmdbData = await enrichTMDB(cleanTitleForTMDB(snippet.title ?? ''));
+
+    return {
+      title: tmdbData.title ?? snippet.title,
+      description: tmdbData.description ?? snippet.description,
+      posterUrl: tmdbData.posterUrl ?? posterUrl,
+      backdropUrl: tmdbData.backdropUrl,
+      runtimeMinutes: tmdbData.runtimeMinutes ?? runtimeMinutes,
+      releaseYear: tmdbData.releaseYear,
+      mediaType: tmdbData.mediaType,
+      tmdbId: tmdbData.tmdbId,
+      provider: 'youtube',
+    };
+  } catch (error) {
+    logger.error('YouTube error:', error);
+    return { provider: 'youtube' };
+  }
+}
+
+// --- oEmbed (Twitter, TikTok) ---
+
+async function fetchOEmbed(oembedUrl: string): Promise<{ title?: string; html?: string } | null> {
+  try {
+    const res = await fetch(oembedUrl);
+    if (!res.ok) return null;
+    return (await res.json()) as any;
+  } catch {
+    return null;
+  }
+}
+
+async function enrichTwitter(url: string): Promise<EnrichResponse> {
+  const oembed = await fetchOEmbed(`https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}`);
+  const rawText = oembed?.html?.replace(/<[^>]+>/g, '') ?? '';
+  const cleaned = cleanTitleForTMDB(rawText.split('\n')[0]);
+  if (!cleaned) return { provider: 'twitter' };
+  const tmdb = await enrichTMDB(cleaned);
+  return { ...tmdb, provider: 'twitter' };
+}
+
+async function enrichTikTok(url: string): Promise<EnrichResponse> {
+  const oembed = await fetchOEmbed(`https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`);
+  if (!oembed?.title) return { provider: 'tiktok' };
+  const tmdb = await enrichTMDB(cleanTitleForTMDB(oembed.title));
+  return { ...tmdb, provider: 'tiktok' };
+}
+
+// --- OpenGraph ---
+
+async function fetchOpenGraph(url: string): Promise<Record<string, string>> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; WatchWondersBot/1.0)',
+      },
+    });
+    if (!res.ok) return {};
+    const html = await res.text();
+    const og: Record<string, string> = {};
+    const matches = html.matchAll(/<meta[^>]+property=["']og:(\w+)["'][^>]+content=["']([^"']+)["']/gi);
+    for (const m of matches) og[m[1]] = m[2];
+    if (!og['title']) {
+      const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+      if (titleMatch) og['title'] = titleMatch[1];
+    }
+    return og;
+  } catch {
+    return {};
+  }
+}
+
+async function enrichViaOG(url: string, provider: string): Promise<EnrichResponse> {
+  const og = await fetchOpenGraph(url);
+  if (!og['title']) return { provider };
+
+  const cleaned = cleanTitleForTMDB(og['title']);
+  const tmdb = await enrichTMDB(cleaned);
+
+  return {
+    title: tmdb.title ?? og['title'],
+    description: tmdb.description ?? og['description'],
+    posterUrl: tmdb.posterUrl ?? og['image'],
+    backdropUrl: tmdb.backdropUrl,
+    releaseYear: tmdb.releaseYear,
+    mediaType: tmdb.mediaType,
+    tmdbId: tmdb.tmdbId,
+    provider,
+  };
+}
+
+// --- Reddit ---
+
+async function enrichReddit(url: string): Promise<EnrichResponse> {
+  try {
+    const jsonUrl = url.replace(/\?.*$/, '').replace(/\/$/, '') + '.json';
+    const res = await fetch(jsonUrl, {
+      headers: { 'User-Agent': 'WatchWondersBot/1.0' },
+    });
+    if (!res.ok) return { provider: 'reddit' };
+    const data = (await res.json()) as any;
+    const post = data?.[0]?.data?.children?.[0]?.data;
+    if (!post?.title) return { provider: 'reddit' };
+    const tmdb = await enrichTMDB(cleanTitleForTMDB(post.title));
+    return { ...tmdb, provider: 'reddit' };
+  } catch {
+    return { provider: 'reddit' };
+  }
+}
+
+// --- TMDB ---
+
+async function enrichTMDB(title: string): Promise<EnrichResponse> {
+  const apiKey = functions.config().tmdb?.api_key;
+  if (!apiKey || !title) return { provider: 'generic' };
+
+  try {
+    const params = new URLSearchParams({ api_key: apiKey, query: title });
+    const res = await fetch(`https://api.themoviedb.org/3/search/multi?${params}`);
+    if (!res.ok) return { provider: 'generic' };
+
+    const data = (await res.json()) as any;
+    const result = data.results?.find((r: any) => r.media_type === 'movie' || r.media_type === 'tv');
+    if (!result) return { provider: 'generic' };
+
+    const isTV = result.media_type === 'tv';
+    const rawDate = isTV ? result.first_air_date : result.release_date;
+
+    let runtimeMinutes: number | undefined;
+    try {
+      const detailRes = await fetch(
+        `https://api.themoviedb.org/3/${result.media_type}/${result.id}?api_key=${apiKey}`
+      );
+      if (detailRes.ok) {
+        const detail = (await detailRes.json()) as any;
+        runtimeMinutes = isTV ? detail.episode_run_time?.[0] : detail.runtime ?? undefined;
+      }
+    } catch {}
+
+    return {
+      title: result.title ?? result.name,
+      description: result.overview,
+      posterUrl: result.poster_path ? `https://image.tmdb.org/t/p/w500${result.poster_path}` : undefined,
+      backdropUrl: result.backdrop_path ? `https://image.tmdb.org/t/p/original${result.backdrop_path}` : undefined,
+      releaseYear: rawDate ? parseInt(rawDate.slice(0, 4), 10) || undefined : undefined,
+      mediaType: isTV ? 'tv' : 'movie',
+      tmdbId: result.id,
+      runtimeMinutes,
+      provider: 'generic',
+    };
+  } catch (error) {
+    logger.error('TMDB error:', error);
+    return { provider: 'generic' };
+  }
+}
+
+// --- Main Handler ---
+
+export const enrich = onRequest(
+  { cors: true, memory: '256MiB', timeoutSeconds: 30 },
+  async (req: any, res: any) => {
+    corsHandler(req, res, async () => {
+      try {
+        if (req.method !== 'POST') {
+          res.status(405).send({ error: 'Method not allowed' });
+          return;
+        }
+
+        const { url } = req.body;
+        if (!url || typeof url !== 'string') {
+          res.status(400).send({ error: 'URL is required' });
+          return;
+        }
+
+        logger.info('Enriching URL:', url);
+        const provider = detectProvider(url);
+        let result: EnrichResponse = { provider };
+
+        switch (provider) {
+          case 'youtube': {
+            const videoId = extractYouTubeVideoId(url);
+            if (videoId) result = await enrichYouTube(videoId);
+            break;
+          }
+          case 'twitter':
+            result = await enrichTwitter(url);
+            break;
+          case 'tiktok':
+            result = await enrichTikTok(url);
+            break;
+          case 'reddit':
+            result = await enrichReddit(url);
+            break;
+          case 'instagram':
+          case 'facebook':
+          case 'netflix':
+          case 'letterboxd':
+          case 'rottentomatoes':
+          case 'imdb':
+          case 'generic':
+            result = await enrichViaOG(url, provider);
+            break;
+        }
+
+        res.status(200).send(result);
+      } catch (error) {
+        logger.error('Enrichment error:', error);
+        res.status(500).send({ error: 'Internal server error', message: String(error) });
+      }
+    });
+  }
+);
