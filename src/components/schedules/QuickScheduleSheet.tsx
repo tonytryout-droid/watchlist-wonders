@@ -19,15 +19,11 @@ import { toast } from "sonner";
 import type { Bookmark } from "@/types/database";
 
 // Quick-pick time slots
-function getTonightDate() {
+function getTonightDate(): Date | null {
   const d = new Date();
-  // If before 6pm, use tonight 8pm; otherwise tomorrow 8pm
-  if (d.getHours() < 18) {
-    d.setHours(20, 0, 0, 0);
-  } else {
-    d.setDate(d.getDate() + 1);
-    d.setHours(20, 0, 0, 0);
-  }
+  // After 6pm tonight is no longer available (would duplicate Tomorrow)
+  if (d.getHours() >= 18) return null;
+  d.setHours(20, 0, 0, 0);
   return d;
 }
 
@@ -49,7 +45,7 @@ function getNextWeekDate() {
   return d;
 }
 
-const QUICK_OPTIONS = [
+const QUICK_OPTIONS: { label: string; getDate: () => Date | null }[] = [
   { label: "Tonight",      getDate: getTonightDate },
   { label: "Tomorrow",     getDate: getTomorrowDate },
   { label: "This Weekend", getDate: getWeekendDate },
@@ -108,10 +104,12 @@ export function QuickScheduleSheet({
     },
   });
 
-  const handleQuickPick = (label: string, getDate: () => Date) => {
+  const handleQuickPick = (label: string, getDate: () => Date | null) => {
+    const date = getDate();
+    if (!date) return;
     setSelectedQuick(label);
     setShowCustom(false);
-    mutation.mutate(getDate());
+    mutation.mutate(date);
   };
 
   const handleCustomSchedule = () => {
@@ -119,6 +117,10 @@ export function QuickScheduleSheet({
     const d = new Date(`${customDate}T${customTime}`);
     if (isNaN(d.getTime())) {
       toast.error("Invalid date or time.");
+      return;
+    }
+    if (d <= new Date()) {
+      toast.error("Cannot schedule in the past.");
       return;
     }
     mutation.mutate(d);
@@ -142,6 +144,7 @@ export function QuickScheduleSheet({
         <div className="grid grid-cols-2 gap-3 mb-6">
           {QUICK_OPTIONS.map(({ label, getDate }) => {
             const date = getDate();
+            if (!date) return null;
             const isPending = mutation.isPending && selectedQuick === label;
             return (
               <button

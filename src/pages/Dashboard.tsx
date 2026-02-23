@@ -504,8 +504,10 @@ const Dashboard = () => {
               <div className="flex gap-3 overflow-x-auto px-4 lg:px-8 pb-2" style={{ scrollbarWidth: "none" }}>
                 {upcomingSchedules.map((sched) => {
                   const bm = sched.bookmarks;
-                  const scheduledDate = new Date(sched.scheduled_for);
-                  const isToday = scheduledDate.toDateString() === new Date().toDateString();
+                  if (!bm) return null;
+                  const rawDate = sched.scheduled_for ? new Date(sched.scheduled_for) : null;
+                  const scheduledDate = rawDate && isFinite(rawDate.getTime()) ? rawDate : null;
+                  const isToday = scheduledDate ? scheduledDate.toDateString() === new Date().toDateString() : false;
                   return (
                     <Link
                       key={sched.id}
@@ -527,12 +529,14 @@ const Dashboard = () => {
                         )}
                         <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
                         {/* Time badge */}
-                        <div className={cn(
-                          "absolute bottom-2 left-2 text-[10px] font-semibold px-2 py-0.5 rounded-full",
-                          isToday ? "bg-primary text-primary-foreground" : "bg-wm-gold text-background"
-                        )}>
-                          {isToday ? `Today ${format(scheduledDate, "h:mm a")}` : format(scheduledDate, "EEE, MMM d")}
-                        </div>
+                        {scheduledDate && (
+                          <div className={cn(
+                            "absolute bottom-2 left-2 text-[10px] font-semibold px-2 py-0.5 rounded-full",
+                            isToday ? "bg-primary text-primary-foreground" : "bg-wm-gold text-background"
+                          )}>
+                            {isToday ? `Today ${format(scheduledDate, "h:mm a")}` : format(scheduledDate, "EEE, MMM d")}
+                          </div>
+                        )}
                       </div>
                       {/* Info */}
                       <div className="p-3">

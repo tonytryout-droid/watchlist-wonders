@@ -43,6 +43,9 @@ const Notifications = () => {
   const markAsReadMutation = useMutation({
     mutationFn: (id: string) => notificationService.markAsRead(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    onError: (error: any) => {
+      toast({ title: "Error", description: error?.message ?? "Could not mark as read.", variant: "destructive" });
+    },
   });
 
   const markAllAsReadMutation = useMutation({
@@ -51,11 +54,17 @@ const Notifications = () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       toast({ title: "All caught up!", description: "All notifications marked as read." });
     },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error?.message ?? "Could not mark all as read.", variant: "destructive" });
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => notificationService.deleteNotification(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    onError: (error: any) => {
+      toast({ title: "Error", description: error?.message ?? "Could not delete notification.", variant: "destructive" });
+    },
   });
 
   const unreadCount = notifications.filter((n) => !n.read_at).length;
@@ -229,7 +238,7 @@ const Notifications = () => {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-chart-3 opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="h-7 w-7 text-muted-foreground hover:text-chart-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                               onClick={() => markAsReadMutation.mutate(notification.id)}
                               disabled={markAsReadMutation.isPending}
                               aria-label="Mark as read"
@@ -240,7 +249,7 @@ const Notifications = () => {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                             onClick={() => deleteMutation.mutate(notification.id)}
                             disabled={deleteMutation.isPending}
                             aria-label="Delete notification"
