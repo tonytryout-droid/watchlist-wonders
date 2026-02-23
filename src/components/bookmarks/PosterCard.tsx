@@ -173,10 +173,7 @@ export function PosterCard({
 
           {/* Select checkbox */}
           {isSelectable && (
-            <div
-              className="absolute top-2 right-2 z-20"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSelect?.(); }}
-            >
+            <div className="absolute top-2 right-2 z-20">
               <Checkbox
                 checked={isSelected}
                 onCheckedChange={() => onSelect?.()}
@@ -196,7 +193,7 @@ export function PosterCard({
           )}
 
           {/* Scheduled indicator (gold clock badge) */}
-          {!isSelectable && bookmark.status === "scheduled" && (
+          {!isSelectable && bookmark.status === "scheduled" && !isNew && (
             <div className="absolute top-2 right-2">
               <span className="text-[9px] font-bold bg-wm-gold/90 text-background px-1.5 py-0.5 rounded">
                 Scheduled

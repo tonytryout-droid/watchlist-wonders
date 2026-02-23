@@ -64,7 +64,7 @@ export function BottomNav({ onSearchClick, onAddClick }: BottomNavProps) {
           <span className="text-[10px] font-medium">Calendar</span>
         </Link>
 
-        {/* Profile */}
+        {/* Settings */}
         <Link
           to="/settings"
           className={cn(
@@ -73,7 +73,7 @@ export function BottomNav({ onSearchClick, onAddClick }: BottomNavProps) {
           )}
         >
           <User className="w-5 h-5" />
-          <span className="text-[10px] font-medium">Profile</span>
+          <span className="text-[10px] font-medium">Settings</span>
         </Link>
       </div>
     </nav>

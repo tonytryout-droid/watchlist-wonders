@@ -640,14 +640,17 @@ const NewBookmark = () => {
                     </div>
                     {attachments.length > 0 && (
                       <div className="space-y-1.5">
-                        {attachments.map((file, i) => (
-                          <div key={i} className="flex items-center justify-between p-2.5 bg-wm-surface rounded-lg text-sm">
-                            <span className="truncate max-w-[200px] text-xs">{file.name}</span>
-                            <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => setAttachments(attachments.filter((_, idx) => idx !== i))}>
-                              <X className="w-3.5 h-3.5" />
-                            </Button>
-                          </div>
-                        ))}
+                        {attachments.map((file) => {
+                          const stableKey = `${file.name}-${file.size}-${file.lastModified}`;
+                          return (
+                            <div key={stableKey} className="flex items-center justify-between p-2.5 bg-wm-surface rounded-lg text-sm">
+                              <span className="truncate max-w-[200px] text-xs">{file.name}</span>
+                              <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => setAttachments(attachments.filter((f) => `${f.name}-${f.size}-${f.lastModified}` !== stableKey))}>
+                                <X className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

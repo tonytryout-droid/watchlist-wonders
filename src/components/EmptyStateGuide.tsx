@@ -43,7 +43,7 @@ export function EmptyStateGuide({ className }: EmptyStateGuideProps) {
               <Icon className="w-4 h-4 text-muted-foreground" />
             </div>
             <p className="text-xs font-medium text-foreground leading-tight">{label}</p>
-            <p className="text-[10px] text-muted-foreground">{sub}</p>
+            <p className="text-xs text-muted-foreground">{sub}</p>
           </div>
         ))}
       </div>

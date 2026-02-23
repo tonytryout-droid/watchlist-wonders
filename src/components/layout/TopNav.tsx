@@ -118,6 +118,7 @@ export function TopNav({ notificationCount = 0, onSearchClick }: TopNavProps) {
                         type="button"
                         onClick={() => setAddPopoverOpen(false)}
                         className="text-muted-foreground hover:text-foreground transition-colors"
+                        aria-label="Close add popover"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -175,7 +176,7 @@ export function TopNav({ notificationCount = 0, onSearchClick }: TopNavProps) {
                   </Button>
                 </div>
               ) : (
-                <Link to="/auth" className="hidden sm:block">
+                <Link to="/auth">
                   <Button variant="secondary" size="sm">Sign In</Button>
                 </Link>
               )}
