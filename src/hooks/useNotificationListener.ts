@@ -30,16 +30,8 @@ export function useNotificationListener() {
           createdTs = NaN;
         }
 
-        let mountTs: number;
-        if (typeof mountTime === "number") {
-          mountTs = mountTime;
-        } else if (typeof mountTime === "string") {
-          mountTs = Date.parse(mountTime);
-        } else if (mountTime instanceof Date) {
-          mountTs = mountTime.valueOf();
-        } else {
-          mountTs = NaN;
-        }
+        // mountTime is always a string (initialized as new Date().toISOString()), so parse it directly
+        const mountTs = Date.parse(mountTime) || NaN;
 
         // Only show toast if both timestamps are valid numbers, notification was created after mount, and is unread
         if (Number.isFinite(createdTs) && Number.isFinite(mountTs) && createdTs > mountTs && notif.read_at == null) {
