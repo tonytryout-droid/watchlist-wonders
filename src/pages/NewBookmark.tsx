@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Link as LinkIcon, Loader2, Upload, X, Plus, Clock,
@@ -20,7 +20,6 @@ import { useToast } from "@/hooks/use-toast";
 import { detectProvider, getMoodEmoji, cn } from "@/lib/utils";
 import { bookmarkService } from "@/services/bookmarks";
 import { attachmentService } from "@/services/attachments";
-import { enrichWithTMDB, enrichWithYouTube, extractYouTubeVideoId } from "@/services/enrichment";
 import { ConfirmMetadataDialog, type ConfirmMetadataPayload } from "@/components/bookmarks/ConfirmMetadataDialog";
 import { QuickScheduleSheet } from "@/components/schedules/QuickScheduleSheet";
 import type { Bookmark } from "@/types/database";
@@ -174,14 +173,10 @@ const NewBookmark = () => {
       if (!res.ok) throw new Error(`Request failed: ${res.status}`);
 
       const data = await res.json();
-      const resolvedProvider = data.provider === "unknown" ? dp : data.provider;
+      const resolvedProvider = (data.provider && data.provider !== "unknown") ? data.provider : dp;
       setProvider(resolvedProvider);
-      setCanonicalUrl(data.canonicalUrl || null);
-      setMetadata(data.metadata || {});
 
-      const hasTitle = data.ok && data.title;
-
-      if (!data.ok || !hasTitle) {
+      if (!data.title) {
         setConfirmInitial({
           url: trimmed,
           provider: resolvedProvider,
@@ -189,55 +184,28 @@ const NewBookmark = () => {
           posterUrl: data.posterUrl,
           runtimeMinutes: data.runtimeMinutes,
           type: dp === "youtube" ? "video" : "movie",
-          blocked: data.blocked,
-          debugMessage: data.error?.message,
+          debugMessage: data.error?.message ?? "Could not fetch details for this link.",
         });
         setConfirmOpen(true);
         return;
       }
 
-      const ogMetadata = data.metadata?.og as { title?: string; image?: string; description?: string; type?: string } | undefined;
+      setTitle(data.title);
+      if (data.posterUrl) setPosterUrl(data.posterUrl);
+      if (data.runtimeMinutes) setRuntimeMinutes(data.runtimeMinutes);
+      if (data.releaseYear) setReleaseYear(data.releaseYear);
+      if (data.description && !notes.trim()) setNotes(data.description);
 
-      if (!title.trim() && data.title) setTitle(data.title);
-      if (!notes.trim() && ogMetadata?.description) setNotes(ogMetadata.description);
-      if (!posterUrl.trim() && data.posterUrl) setPosterUrl(data.posterUrl);
-
-      // Detect type from metadata
-      if (ogMetadata?.type?.includes("video")) setType("video");
-      else if (ogMetadata?.type?.includes("episode")) setType("episode");
-      else if (ogMetadata?.type?.includes("movie")) setType("movie");
+      // Detect type from Cloud Function mediaType
+      if (data.mediaType === "movie") setType("movie");
+      else if (data.mediaType === "tv") setType("series");
       else if (dp === "youtube") setType("video");
 
-      const resolvedType =
-        ogMetadata?.type?.includes("movie") ? "movie"
-        : ogMetadata?.type?.includes("episode") ? "series"
-        : dp === "youtube" ? "video"
-        : type;
-
-      // Secondary enrichment
-      if ((resolvedType === "movie" || resolvedType === "series") && data.title) {
-        try {
-          const tmdb = await enrichWithTMDB(data.title, resolvedType === "series" ? "tv" : "movie", null);
-          if (tmdb) {
-            if (!posterUrl.trim() && tmdb.poster_url) setPosterUrl(tmdb.poster_url);
-            if (tmdb.release_year && !releaseYear) setReleaseYear(tmdb.release_year);
-            setMetadata((prev) => ({ ...prev, tmdb_id: tmdb.tmdb_id, vote_average: tmdb.vote_average, backdrop_url: tmdb.backdrop_url }));
-          }
-        } catch { /* non-fatal */ }
-      } else if (resolvedType === "video" && dp === "youtube") {
-        const videoId = extractYouTubeVideoId(trimmed);
-        if (videoId) {
-          try {
-            const ytData = await enrichWithYouTube(videoId);
-            if (ytData) {
-              if (!title.trim() && ytData.title) setTitle(ytData.title);
-              if (!posterUrl.trim() && ytData.thumbnail_url) setPosterUrl(ytData.thumbnail_url);
-              if (!runtimeMinutes && ytData.duration_minutes) setRuntimeMinutes(ytData.duration_minutes);
-              setMetadata((prev) => ({ ...prev, channel_name: ytData.channel_name }));
-            }
-          } catch { /* non-fatal */ }
-        }
-      }
+      // Store TMDB metadata
+      setMetadata({
+        ...(data.tmdbId ? { tmdb_id: data.tmdbId } : {}),
+        ...(data.backdropUrl ? { backdrop_url: data.backdropUrl } : {}),
+      });
 
       // Advance to step 2
       setStep("confirm");
