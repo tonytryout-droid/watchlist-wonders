@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Play, Plus, Check, CalendarPlus, MoreHorizontal, ExternalLink, Trash2, Undo2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -88,7 +89,9 @@ export function PosterCard({
   isSelected,
   onSelect,
 }: PosterCardProps) {
+  const isMobile = useIsMobile();
   const [isHovered, setIsHovered] = useState(false);
+  const [isTouched, setIsTouched] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [quickScheduleOpen, setQuickScheduleOpen] = useState(false);
 
@@ -113,7 +116,15 @@ export function PosterCard({
   };
 
   const handleCardClick = (e: React.MouseEvent) => {
-    if (isSelectable) { e.preventDefault(); onSelect?.(); }
+    if (isSelectable) { e.preventDefault(); onSelect?.(); return; }
+    if (isMobile) {
+      if (!isTouched) {
+        e.preventDefault();
+        setIsTouched(true);
+      } else {
+        setIsTouched(false);
+      }
+    }
   };
 
   const moodColor = (mood: string) =>
@@ -128,12 +139,12 @@ export function PosterCard({
         className={cn(
           "group relative block flex-shrink-0 rounded-xl overflow-hidden transition-all duration-300",
           variant === "poster" ? "w-32 sm:w-36 md:w-40 lg:w-44" : "w-60 sm:w-72 md:w-80",
-          isHovered && !isSelectable && "scale-105 z-10 shadow-2xl ring-2 ring-primary/50",
+          (isHovered || isTouched) && !isSelectable && "scale-105 z-10 shadow-2xl ring-2 ring-primary/50",
           isSelected && "ring-2 ring-primary",
           className
         )}
         onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
+        onMouseLeave={() => { setIsHovered(false); setIsTouched(false); }}
         onClick={handleCardClick}
       >
         {/* Image Container */}
@@ -212,7 +223,7 @@ export function PosterCard({
           <div
             className={cn(
               "absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent opacity-0 transition-opacity duration-300",
-              isHovered && "opacity-100"
+              (isHovered || isTouched) && "opacity-100"
             )}
           />
 
@@ -221,7 +232,7 @@ export function PosterCard({
             <div
               className={cn(
                 "absolute inset-x-0 bottom-0 p-3 transform translate-y-full transition-transform duration-300",
-                isHovered && "translate-y-0"
+                (isHovered || isTouched) && "translate-y-0"
               )}
             >
               <div className="flex items-center justify-between gap-2">
