@@ -18,9 +18,31 @@ export function useNotificationListener() {
       (notif) => {
         // Only show toast for notifications created after the listener was mounted
         // and that are unread
-        const createdTs = Date.parse(notif.created_at);
-        const mountTs = Date.parse(mountTime);
-        if (createdTs > mountTs && notif.read_at == null) {
+        // Normalize timestamps to numeric values, handling string, number, or Date inputs
+        let createdTs: number;
+        if (typeof notif.created_at === "number") {
+          createdTs = notif.created_at;
+        } else if (typeof notif.created_at === "string") {
+          createdTs = Date.parse(notif.created_at);
+        } else if (notif.created_at instanceof Date) {
+          createdTs = notif.created_at.valueOf();
+        } else {
+          createdTs = NaN;
+        }
+
+        let mountTs: number;
+        if (typeof mountTime === "number") {
+          mountTs = mountTime;
+        } else if (typeof mountTime === "string") {
+          mountTs = Date.parse(mountTime);
+        } else if (mountTime instanceof Date) {
+          mountTs = mountTime.valueOf();
+        } else {
+          mountTs = NaN;
+        }
+
+        // Only show toast if both timestamps are valid numbers, notification was created after mount, and is unread
+        if (Number.isFinite(createdTs) && Number.isFinite(mountTs) && createdTs > mountTs && notif.read_at == null) {
           toast(notif.title, {
             description: notif.body,
             duration: 6000,

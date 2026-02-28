@@ -681,7 +681,7 @@ const Dashboard = () => {
             {plans.length === 0 ? (
               <div className="text-center py-4">
                 <p className="text-muted-foreground mb-4">No watch plans yet</p>
-                <Button onClick={() => navigate('/plans')}>
+                <Button onClick={() => { setPlanOpen(false); navigate('/plans'); }}>
                   Create a Plan
                 </Button>
               </div>

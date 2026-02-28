@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Play, Plus, Check, CalendarPlus, MoreHorizontal, ExternalLink, Trash2, Undo2, Eye } from "lucide-react";
@@ -94,6 +94,7 @@ export function PosterCard({
   const [isTouched, setIsTouched] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [quickScheduleOpen, setQuickScheduleOpen] = useState(false);
+  const cardRef = useRef<HTMLAnchorElement>(null);
 
   const imageUrl =
     variant === "poster"
@@ -132,9 +133,33 @@ export function PosterCard({
 
   const isNew = isNewBookmark(bookmark.created_at);
 
+  // Add document-level listener to clear isTouched for touch-only devices
+  useEffect(() => {
+    if (!isTouched) return;
+
+    const handleOutsideTouch = (e: Event) => {
+      if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
+        setIsTouched(false);
+        setIsHovered(false);
+      }
+    };
+
+    // Listen for touchstart, click, and pointerdown events on the document
+    document.addEventListener("touchstart", handleOutsideTouch);
+    document.addEventListener("click", handleOutsideTouch);
+    document.addEventListener("pointerdown", handleOutsideTouch);
+
+    return () => {
+      document.removeEventListener("touchstart", handleOutsideTouch);
+      document.removeEventListener("click", handleOutsideTouch);
+      document.removeEventListener("pointerdown", handleOutsideTouch);
+    };
+  }, [isTouched]);
+
   return (
     <>
       <Link
+        ref={cardRef}
         to={`/b/${bookmark.id}`}
         className={cn(
           "group relative block flex-shrink-0 rounded-xl overflow-hidden transition-all duration-300",
@@ -266,7 +291,7 @@ export function PosterCard({
                         variant="secondary"
                         size="icon"
                         className="h-8 w-8 rounded-full"
-                        onClick={(e) => e.preventDefault()}
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                         aria-label="More options"
                       >
                         <MoreHorizontal className="w-4 h-4" />
