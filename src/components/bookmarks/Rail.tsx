@@ -3,20 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PosterCard } from "./PosterCard";
 import { cn } from "@/lib/utils";
-
-interface Bookmark {
-  id: string;
-  title: string;
-  poster_url?: string | null;
-  backdrop_url?: string | null;
-  runtime_minutes?: number | null;
-  release_year?: number | null;
-  type: string;
-  provider: string;
-  status: string;
-  source_url?: string | null;
-  mood_tags?: string[];
-}
+import type { Bookmark } from "@/types/database";
 
 interface RailProps {
   title: string;

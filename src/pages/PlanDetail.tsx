@@ -37,6 +37,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { TopNav } from "@/components/layout/TopNav";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { SearchOverlay } from "@/components/search/SearchOverlay";
 import { useSearchShortcut } from "@/hooks/useSearchShortcut";
 import { useToast } from "@/hooks/use-toast";
@@ -144,7 +145,7 @@ export default function PlanDetail() {
       <div className="min-h-screen bg-background">
         <TopNav onSearchClick={openSearch} />
         <div className="flex items-center justify-center pt-32">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <LoadingSpinner size="lg" />
         </div>
       </div>
     );

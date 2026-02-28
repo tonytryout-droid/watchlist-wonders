@@ -18,12 +18,7 @@ export function useNotificationListener() {
       (notif) => {
         // Only show toast for notifications created after the listener was mounted
         // and that are unread
-        const createdTs =
-          typeof notif.created_at === 'number'
-            ? notif.created_at
-            : notif.created_at instanceof Date
-            ? notif.created_at.getTime()
-            : Date.parse(String(notif.created_at));
+        const createdTs = Date.parse(notif.created_at);
         const mountTs = Date.parse(mountTime);
         if (createdTs > mountTs && notif.read_at == null) {
           toast(notif.title, {

@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { CalendarClock } from "lucide-react";
 import { TopNav } from "@/components/layout/TopNav";
@@ -48,6 +48,7 @@ type FilterType = "all" | "movie" | "series" | "video" | "doc";
 type FilterStatus = "all" | "backlog" | "watching" | "done";
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const { isSearchOpen, openSearch, closeSearch } = useSearchShortcut();
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
@@ -383,7 +384,7 @@ const Dashboard = () => {
 
   const handleMoreInfo = () => {
     if (heroBookmark) {
-      window.location.href = `/b/${heroBookmark.id}`;
+      navigate(`/b/${heroBookmark.id}`);
     }
   };
 
@@ -680,7 +681,7 @@ const Dashboard = () => {
             {plans.length === 0 ? (
               <div className="text-center py-4">
                 <p className="text-muted-foreground mb-4">No watch plans yet</p>
-                <Button onClick={() => window.location.href = '/plans'}>
+                <Button onClick={() => navigate('/plans')}>
                   Create a Plan
                 </Button>
               </div>
