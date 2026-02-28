@@ -12,7 +12,8 @@
       "Bash(printf:*)",
       "Bash(set +H)",
       "Bash(where:*)",
-      "Bash(ls .env*)"
+      "Bash(ls .env*)",
+      "Bash(ls c:/Users/Kekab/wonders/watchlist-wonders/*.rules)"
     ]
   }
 }
