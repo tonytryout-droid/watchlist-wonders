@@ -9,7 +9,6 @@ import {
   query,
   where,
   orderBy,
-  limit,
   increment,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
@@ -144,13 +143,12 @@ export const bookmarkService = {
     const q = query(
       bookmarksCol(uid),
       where('status', '==', 'backlog'),
-      orderBy('shown_count', 'asc'),
-      limit(50),
     );
     const snap = await getDocs(q);
     const bookmarks = snap.docs.map(docToBookmark);
     return bookmarks
       .filter((b) => b.runtime_minutes === null || b.runtime_minutes <= 90)
+      .sort((a, b) => (a.shown_count || 0) - (b.shown_count || 0))
       .slice(0, 20);
   },
 

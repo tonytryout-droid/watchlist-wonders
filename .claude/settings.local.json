@@ -11,7 +11,8 @@
       "Bash(node -e:*)",
       "Bash(printf:*)",
       "Bash(set +H)",
-      "Bash(where:*)"
+      "Bash(where:*)",
+      "Bash(ls .env*)"
     ]
   }
 }
