@@ -33,23 +33,31 @@ interface PosterCardProps {
 }
 
 const PROVIDER_COLOR: Record<string, string> = {
-  youtube:   "bg-red-600",
-  netflix:   "bg-red-700",
-  imdb:      "bg-yellow-500",
-  instagram: "bg-pink-500",
-  facebook:  "bg-blue-600",
-  x:         "bg-neutral-400",
-  generic:   "bg-muted-foreground",
+  youtube:       "bg-red-600",
+  netflix:       "bg-red-700",
+  imdb:          "bg-yellow-500",
+  instagram:     "bg-pink-500",
+  facebook:      "bg-blue-600",
+  x:             "bg-neutral-400",
+  letterboxd:    "bg-green-600",
+  tiktok:        "bg-neutral-900",
+  reddit:        "bg-orange-500",
+  rottentomatoes:"bg-red-500",
+  generic:       "bg-muted-foreground",
 };
 
 const PROVIDER_LABEL: Record<string, string> = {
-  youtube:   "YouTube",
-  netflix:   "Netflix",
-  imdb:      "IMDB",
-  instagram: "Instagram",
-  facebook:  "Facebook",
-  x:         "X",
-  generic:   "Web",
+  youtube:       "YouTube",
+  netflix:       "Netflix",
+  imdb:          "IMDB",
+  instagram:     "Instagram",
+  facebook:      "Facebook",
+  x:             "X",
+  letterboxd:    "Letterboxd",
+  tiktok:        "TikTok",
+  reddit:        "Reddit",
+  rottentomatoes:"Rotten Tomatoes",
+  generic:       "Web",
 };
 
 const MOOD_COLOR: Record<string, string> = {

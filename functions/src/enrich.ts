@@ -1,9 +1,12 @@
 import { onRequest } from 'firebase-functions/v2/https';
+import { defineSecret } from 'firebase-functions/params';
 import * as logger from 'firebase-functions/logger';
-import * as functions from 'firebase-functions';
 import cors from 'cors';
 
 const corsHandler = cors({ origin: true });
+
+const youtubeApiKey = defineSecret('YOUTUBE_API_KEY');
+const tmdbApiKey = defineSecret('TMDB_API_KEY');
 
 interface EnrichResponse {
   title?: string;
@@ -29,7 +32,7 @@ function detectProvider(url: string): string {
     if (h.includes('letterboxd.com')) return 'letterboxd';
     if (h.includes('instagram.com')) return 'instagram';
     if (h.includes('facebook.com') || h.includes('fb.watch')) return 'facebook';
-    if (h.includes('twitter.com') || h.includes('x.com')) return 'twitter';
+    if (h.includes('twitter.com') || h.includes('x.com')) return 'x';
     if (h.includes('tiktok.com')) return 'tiktok';
     if (h.includes('reddit.com')) return 'reddit';
     if (h.includes('rottentomatoes.com')) return 'rottentomatoes';
@@ -64,7 +67,7 @@ function extractYouTubeVideoId(url: string): string | null {
 }
 
 async function enrichYouTube(videoId: string): Promise<EnrichResponse> {
-  const apiKey = functions.config().youtube?.api_key;
+  const apiKey = youtubeApiKey.value();
   if (!apiKey) return { provider: 'youtube' };
 
   try {
@@ -125,9 +128,9 @@ async function enrichTwitter(url: string): Promise<EnrichResponse> {
   const oembed = await fetchOEmbed(`https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}`);
   const rawText = oembed?.html?.replace(/<[^>]+>/g, '') ?? '';
   const cleaned = cleanTitleForTMDB(rawText.split('\n')[0]);
-  if (!cleaned) return { provider: 'twitter' };
+  if (!cleaned) return { provider: 'x' };
   const tmdb = await enrichTMDB(cleaned);
-  return { ...tmdb, provider: 'twitter' };
+  return { ...tmdb, provider: 'x' };
 }
 
 async function enrichTikTok(url: string): Promise<EnrichResponse> {
@@ -202,7 +205,7 @@ async function enrichReddit(url: string): Promise<EnrichResponse> {
 // --- TMDB ---
 
 async function enrichTMDB(title: string): Promise<EnrichResponse> {
-  const apiKey = functions.config().tmdb?.api_key;
+  const apiKey = tmdbApiKey.value();
   if (!apiKey || !title) return { provider: 'generic' };
 
   try {
@@ -248,7 +251,7 @@ async function enrichTMDB(title: string): Promise<EnrichResponse> {
 // --- Main Handler ---
 
 export const enrich = onRequest(
-  { cors: true, memory: '256MiB', timeoutSeconds: 30 },
+  { cors: true, memory: '256MiB', timeoutSeconds: 30, secrets: [youtubeApiKey, tmdbApiKey] },
   async (req: any, res: any) => {
     corsHandler(req, res, async () => {
       try {
@@ -273,7 +276,7 @@ export const enrich = onRequest(
             if (videoId) result = await enrichYouTube(videoId);
             break;
           }
-          case 'twitter':
+          case 'x':
             result = await enrichTwitter(url);
             break;
           case 'tiktok':
