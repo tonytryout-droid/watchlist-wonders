@@ -3,7 +3,7 @@ export interface Bookmark {
   user_id: string;
   title: string;
   type: "movie" | "series" | "episode" | "video" | "doc" | "other";
-  provider: "youtube" | "imdb" | "netflix" | "instagram" | "facebook" | "x" | "generic";
+  provider: "youtube" | "imdb" | "netflix" | "instagram" | "facebook" | "x" | "letterboxd" | "tiktok" | "reddit" | "rottentomatoes" | "generic";
   source_url: string | null;
   canonical_url: string | null;
   platform_label: string | null;

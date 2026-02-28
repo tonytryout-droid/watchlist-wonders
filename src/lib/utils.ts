@@ -46,29 +46,21 @@ export function getTimeOfDay(): "morning" | "afternoon" | "evening" | "night" {
   return "night";
 }
 
-export function detectProvider(url: string): "youtube" | "imdb" | "netflix" | "instagram" | "facebook" | "x" | "generic" {
+export function detectProvider(url: string): "youtube" | "imdb" | "netflix" | "instagram" | "facebook" | "x" | "letterboxd" | "tiktok" | "reddit" | "rottentomatoes" | "generic" {
   try {
     const hostname = new URL(url).hostname.toLowerCase();
-    
-    if (hostname.includes("youtube.com") || hostname.includes("youtu.be")) {
-      return "youtube";
-    }
-    if (hostname.includes("imdb.com")) {
-      return "imdb";
-    }
-    if (hostname.includes("netflix.com")) {
-      return "netflix";
-    }
-    if (hostname.includes("instagram.com")) {
-      return "instagram";
-    }
-    if (hostname.includes("facebook.com") || hostname.includes("fb.com")) {
-      return "facebook";
-    }
-    if (hostname.includes("twitter.com") || hostname.includes("x.com")) {
-      return "x";
-    }
-    
+
+    if (hostname.includes("youtube.com") || hostname.includes("youtu.be")) return "youtube";
+    if (hostname.includes("imdb.com")) return "imdb";
+    if (hostname.includes("netflix.com")) return "netflix";
+    if (hostname.includes("instagram.com")) return "instagram";
+    if (hostname.includes("facebook.com") || hostname.includes("fb.com")) return "facebook";
+    if (hostname.includes("twitter.com") || hostname.includes("x.com")) return "x";
+    if (hostname.includes("letterboxd.com")) return "letterboxd";
+    if (hostname.includes("tiktok.com")) return "tiktok";
+    if (hostname.includes("reddit.com")) return "reddit";
+    if (hostname.includes("rottentomatoes.com")) return "rottentomatoes";
+
     return "generic";
   } catch {
     return "generic";
