@@ -1,9 +1,6 @@
-import { onRequest } from 'firebase-functions/v2/https';
+import { onCall } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
 import * as logger from 'firebase-functions/logger';
-import cors from 'cors';
-
-const corsHandler = cors({ origin: true });
 
 const youtubeApiKey = defineSecret('YOUTUBE_API_KEY');
 const tmdbApiKey = defineSecret('TMDB_API_KEY');
@@ -19,6 +16,19 @@ interface EnrichResponse {
   provider?: string;
   tmdbId?: number;
   error?: { message: string };
+}
+
+// --- URL Sanitization ---
+
+function sanitizeUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    // Return URL without query string and fragment
+    return `${u.protocol}//${u.host}${u.pathname}`;
+  } catch {
+    // If URL parsing fails, return URL as-is
+    return url;
+  }
 }
 
 // --- Platform Detection ---
@@ -250,57 +260,50 @@ async function enrichTMDB(title: string): Promise<EnrichResponse> {
 
 // --- Main Handler ---
 
-export const enrich = onRequest(
-  { cors: true, memory: '256MiB', timeoutSeconds: 30, secrets: [youtubeApiKey, tmdbApiKey] },
-  async (req: any, res: any) => {
-    corsHandler(req, res, async () => {
-      try {
-        if (req.method !== 'POST') {
-          res.status(405).send({ error: 'Method not allowed' });
-          return;
-        }
-
-        const { url } = req.body;
-        if (!url || typeof url !== 'string') {
-          res.status(400).send({ error: 'URL is required' });
-          return;
-        }
-
-        logger.info('Enriching URL:', url);
-        const provider = detectProvider(url);
-        let result: EnrichResponse = { provider };
-
-        switch (provider) {
-          case 'youtube': {
-            const videoId = extractYouTubeVideoId(url);
-            if (videoId) result = await enrichYouTube(videoId);
-            break;
-          }
-          case 'x':
-            result = await enrichTwitter(url);
-            break;
-          case 'tiktok':
-            result = await enrichTikTok(url);
-            break;
-          case 'reddit':
-            result = await enrichReddit(url);
-            break;
-          case 'instagram':
-          case 'facebook':
-          case 'netflix':
-          case 'letterboxd':
-          case 'rottentomatoes':
-          case 'imdb':
-          case 'generic':
-            result = await enrichViaOG(url, provider);
-            break;
-        }
-
-        res.status(200).send(result);
-      } catch (error) {
-        logger.error('Enrichment error:', error);
-        res.status(500).send({ error: 'Internal server error', message: String(error) });
+export const enrich = onCall(
+  { memory: '256MiB', timeoutSeconds: 30, secrets: [youtubeApiKey, tmdbApiKey] },
+  async (request: any) => {
+    try {
+      const { url } = request.data;
+      if (!url || typeof url !== 'string') {
+        throw new Error('URL is required');
       }
-    });
+
+      const sanitizedUrl = sanitizeUrl(url);
+      logger.info('Enriching URL:', sanitizedUrl);
+      const provider = detectProvider(url);
+      let result: EnrichResponse = { provider };
+
+      switch (provider) {
+        case 'youtube': {
+          const videoId = extractYouTubeVideoId(url);
+          if (videoId) result = await enrichYouTube(videoId);
+          break;
+        }
+        case 'x':
+          result = await enrichTwitter(url);
+          break;
+        case 'tiktok':
+          result = await enrichTikTok(url);
+          break;
+        case 'reddit':
+          result = await enrichReddit(url);
+          break;
+        case 'instagram':
+        case 'facebook':
+        case 'netflix':
+        case 'letterboxd':
+        case 'rottentomatoes':
+        case 'imdb':
+        case 'generic':
+          result = await enrichViaOG(url, provider);
+          break;
+      }
+
+      return result;
+    } catch (error) {
+      logger.error('Enrichment error:', error);
+      throw error;
+    }
   }
 );

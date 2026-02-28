@@ -18,6 +18,9 @@ import {
 } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import { detectProvider, getMoodEmoji, cn } from "@/lib/utils";
+import { auth } from "@/lib/firebase";
+import { fbFunctions } from "@/lib/firebase";
+import { httpsCallable } from "firebase/functions";
 import { bookmarkService } from "@/services/bookmarks";
 import { attachmentService } from "@/services/attachments";
 import { ConfirmMetadataDialog, type ConfirmMetadataPayload } from "@/components/bookmarks/ConfirmMetadataDialog";
@@ -158,21 +161,11 @@ const NewBookmark = () => {
     const dp = detectProvider(trimmed);
     setProvider(dp);
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-
     try {
-      const res = await fetch(enrichUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: trimmed }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
+      const enrichCallable = httpsCallable(fbFunctions, 'enrich');
+      const result = await enrichCallable({ url: trimmed });
+      const data = result.data as any;
 
-      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-
-      const data = await res.json();
       const resolvedProvider = (data.provider && data.provider !== "unknown") ? data.provider : dp;
       setProvider(resolvedProvider);
 
@@ -210,7 +203,6 @@ const NewBookmark = () => {
       // Advance to step 2
       setStep("confirm");
     } catch (error: any) {
-      clearTimeout(timeoutId);
       const dp2 = detectProvider(trimmed);
       setConfirmInitial({ url: trimmed, provider: dp2, type: dp2 === "youtube" ? "video" : "movie", debugMessage: error?.message });
       setConfirmOpen(true);

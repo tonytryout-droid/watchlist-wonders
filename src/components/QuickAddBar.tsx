@@ -4,6 +4,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link as LinkIcon, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, detectProvider, extractYouTubeVideoId } from "@/lib/utils";
+import { auth, fbFunctions } from "@/lib/firebase";
+import { httpsCallable } from "firebase/functions";
 import { bookmarkService } from "@/services/bookmarks";
 import { ConfirmMetadataDialog, type ConfirmMetadataPayload } from "@/components/bookmarks/ConfirmMetadataDialog";
 import { enrichWithYouTube, enrichWithTMDB, extractYouTubeVideoId as enrichExtractYT } from "@/services/enrichment";
@@ -83,41 +85,29 @@ export function QuickAddBar({ className }: QuickAddBarProps) {
     const dp = detectProvider(trimmed);
 
     try {
-      // Try remote enrichment first if configured
-      const enrichUrl = import.meta.env.VITE_ENRICH_URL;
-      if (enrichUrl) {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 15000);
-          const res = await fetch(enrichUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: trimmed }),
-            signal: controller.signal,
-          });
-          clearTimeout(timeoutId);
+      // Use Firebase Callable Cloud Function
+      try {
+        const enrichCallable = httpsCallable(fbFunctions, 'enrich');
+        const result = await enrichCallable({ url: trimmed });
+        const data = result.data as any;
 
-          if (res.ok) {
-            const data = await res.json();
-            const resolvedProvider = data.provider === "unknown" ? dp : data.provider;
+        const resolvedProvider = data.provider === "unknown" ? dp : data.provider;
 
-            setConfirmInitial({
-              url: trimmed,
-              provider: resolvedProvider,
-              title: data.title,
-              posterUrl: data.posterUrl,
-              runtimeMinutes: data.runtimeMinutes ?? null,
-              type: dp === "youtube" ? "video" : "movie",
-              blocked: data.blocked,
-              debugMessage: data.error?.message,
-            });
-            setConfirmOpen(true);
-            return;
-          }
-        } catch (err) {
-          // Remote enrichment failed, fall through to local enrichment
-          console.warn("Remote enrichment failed, falling back to local enrichment", err);
-        }
+        setConfirmInitial({
+          url: trimmed,
+          provider: resolvedProvider,
+          title: data.title,
+          posterUrl: data.posterUrl,
+          runtimeMinutes: data.runtimeMinutes ?? null,
+          type: dp === "youtube" ? "video" : "movie",
+          blocked: data.blocked,
+          debugMessage: data.error?.message,
+        });
+        setConfirmOpen(true);
+        return;
+      } catch (err) {
+        // Remote enrichment failed, fall through to local enrichment
+        console.warn("Remote enrichment failed, falling back to local enrichment", err);
       }
 
       // Fallback to local enrichment

@@ -1,3 +1,1 @@
-import * as enrich from './enrich.js';
-
-export { enrich };
+export { enrich } from './enrich.js';
