@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // User's own data — full access
+    match /users/{uid}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Public bookmarks — anyone can read if is_public == true
+    match /users/{uid}/bookmarks/{bookmarkId} {
+      allow read: if resource.data.is_public == true;
+    }
+
+    // Feed items — owner can read their own feed
+    match /feed/{uid}/items/{itemId} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if request.auth != null;
+    }
+
+    // Public profiles — anyone can read
+    match /users/{uid}/profile/public {
+      allow read: if true;
+    }
+  }
+}
