@@ -128,80 +128,47 @@ export function extractYouTubeVideoId(url: string): string | null {
 }
 
 /**
- * Fetch OpenGraph meta tags from a URL as a fallback for social media enrichment
- * 
- * NOTE: This function makes direct fetch requests to external URLs from the browser.
- * This may fail due to CORS restrictions on some domains. For production use:
- * - Implement a server-side proxy endpoint that fetches and parses OpenGraph tags
- * - Or use a CORS proxy service that provides metadata extraction
- * - Or document that only CORS-permissive sites are supported
+ * Fetch metadata for a URL using the Microlink API.
+ *
+ * Direct browser fetch to external social domains (Instagram, Facebook, TikTok,
+ * etc.) is always blocked by CORS. The Microlink API runs a headless browser
+ * server-side, returns structured JSON, and includes proper CORS headers so it
+ * works from the browser without any proxy setup.
  */
 async function fetchOpenGraphMetadata(url: string): Promise<SocialMediaResult | null> {
   try {
-    console.info('[Enrichment] Fetching OpenGraph metadata from:', url);
+    console.info('[Enrichment] Fetching metadata via Microlink for:', url);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-      },
-    });
+    const endpoint = `https://api.microlink.io?url=${encodeURIComponent(url)}&meta=true`;
+    const res = await fetch(endpoint, { signal: controller.signal });
     clearTimeout(timeout);
 
     if (!res.ok) {
-      console.warn('[Enrichment] OpenGraph fetch returned status:', res.status);
+      console.warn('[Enrichment] Microlink returned status:', res.status);
       return null;
     }
 
-    const html = await res.text();
-
-    // Extract OpenGraph meta tags with flexible attribute order
-    // Uses regex to handle both <meta property="og:*" content="*"> and <meta content="*" property="og:*">
-    const extractOGValue = (prop: string): string | null => {
-      // Try property first, content second (most common order)
-      const regex1 = new RegExp(
-        `<meta\\s+property=["']og:${prop}["']\\s+content=["']([^"']+)["']`,
-        'i'
-      );
-      // Try content first, property second (alternate order)
-      const regex2 = new RegExp(
-        `<meta\\s+content=["']([^"']+)["']\\s+property=["']og:${prop}["']`,
-        'i'
-      );
-      
-      const match1 = html.match(regex1);
-      if (match1) return match1[1];
-      
-      const match2 = html.match(regex2);
-      if (match2) return match2[1];
-      
-      return null;
-    };
-
-    const title = extractOGValue('title');
-    const description = extractOGValue('description');
-    const image = extractOGValue('image');
-
-    if (!title) {
-      console.warn('[Enrichment] No OpenGraph title found in URL:', url);
+    const json = await res.json();
+    if (json.status !== 'success' || !json.data?.title) {
+      console.warn('[Enrichment] Microlink returned no title for:', url);
       return null;
     }
 
+    const d = json.data;
     const result: SocialMediaResult = {
-      title: title || null,
-      description: description || null,
-      thumbnail_url: image || null,
+      title: d.title ?? null,
+      description: d.description ?? null,
+      thumbnail_url: d.image?.url ?? null,
       source: 'opengraph',
     };
 
-    console.info('[Enrichment] Successfully extracted OpenGraph metadata:', result);
+    console.info('[Enrichment] Successfully fetched metadata:', result);
     return result;
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.warn('[Enrichment] OpenGraph fetch failed:', errorMsg);
+    console.warn('[Enrichment] Microlink fetch failed:', errorMsg);
     return null;
   }
 }

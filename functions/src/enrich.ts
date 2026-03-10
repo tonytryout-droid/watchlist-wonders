@@ -154,8 +154,12 @@ async function enrichTikTok(url: string): Promise<EnrichResponse> {
 async function fetchOpenGraph(url: string): Promise<Record<string, string>> {
   try {
     const res = await fetch(url, {
+      signal: AbortSignal.timeout(8000),
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; WatchWondersBot/1.0)',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache',
       },
     });
     if (!res.ok) return {};
@@ -176,6 +180,31 @@ async function fetchOpenGraph(url: string): Promise<Record<string, string>> {
     return og;
   } catch {
     return {};
+  }
+}
+
+/**
+ * Extract a page title via Jina Reader (r.jina.ai).
+ *
+ * Jina Reader fetches the page with a headless browser and returns structured
+ * markdown. The output always starts with "Title: <value>" which we can parse
+ * reliably. This is useful as a lightweight alternative to a full headless
+ * browser when all we need is the title.
+ */
+async function fetchTitleViaJina(url: string): Promise<string | null> {
+  try {
+    const jinaUrl = `https://r.jina.ai/${url}`;
+    const res = await fetch(jinaUrl, {
+      signal: AbortSignal.timeout(10000),
+      headers: { 'Accept': 'text/plain' },
+    });
+    if (!res.ok) return null;
+    const text = await res.text();
+    // Jina Reader prepends "Title: <value>\n" to every response
+    const match = text.match(/^Title:\s*(.+)$/m);
+    return match ? match[1].trim() : null;
+  } catch {
+    return null;
   }
 }
 
@@ -226,6 +255,49 @@ async function enrichViaOG(url: string, provider: string): Promise<EnrichRespons
   if (ml.title) return { ...ml, provider };
 
   return { provider };
+}
+
+// --- Instagram ---
+
+/**
+ * Instagram and Facebook block direct HTTP scrapers entirely and serve a login
+ * wall to unrecognised User-Agents. We therefore skip the direct OG fetch and
+ * go straight to richer fallbacks:
+ *   1. Microlink (headless browser — handles JS-rendered pages & some login walls)
+ *   2. Jina Reader title extraction (lightweight headless, title-only)
+ */
+async function enrichInstagram(url: string): Promise<EnrichResponse> {
+  const ml = await enrichWithMicrolink(url);
+  if (ml.title) {
+    const tmdb = await enrichTMDB(cleanTitleForTMDB(ml.title));
+    if (tmdb.title) return { ...tmdb, provider: 'instagram' };
+    return { ...ml, provider: 'instagram' };
+  }
+  const title = await fetchTitleViaJina(url);
+  if (title) {
+    const tmdb = await enrichTMDB(cleanTitleForTMDB(title));
+    if (tmdb.title) return { ...tmdb, provider: 'instagram' };
+    return { title, provider: 'instagram' };
+  }
+  return { provider: 'instagram' };
+}
+
+// --- Facebook ---
+
+async function enrichFacebook(url: string): Promise<EnrichResponse> {
+  const ml = await enrichWithMicrolink(url);
+  if (ml.title) {
+    const tmdb = await enrichTMDB(cleanTitleForTMDB(ml.title));
+    if (tmdb.title) return { ...tmdb, provider: 'facebook' };
+    return { ...ml, provider: 'facebook' };
+  }
+  const title = await fetchTitleViaJina(url);
+  if (title) {
+    const tmdb = await enrichTMDB(cleanTitleForTMDB(title));
+    if (tmdb.title) return { ...tmdb, provider: 'facebook' };
+    return { title, provider: 'facebook' };
+  }
+  return { provider: 'facebook' };
 }
 
 // --- IMDb ---
@@ -419,7 +491,11 @@ export const enrich = onCall(
           result = await enrichRottenTomatoes(url);
           break;
         case 'instagram':
+          result = await enrichInstagram(url);
+          break;
         case 'facebook':
+          result = await enrichFacebook(url);
+          break;
         case 'netflix':
         case 'generic':
           result = await enrichViaOG(url, provider);
