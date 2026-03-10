@@ -20,7 +20,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.clearAllEnv();
+  vi.unstubAllEnvs();
 });
 
 describe('Enrichment Service', () => {
@@ -211,6 +211,7 @@ describe('Enrichment Service', () => {
     });
 
     it('should handle fetch timeout for OpenGraph', async () => {
+      vi.useFakeTimers();
       global.fetch = vi.fn().mockImplementation(
         () =>
           new Promise((_, reject) => {
@@ -218,8 +219,11 @@ describe('Enrichment Service', () => {
           }),
       );
 
-      const result = await enrichWithInstagram('https://instagram.com/p/ABC123/');
+      const resultPromise = enrichWithInstagram('https://instagram.com/p/ABC123/');
+      vi.advanceTimersByTime(10000);
+      const result = await resultPromise;
       expect(result).toBeNull();
+      vi.useRealTimers();
     });
   });
 
