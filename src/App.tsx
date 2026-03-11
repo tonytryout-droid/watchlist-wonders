@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import PageTransition from "@/components/layout/PageTransition";
+import { AppLayout } from "@/components/layout/AppLayout";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NotificationListenerMount } from "@/hooks/useNotificationListener";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -61,16 +62,18 @@ const App = () => (
                   <Route path="/u/:uid" element={<ErrorBoundary><PublicProfile /></ErrorBoundary>} />
                   <Route path="/share/:token" element={<ErrorBoundary><ShareView /></ErrorBoundary>} />
                   <Route element={<ProtectedRoute />}>
-                    <Route path="/dashboard" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
-                    <Route path="/new" element={<ErrorBoundary><NewBookmark /></ErrorBoundary>} />
-                    <Route path="/tonight" element={<ErrorBoundary><TonightPick /></ErrorBoundary>} />
-                    <Route path="/plans" element={<ErrorBoundary><Plans /></ErrorBoundary>} />
-                    <Route path="/plans/:id" element={<ErrorBoundary><PlanDetail /></ErrorBoundary>} />
-                    <Route path="/notifications" element={<ErrorBoundary><Notifications /></ErrorBoundary>} />
-                    <Route path="/calendar" element={<ErrorBoundary><Calendar /></ErrorBoundary>} />
-                    <Route path="/b/:id" element={<ErrorBoundary><BookmarkDetail /></ErrorBoundary>} />
-                    <Route path="/settings" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
-                    <Route path="/stats" element={<ErrorBoundary><Stats /></ErrorBoundary>} />
+                    <Route element={<AppLayout />}>
+                      <Route path="/dashboard" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+                      <Route path="/new" element={<ErrorBoundary><NewBookmark /></ErrorBoundary>} />
+                      <Route path="/tonight" element={<ErrorBoundary><TonightPick /></ErrorBoundary>} />
+                      <Route path="/plans" element={<ErrorBoundary><Plans /></ErrorBoundary>} />
+                      <Route path="/plans/:id" element={<ErrorBoundary><PlanDetail /></ErrorBoundary>} />
+                      <Route path="/notifications" element={<ErrorBoundary><Notifications /></ErrorBoundary>} />
+                      <Route path="/calendar" element={<ErrorBoundary><Calendar /></ErrorBoundary>} />
+                      <Route path="/b/:id" element={<ErrorBoundary><BookmarkDetail /></ErrorBoundary>} />
+                      <Route path="/settings" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
+                      <Route path="/stats" element={<ErrorBoundary><Stats /></ErrorBoundary>} />
+                    </Route>
                   </Route>
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                   <Route path="*" element={<ErrorBoundary><NotFound /></ErrorBoundary>} />

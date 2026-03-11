@@ -459,7 +459,7 @@ const Dashboard = () => {
     return (
       <div className="min-h-screen bg-background">
         <TopNav onSearchClick={openSearch} notificationCount={0} />
-        <div className="container mx-auto px-4 lg:px-8 pt-24 pb-8 space-y-4">
+        <div className="px-4 lg:px-6 pt-6 pb-8 space-y-4">
           <div className="h-14 bg-wm-surface rounded-xl animate-pulse" />
           <div className="h-10 bg-wm-surface rounded-lg animate-pulse w-2/3" />
         </div>
@@ -541,9 +541,43 @@ const Dashboard = () => {
   // Empty state check
   const isEmpty = bookmarks.length === 0;
 
+  // Category tabs for the TopNav left slot — Netflix-style
+  const categoryTabs = (
+    <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
+      {(["all", "movie", "series", "video", "doc"] as const).map((type) => {
+        const labels: Record<string, string> = { all: "All", movie: "Movies", series: "Series", video: "Videos", doc: "Docs" };
+        const isActive = filterType === type;
+        return (
+          <button
+            key={type}
+            type="button"
+            onClick={() => setFilterType(type)}
+            className={cn(
+              "px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors",
+              isActive
+                ? "text-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {labels[type]}
+            {type !== "all" && filterCounts[type] > 0 && (
+              <span className={cn("ml-1 text-xs", isActive ? "text-muted-foreground" : "text-muted-foreground/60")}>
+                {filterCounts[type]}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <div className="min-h-screen bg-background pb-20 md:pb-0">
-      <TopNav onSearchClick={openSearch} notificationCount={unreadCount} />
+    <div className="min-h-full bg-background pb-20 md:pb-0">
+      <TopNav
+        onSearchClick={openSearch}
+        notificationCount={unreadCount}
+        leftContent={categoryTabs}
+      />
 
       {/* Hero Banner — only when actively watching */}
       {heroBookmark && (
@@ -554,90 +588,91 @@ const Dashboard = () => {
         />
       )}
 
-      {/* Main content area */}
-      <div className={cn(
-        "relative z-10 pb-16 space-y-4",
-        heroBookmark ? "-mt-24" : "pt-20"
-      )}>
+      {/* Page body — main rails + right panel */}
+      <div className="flex gap-0">
 
-        {/* Filter Chips + Toolbar */}
-        {bookmarks.length > 0 && (
-          <div id="filter-toolbar" className="animate-fade-in">
-            <div className="container mx-auto px-4 lg:px-8 flex items-center gap-3">
-              {/* Scrollable filter pills — takes remaining space */}
-              <FilterChips
-                activeType={filterType}
-                activeStatus={filterStatus}
-                onTypeChange={setFilterType}
-                onStatusChange={setFilterStatus}
-                counts={filterCounts}
-                className="flex-1 min-w-0"
-              />
-              {/* Right controls — always visible, compact */}
-              <div className="flex items-center gap-1.5 shrink-0">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleSurpriseMe}
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                  title="Surprise me — pick a random title"
-                  aria-label="Surprise me, pick a random title"
-                >
-                  <Shuffle className="w-4 h-4" />
-                </Button>
-                <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-                  <SelectTrigger className="h-8 text-xs w-[100px] gap-1 border-0 bg-transparent text-muted-foreground hover:text-foreground">
-                    <ArrowUpDown className="w-3 h-3 shrink-0" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="newest">Newest</SelectItem>
-                    <SelectItem value="oldest">Oldest</SelectItem>
-                    <SelectItem value="az">A–Z</SelectItem>
-                    <SelectItem value="runtime">Runtime</SelectItem>
-                    <SelectItem value="rating">My Rating</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant={filterPanelOpen ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setFilterPanelOpen((v) => !v)}
-                  className="h-8 gap-1 text-xs text-muted-foreground hover:text-foreground"
-                >
-                  Filters
-                  {totalActiveFilterCount > 0 && (
-                    <span className="bg-primary text-primary-foreground rounded-full w-4 h-4 text-[10px] flex items-center justify-center">
-                      {totalActiveFilterCount}
-                    </span>
-                  )}
-                </Button>
-                <Button
-                  variant={selectMode ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => { setSelectMode((v) => !v); setSelectedIds(new Set()); }}
-                  className="h-8 text-xs text-muted-foreground hover:text-foreground"
-                >
-                  {selectMode ? "Cancel" : "Select"}
-                </Button>
-              </div>
-            </div>
-            {filterPanelOpen && (
-              <div className="mt-2">
-                <FilterPanel
-                  onApply={(f) => { setAdvancedFilters(f); }}
-                  onReset={() => { setAdvancedFilters({ providers: [], moods: [], runtimeMin: null, runtimeMax: null }); }}
+        {/* ── Main content column ── */}
+        <div className="flex-1 min-w-0 relative z-10 pb-16 space-y-2">
+
+          {/* Filter status bar + advanced controls */}
+          {bookmarks.length > 0 && (
+            <div id="filter-toolbar" className="animate-fade-in pt-4">
+              <div className="px-4 lg:px-6 flex items-center gap-3">
+                {/* Status filter chips */}
+                <FilterChips
+                  activeType="all"
+                  activeStatus={filterStatus}
+                  onTypeChange={() => {}}
+                  onStatusChange={setFilterStatus}
+                  counts={filterCounts}
+                  className="flex-1 min-w-0"
+                  statusOnly
                 />
+                {/* Right controls */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleSurpriseMe}
+                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    title="Surprise me — pick a random title"
+                    aria-label="Surprise me, pick a random title"
+                  >
+                    <Shuffle className="w-4 h-4" />
+                  </Button>
+                  <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+                    <SelectTrigger className="h-8 text-xs w-[100px] gap-1 border-0 bg-transparent text-muted-foreground hover:text-foreground">
+                      <ArrowUpDown className="w-3 h-3 shrink-0" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="newest">Newest</SelectItem>
+                      <SelectItem value="oldest">Oldest</SelectItem>
+                      <SelectItem value="az">A–Z</SelectItem>
+                      <SelectItem value="runtime">Runtime</SelectItem>
+                      <SelectItem value="rating">My Rating</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant={filterPanelOpen ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setFilterPanelOpen((v) => !v)}
+                    className="h-8 gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Filters
+                    {totalActiveFilterCount > 0 && (
+                      <span className="bg-primary text-primary-foreground rounded-full w-4 h-4 text-[10px] flex items-center justify-center">
+                        {totalActiveFilterCount}
+                      </span>
+                    )}
+                  </Button>
+                  <Button
+                    variant={selectMode ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => { setSelectMode((v) => !v); setSelectedIds(new Set()); }}
+                    className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    {selectMode ? "Cancel" : "Select"}
+                  </Button>
+                </div>
               </div>
-            )}
-          </div>
-        )}
+              {filterPanelOpen && (
+                <div className="mt-2">
+                  <FilterPanel
+                    onApply={(f) => { setAdvancedFilters(f); }}
+                    onReset={() => { setAdvancedFilters({ providers: [], moods: [], runtimeMin: null, runtimeMax: null }); }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
-        {/* Rails */}
-        <div className="space-y-4 animate-fade-in">
+          {/* Rails */}
+          <div className="space-y-2 animate-fade-in">
           {/* Up Next — upcoming scheduled items */}
           {upcomingSchedules.length > 0 && (
-            <section className="py-4">
-              <div className="container mx-auto px-4 lg:px-8 mb-4">
+            <section className="py-3">
+              <div className="px-4 lg:px-6 mb-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-xl font-semibold flex items-center gap-2">
@@ -651,7 +686,7 @@ const Dashboard = () => {
                   </Link>
                 </div>
               </div>
-              <div className="flex gap-3 overflow-x-auto px-4 lg:px-8 pb-2" style={{ scrollbarWidth: "none" }}>
+              <div className="flex gap-3 overflow-x-auto px-4 lg:px-6 pb-2" style={{ scrollbarWidth: "none" }}>
                 {upcomingSchedules.map((sched) => {
                   const bm = sched.bookmarks;
                   if (!bm) return null;
@@ -783,7 +818,7 @@ const Dashboard = () => {
 
           {/* Filtered empty state */}
           {hasActiveFilters && filteredBookmarks.length === 0 && (
-            <div className="container mx-auto px-4 lg:px-8 text-center py-16">
+            <div className="px-4 lg:px-6 text-center py-16">
               <p className="text-muted-foreground mb-4">No bookmarks match your filters</p>
               <Button
                 variant="outline"
@@ -800,12 +835,130 @@ const Dashboard = () => {
 
           {/* Empty state — new user */}
           {isEmpty && (
-            <div className="container mx-auto px-4 lg:px-8">
+            <div className="px-4 lg:px-6">
               <EmptyStateGuide />
             </div>
           )}
-        </div>
-      </div>
+          </div>{/* end rails space-y-2 div */}
+        </div>{/* end main rails column */}
+
+        {/* ── Right Panel (xl screens) — Popular & Favorites ── */}
+        {!isEmpty && (
+          <aside className="hidden xl:flex flex-col w-72 shrink-0 border-l border-border px-4 pt-5 pb-16 gap-6 sticky top-0 max-h-screen overflow-y-auto">
+            {/* Saved for Later → "Popular" */}
+            {backlog.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-base font-bold text-foreground">Saved for Later</h3>
+                  <button
+                    type="button"
+                    onClick={() => setFilterStatus("backlog")}
+                    className="text-xs text-primary hover:underline flex items-center gap-1"
+                  >
+                    View More →
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {backlog.slice(0, 4).map((bm) => (
+                    <Link
+                      key={bm.id}
+                      to={`/b/${bm.id}`}
+                      className="flex items-center gap-3 group"
+                    >
+                      <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-wm-surface">
+                        {(bm.poster_url || bm.backdrop_url) ? (
+                          <img
+                            src={bm.poster_url || bm.backdrop_url!}
+                            alt={bm.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-lg font-bold text-muted-foreground">
+                            {bm.title.charAt(0)}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
+                          {bm.title}
+                        </p>
+                        <p className="text-xs text-muted-foreground capitalize mt-0.5">
+                          {bm.type}{bm.release_year ? `, ${bm.release_year}` : ""}
+                        </p>
+                        {bm.user_rating && (
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <span className="text-[10px] font-bold bg-wm-gold text-background px-1.5 py-0.5 rounded">
+                              ★ {bm.user_rating.toFixed(1)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Recently Watched → "Favorites" */}
+            {completed.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-base font-bold text-foreground">Favorites</h3>
+                  <button
+                    type="button"
+                    onClick={() => setFilterStatus("done")}
+                    className="text-xs text-primary hover:underline flex items-center gap-1"
+                  >
+                    View More →
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {[...completed]
+                    .sort((a, b) => (b.user_rating || 0) - (a.user_rating || 0))
+                    .slice(0, 4)
+                    .map((bm) => (
+                      <Link
+                        key={bm.id}
+                        to={`/b/${bm.id}`}
+                        className="flex items-center gap-3 group"
+                      >
+                        <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-wm-surface">
+                          {(bm.poster_url || bm.backdrop_url) ? (
+                            <img
+                              src={bm.poster_url || bm.backdrop_url!}
+                              alt={bm.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-lg font-bold text-muted-foreground">
+                              {bm.title.charAt(0)}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
+                            {bm.title}
+                          </p>
+                          <p className="text-xs text-muted-foreground capitalize mt-0.5">
+                            {bm.type}{bm.release_year ? `, ${bm.release_year}` : ""}
+                          </p>
+                          {bm.user_rating && (
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <span className="text-[10px] font-bold bg-wm-gold text-background px-1.5 py-0.5 rounded">
+                                ★ {bm.user_rating.toFixed(1)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </Link>
+                    ))}
+                </div>
+              </div>
+            )}
+          </aside>
+        )}
+
+      </div>{/* end flex page body */}
 
       <SearchOverlay
         isOpen={isSearchOpen}
