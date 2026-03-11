@@ -114,7 +114,7 @@ const Notifications = () => {
     <div className="min-h-screen bg-background pb-24 md:pb-0">
       <TopNav notificationCount={unreadCount} onSearchClick={openSearch} />
 
-      <div className="container mx-auto px-4 lg:px-8 pt-24 pb-16 max-w-2xl">
+      <div className="container mx-auto px-4 lg:px-8 pt-6 pb-16 max-w-2xl">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>

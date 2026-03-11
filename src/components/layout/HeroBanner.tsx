@@ -1,4 +1,4 @@
-import { Play, Info, Clock, Calendar as CalendarIcon, Star } from "lucide-react";
+import { Play, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { GradientBarsBackground } from "@/components/ui/gradient-bars-background";
@@ -29,17 +29,17 @@ interface HeroBannerProps {
 export function HeroBanner({ bookmark, onPlay, onMoreInfo, className }: HeroBannerProps) {
   if (!bookmark) {
     return (
-      <div className={cn("relative h-[70vh] min-h-[500px] flex items-end pt-16", className)}>
+      <div className={cn("relative h-[55vh] min-h-[420px] flex items-end overflow-hidden", className)}>
         <GradientBarsBackground className="opacity-60" />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
-        <div className="relative z-10 container mx-auto px-4 lg:px-8 pb-20">
+        <div className="relative z-10 px-6 lg:px-8 pb-14">
           <h2 className="text-2xl md:text-5xl font-bold text-foreground mb-4">
             Your Watchlist Awaits
           </h2>
-          <p className="text-sm md:text-lg text-muted-foreground max-w-xl mb-6">
+          <p className="text-sm md:text-base text-muted-foreground max-w-xl mb-6">
             Add your first bookmark to get started. Paste any URL and we'll fetch the details automatically.
           </p>
-          <Button variant="default" size="lg" asChild>
+          <Button variant="default" size="lg" asChild className="rounded-full px-8">
             <a href="/new">Add Your First Bookmark</a>
           </Button>
         </div>
@@ -50,8 +50,8 @@ export function HeroBanner({ bookmark, onPlay, onMoreInfo, className }: HeroBann
   const backdropUrl = bookmark.backdrop_url || bookmark.poster_url;
 
   return (
-    <div className={cn("relative h-[70vh] min-h-[500px] flex items-end overflow-hidden pt-16", className)}>
-      {/* Backdrop Image */}
+    <div className={cn("relative h-[55vh] min-h-[420px] flex items-end overflow-hidden", className)}>
+      {/* Backdrop */}
       {backdropUrl && (
         <div className="absolute inset-0">
           <img
@@ -62,80 +62,73 @@ export function HeroBanner({ bookmark, onPlay, onMoreInfo, className }: HeroBann
         </div>
       )}
 
-      <GradientBarsBackground baseClassName="bg-transparent" className="opacity-70" />
+      <GradientBarsBackground baseClassName="bg-transparent" className="opacity-50" />
 
-      {/* Gradient Overlays */}
-      <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
-      <div className="absolute inset-0 bg-gradient-to-r from-background/80 via-transparent to-transparent" />
+      {/* Gradient overlays — bottom-heavy + left-side fade */}
+      <div className="absolute inset-0 bg-gradient-to-t from-background via-background/55 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-r from-background/85 via-background/30 to-transparent" />
 
       {/* Content */}
-      <div className="relative z-10 container mx-auto px-4 lg:px-8 pb-20">
-        {/* Badge */}
-        <div className="flex items-center gap-2 mb-4">
-          {bookmark.scheduled_for && (
-            <Badge variant="outline" className="bg-primary/20 border-primary text-primary-foreground">
-              <CalendarIcon className="w-3 h-3 mr-1" />
-              Next Up
-            </Badge>
-          )}
-          <Badge variant="secondary" className="capitalize">
+      <div className="relative z-10 px-6 lg:px-8 pb-12 max-w-2xl">
+        {/* Genre / provider badges */}
+        <div className="flex items-center gap-2 mb-3">
+          <Badge className="capitalize bg-primary/90 text-white border-0 text-xs px-2.5">
             {bookmark.type}
           </Badge>
-          <Badge variant="outline" className="capitalize">
+          <Badge variant="outline" className="capitalize text-xs">
             {bookmark.provider}
           </Badge>
+          {bookmark.mood_tags && bookmark.mood_tags.length > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {bookmark.mood_tags.slice(0, 2).join(", ")}
+            </span>
+          )}
         </div>
 
         {/* Title */}
-        <h1 className="text-2xl sm:text-4xl md:text-6xl font-bold text-foreground mb-4 max-w-3xl line-clamp-3">
+        <h1 className="text-3xl sm:text-5xl md:text-6xl font-extrabold text-foreground mb-3 leading-tight line-clamp-2 drop-shadow-lg">
           {bookmark.title}
         </h1>
 
-        {/* Metadata Row */}
-        <div className="flex flex-wrap items-center gap-4 text-muted-foreground mb-6">
+        {/* Metadata row */}
+        <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
           {bookmark.release_year && (
-            <span className="font-medium">{bookmark.release_year}</span>
+            <span className="font-medium text-foreground/80">{bookmark.release_year}</span>
           )}
           {bookmark.runtime_minutes && (
             <span className="flex items-center gap-1">
-              <Clock className="w-4 h-4" />
+              <Clock className="w-3.5 h-3.5" />
               {Math.floor(bookmark.runtime_minutes / 60)}h {bookmark.runtime_minutes % 60}m
             </span>
-          )}
-          {bookmark.mood_tags && bookmark.mood_tags.length > 0 && (
-            <div className="flex items-center gap-1">
-              <Star className="w-4 h-4 text-primary" />
-              <span>{bookmark.mood_tags.slice(0, 2).join(", ")}</span>
-            </div>
           )}
         </div>
 
         {/* Description */}
         {bookmark.notes && (
-          <p className="text-sm md:text-lg text-muted-foreground max-w-2xl mb-8 line-clamp-3">
+          <p className="text-sm text-muted-foreground max-w-lg mb-6 line-clamp-2 leading-relaxed">
             {bookmark.notes}
           </p>
         )}
 
-        {/* Action Buttons */}
+        {/* Action buttons */}
         <div className="flex items-center gap-3">
           <Button
             variant="default"
             size="lg"
             onClick={onPlay}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 rounded-lg px-7 font-bold shadow-lg shadow-primary/25"
           >
             <Play className="w-5 h-5 fill-current" />
-            Play
+            Watch
           </Button>
           <Button
-            variant="secondary"
-            size="lg"
+            variant="outline"
+            size="sm"
             onClick={onMoreInfo}
-            className="flex items-center gap-2"
+            className="flex items-center gap-1.5 rounded-lg border-white/20 bg-white/10 hover:bg-white/20 text-foreground backdrop-blur-sm"
+            aria-label="More info"
           >
-            <Info className="w-5 h-5" />
-            More Info
+            <span className="flex items-center justify-center w-5 h-5 rounded-full border border-current text-xs font-bold">+</span>
           </Button>
         </div>
       </div>

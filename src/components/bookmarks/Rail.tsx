@@ -74,10 +74,11 @@ export function Rail({
   }
 
   return (
-    <section className={cn("relative py-4", className)}>
+    <section className={cn("relative py-3", className)}>
       {/* Header */}
-      <div className="container mx-auto px-4 lg:px-8 mb-3">
+      <div className="px-4 lg:px-6 mb-3 flex items-baseline gap-3">
         <h2 className="text-lg font-bold text-foreground tracking-tight">{title}</h2>
+        {subtitle && <span className="text-xs text-muted-foreground">{subtitle}</span>}
       </div>
 
       {/* Rail Container */}
@@ -112,7 +113,7 @@ export function Rail({
         <div
           ref={scrollRef}
           onScroll={updateArrows}
-          className="flex gap-4 overflow-x-auto scrollbar-hide px-4 lg:px-8 pb-2"
+          className="flex gap-3 overflow-x-auto scrollbar-hide px-4 lg:px-6 pb-2"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
           {bookmarks.map((bookmark) => (

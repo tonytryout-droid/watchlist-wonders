@@ -18,6 +18,8 @@ interface FilterChipsProps {
     done: number;
   };
   className?: string;
+  /** When true, only the status filter chips are rendered (type chips moved to TopNav) */
+  statusOnly?: boolean;
 }
 
 export function FilterChips({
@@ -27,6 +29,7 @@ export function FilterChips({
   onStatusChange,
   counts,
   className,
+  statusOnly,
 }: FilterChipsProps) {
   const typeFilters = [
     { value: "all" as const, label: "All" },
@@ -50,8 +53,8 @@ export function FilterChips({
       role="toolbar"
       aria-label="Filter bookmarks"
     >
-      {/* Type filters */}
-      {typeFilters.map((filter) => (
+      {/* Type filters — hidden when statusOnly */}
+      {!statusOnly && typeFilters.map((filter) => (
         <button
           key={filter.value}
           type="button"
@@ -71,7 +74,7 @@ export function FilterChips({
         </button>
       ))}
 
-      <span className="w-px h-4 bg-border/60 mx-1 shrink-0" aria-hidden="true" />
+      {!statusOnly && <span className="w-px h-4 bg-border/60 mx-1 shrink-0" aria-hidden="true" />}
 
       {/* Status filters */}
       {statusFilters.map((filter) => (
