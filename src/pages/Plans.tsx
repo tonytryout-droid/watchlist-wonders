@@ -4,13 +4,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Calendar, Clock, ChevronRight, Trash2, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { TopNav } from "@/components/layout/TopNav";
-import { SearchOverlay } from "@/components/search/SearchOverlay";
 import { cn, getMoodEmoji } from "@/lib/utils";
 import { watchPlanService } from "@/services/watchPlans";
 import { bookmarkService } from "@/services/bookmarks";
 import { useToast } from "@/hooks/use-toast";
-import { useSearchShortcut } from "@/hooks/useSearchShortcut";
 import {
   Dialog,
   DialogContent,
@@ -35,7 +32,6 @@ const Plans = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { isSearchOpen, openSearch, closeSearch } = useSearchShortcut();
   const [createOpen, setCreateOpen] = useState(false);
   // Form state
   const [name, setName] = useState("");
@@ -134,19 +130,15 @@ const Plans = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
-        <TopNav onSearchClick={openSearch} />
         <div className="flex items-center justify-center pt-32">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
-        <SearchOverlay isOpen={isSearchOpen} onClose={closeSearch} bookmarks={[]} />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <TopNav onSearchClick={openSearch} />
-
+    <div className="min-h-screen bg-background pt-[68px]">
       <div className="container mx-auto px-4 lg:px-8 pt-6 pb-24 md:pb-16">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -392,11 +384,6 @@ const Plans = () => {
         </DialogContent>
       </Dialog>
 
-      <SearchOverlay
-        isOpen={isSearchOpen}
-        onClose={closeSearch}
-        bookmarks={bookmarks}
-      />
     </div>
   );
 };

@@ -280,9 +280,9 @@ const NewBookmark = () => {
   // ── Render: Step 1 — Paste ───────────────────────────────────────
   if (step === "paste") {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="min-h-screen bg-background pt-[68px]">
         {/* Header */}
-        <div className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border">
+        <div className="sticky top-[68px] z-40 bg-background/95 backdrop-blur border-b border-border">
           <div className="container mx-auto px-4 lg:px-8 flex items-center gap-4 h-16">
             <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
               <ArrowLeft className="w-5 h-5" />
@@ -406,9 +406,9 @@ const NewBookmark = () => {
 
   // ── Render: Step 2 — Confirm & Save ────────────────────────────
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pt-[68px]">
       {/* Header */}
-      <div className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border">
+      <div className="sticky top-[68px] z-40 bg-background/95 backdrop-blur border-b border-border">
         <div className="container mx-auto px-4 lg:px-8 flex items-center gap-4 h-16">
           <Button variant="ghost" size="icon" onClick={() => setStep("paste")}>
             <ArrowLeft className="w-5 h-5" />

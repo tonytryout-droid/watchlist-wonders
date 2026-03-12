@@ -36,10 +36,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { TopNav } from "@/components/layout/TopNav";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { SearchOverlay } from "@/components/search/SearchOverlay";
-import { useSearchShortcut } from "@/hooks/useSearchShortcut";
 import { useToast } from "@/hooks/use-toast";
 import { watchPlanService } from "@/services/watchPlans";
 import { bookmarkService } from "@/services/bookmarks";
@@ -51,7 +48,6 @@ export default function PlanDetail() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { isSearchOpen, openSearch, closeSearch } = useSearchShortcut();
   const [addOpen, setAddOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [removingBookmarkId, setRemovingBookmarkId] = useState<string | null>(null);
@@ -143,7 +139,6 @@ export default function PlanDetail() {
   if (planLoading) {
     return (
       <div className="min-h-screen bg-background">
-        <TopNav onSearchClick={openSearch} />
         <div className="flex items-center justify-center pt-32">
           <LoadingSpinner size="lg" />
         </div>
@@ -154,7 +149,6 @@ export default function PlanDetail() {
   if (!plan) {
     return (
       <div className="min-h-screen bg-background">
-        <TopNav onSearchClick={openSearch} />
         <div className="container mx-auto px-4 pt-32 text-center">
           <p className="text-muted-foreground">Plan not found.</p>
           <Link to="/plans">
@@ -169,8 +163,6 @@ export default function PlanDetail() {
 
   return (
     <div className="min-h-screen bg-background">
-      <TopNav onSearchClick={openSearch} />
-
       <div className="container mx-auto px-4 lg:px-8 pt-32 pb-16 max-w-3xl">
         {/* Back link */}
         <Link
@@ -344,11 +336,6 @@ export default function PlanDetail() {
         </DialogContent>
       </Dialog>
 
-      <SearchOverlay
-        isOpen={isSearchOpen}
-        onClose={closeSearch}
-        bookmarks={allBookmarks}
-      />
     </div>
   );
 }
