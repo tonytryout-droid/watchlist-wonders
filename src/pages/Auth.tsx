@@ -183,7 +183,7 @@ const Auth = () => {
   // Show loading while checking auth state
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen bg-[#141414] flex items-center justify-center">
         <LoadingSpinner size="lg" />
       </div>
     );
@@ -196,27 +196,30 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4 py-8">
-      {/* Background gradient */}
-      <div className="fixed inset-0 bg-gradient-to-br from-primary/5 via-background to-background" />
+    <div className="min-h-screen bg-[#141414] flex items-center justify-center px-4 py-8 relative overflow-hidden">
+      {/* Netflix-style subtle background pattern */}
+      <div className="fixed inset-0 bg-gradient-to-br from-primary/8 via-[#141414] to-[#0a0a0a]" />
+      <div className="fixed inset-0 opacity-[0.03]"
+        style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "32px 32px" }}
+      />
 
       <div className="relative w-full max-w-md">
         {/* Logo */}
-        <div className="flex items-center justify-center gap-2 mb-10">
-          <span className="text-4xl font-bold text-primary">W</span>
-          <span className="text-2xl font-semibold text-foreground">WatchMarks</span>
+        <div className="flex items-center justify-center gap-2 mb-8">
+          <span className="text-primary font-extrabold text-4xl tracking-tighter leading-none">W</span>
+          <span className="text-2xl font-bold text-white tracking-tight">WatchMarks</span>
         </div>
 
-        {/* Auth Card */}
-        <div className="bg-card border border-border rounded-xl p-8 shadow-lg">
-          <h1 className="text-2xl font-bold text-foreground mb-2">
+        {/* Auth Card — Netflix-style semi-transparent */}
+        <div className="bg-black/75 backdrop-blur-sm rounded-sm p-8 md:p-10 shadow-2xl">
+          <h1 className="text-2xl md:text-3xl font-bold text-white mb-1.5">
             {mode === "login"
-              ? "Sign in to your account"
+              ? "Sign In"
               : mode === "signup"
-              ? "Create your account"
-              : "Reset your password"}
+              ? "Sign Up"
+              : "Reset Password"}
           </h1>
-          <p className="text-muted-foreground mb-8">{subtitles[mode]}</p>
+          <p className="text-white/60 mb-6 text-sm">{subtitles[mode]}</p>
 
           {/* Google Sign-In — shown first as the lowest-friction path */}
           {mode !== "forgot" && (
@@ -435,7 +438,7 @@ const Auth = () => {
         </div>
 
         {/* Footer */}
-        <p className="mt-10 text-center text-xs text-muted-foreground">
+        <p className="mt-8 text-center text-xs text-white/30">
           By continuing, you agree to our Terms of Service and Privacy Policy.
         </p>
       </div>

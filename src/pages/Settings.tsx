@@ -1,11 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { TopNav } from "@/components/layout/TopNav";
-import { SearchOverlay } from "@/components/search/SearchOverlay";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAvatar } from "@/hooks/useAvatar";
-import { useSearchShortcut } from "@/hooks/useSearchShortcut";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,7 +21,6 @@ import { fcmService } from "@/services/fcm";
 const Settings = () => {
   const { user, signOut } = useAuth();
   const { avatarUrl, uploading, uploadAvatar, deleteAvatar } = useAvatar();
-  const { isSearchOpen, openSearch, closeSearch } = useSearchShortcut();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
@@ -229,9 +225,7 @@ const Settings = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <TopNav onSearchClick={openSearch} />
-      
+    <div className="min-h-screen bg-background pt-[68px]">
       <div className="pt-6 pb-24 md:pb-16">
         <div className="container mx-auto px-4 lg:px-8 max-w-2xl">
           <div className="space-y-6 animate-fade-in">
@@ -509,12 +503,6 @@ const Settings = () => {
           </div>
         </div>
       </div>
-      
-      <SearchOverlay
-        isOpen={isSearchOpen}
-        onClose={closeSearch}
-        bookmarks={bookmarks}
-      />
     </div>
   );
 };

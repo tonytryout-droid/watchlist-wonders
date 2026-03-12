@@ -178,9 +178,9 @@ const Stats = () => {
     );
   }
   return (
-    <div className="min-h-screen bg-background pb-24 md:pb-8">
+    <div className="min-h-screen bg-background pb-24 md:pb-8 pt-[68px]">
       {/* Header */}
-      <div className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border">
+      <div className="sticky top-[68px] z-40 bg-background/95 backdrop-blur border-b border-border">
         <div className="container mx-auto px-4 lg:px-8 flex items-center gap-4 h-16">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
             <ArrowLeft className="w-5 h-5" />
