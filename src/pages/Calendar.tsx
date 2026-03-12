@@ -3,18 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock } from "lucide-react";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Button } from "@/components/ui/button";
-import { TopNav } from "@/components/layout/TopNav";
-import { SearchOverlay } from "@/components/search/SearchOverlay";
 import { cn } from "@/lib/utils";
 import { scheduleService } from "@/services/schedules";
 import { bookmarkService } from "@/services/bookmarks";
-import { useSearchShortcut } from "@/hooks/useSearchShortcut";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, isToday } from "date-fns";
 
 const ACTIVE_SCHEDULE_STATES = new Set(["scheduled", "snoozed"]);
 
 const Calendar = () => {
-  const { isSearchOpen, openSearch, closeSearch } = useSearchShortcut();
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   const { data: schedules = [], isLoading } = useQuery({
@@ -46,19 +42,15 @@ const Calendar = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
-        <TopNav onSearchClick={openSearch} />
         <div className="flex items-center justify-center pt-6">
           <LoadingSpinner size="lg" />
         </div>
-        <SearchOverlay isOpen={isSearchOpen} onClose={closeSearch} bookmarks={[]} />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <TopNav onSearchClick={openSearch} />
-
+    <div className="min-h-screen bg-background pt-[68px]">
       <div className="container mx-auto px-4 lg:px-8 pt-6 pb-24 md:pb-16">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -188,12 +180,6 @@ const Calendar = () => {
           )}
         </div>
       </div>
-      
-      <SearchOverlay
-        isOpen={isSearchOpen}
-        onClose={closeSearch}
-        bookmarks={bookmarks}
-      />
     </div>
   );
 };

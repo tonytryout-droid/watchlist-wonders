@@ -10,15 +10,18 @@ interface BottomNavProps {
 export function BottomNav({ onSearchClick, onAddClick }: BottomNavProps) {
   const location = useLocation();
 
+  const isActive = (path: string) => location.pathname === path;
+
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-50 md:hidden bg-background/95 backdrop-blur-md border-t border-border pb-safe">
-      <div className="flex items-center justify-around h-16 px-2">
+    <nav className="fixed bottom-0 inset-x-0 z-50 md:hidden bg-[#141414]/98 border-t border-white/10 pb-safe">
+      <div className="flex items-center justify-around h-14 px-2">
+
         {/* Home */}
         <Link
           to="/dashboard"
           className={cn(
-            "flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-colors",
-            location.pathname === "/dashboard" ? "text-primary" : "text-muted-foreground hover:text-foreground"
+            "flex flex-col items-center gap-0.5 px-3 py-2 min-w-[44px] min-h-[44px] justify-center transition-colors",
+            isActive("/dashboard") ? "text-white" : "text-white/50 hover:text-white/80"
           )}
         >
           <Home className="w-5 h-5" />
@@ -29,46 +32,46 @@ export function BottomNav({ onSearchClick, onAddClick }: BottomNavProps) {
         <button
           type="button"
           onClick={onSearchClick}
-          className="flex flex-col items-center gap-1 px-4 py-2 rounded-lg text-muted-foreground hover:text-foreground transition-colors"
+          className="flex flex-col items-center gap-0.5 px-3 py-2 min-w-[44px] min-h-[44px] justify-center text-white/50 hover:text-white/80 transition-colors"
         >
           <Search className="w-5 h-5" />
           <span className="text-[10px] font-medium">Search</span>
         </button>
 
-        {/* Add — prominent center button */}
+        {/* Add */}
         <button
           type="button"
           onClick={onAddClick}
-          className="flex flex-col items-center gap-1 -mt-4"
+          className="flex flex-col items-center gap-0.5 px-3 py-2 min-w-[44px] min-h-[44px] justify-center text-white/50 hover:text-white/80 transition-colors"
         >
-          <div className="w-14 h-14 bg-primary rounded-full flex items-center justify-center shadow-lg shadow-primary/30 hover:bg-primary/90 active:scale-95 transition-all">
-            <Plus className="w-6 h-6 text-primary-foreground" />
+          <div className="w-8 h-8 rounded bg-white/10 border border-white/20 flex items-center justify-center">
+            <Plus className="w-4 h-4 text-white" />
           </div>
-          <span className="text-[10px] font-medium text-muted-foreground mt-0.5">Add</span>
+          <span className="text-[10px] font-medium">Add</span>
         </button>
 
         {/* Stats */}
         <Link
           to="/stats"
           className={cn(
-            "flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-colors",
-            location.pathname === "/stats" ? "text-primary" : "text-muted-foreground hover:text-foreground"
+            "flex flex-col items-center gap-0.5 px-3 py-2 min-w-[44px] min-h-[44px] justify-center transition-colors",
+            isActive("/stats") ? "text-white" : "text-white/50 hover:text-white/80"
           )}
         >
           <BarChart2 className="w-5 h-5" />
           <span className="text-[10px] font-medium">Stats</span>
         </Link>
 
-        {/* Settings */}
+        {/* Profile */}
         <Link
           to="/settings"
           className={cn(
-            "flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-colors",
-            location.pathname === "/settings" ? "text-primary" : "text-muted-foreground hover:text-foreground"
+            "flex flex-col items-center gap-0.5 px-3 py-2 min-w-[44px] min-h-[44px] justify-center transition-colors",
+            isActive("/settings") ? "text-white" : "text-white/50 hover:text-white/80"
           )}
         >
           <User className="w-5 h-5" />
-          <span className="text-[10px] font-medium">Settings</span>
+          <span className="text-[10px] font-medium">Me</span>
         </Link>
       </div>
     </nav>

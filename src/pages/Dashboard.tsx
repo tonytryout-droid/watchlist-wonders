@@ -3,10 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { CalendarClock, Shuffle, ArrowUpDown, Play, Check } from "lucide-react";
-import { TopNav } from "@/components/layout/TopNav";
 import { HeroBanner } from "@/components/layout/HeroBanner";
 import { Rail } from "@/components/bookmarks/Rail";
-import { SearchOverlay } from "@/components/search/SearchOverlay";
 import { FilterChips } from "@/components/dashboard/FilterChips";
 import { FilterPanel, type AdvancedFilters } from "@/components/dashboard/FilterPanel";
 import { BulkActionBar } from "@/components/dashboard/BulkActionBar";
@@ -19,9 +17,7 @@ import { bookmarkService } from "@/services/bookmarks";
 import { scheduleService } from "@/services/schedules";
 import { ScheduleDialog } from "@/components/schedules/ScheduleDialog";
 import { watchPlanService } from "@/services/watchPlans";
-import { notificationService } from "@/services/notifications";
 import { useToast } from "@/hooks/use-toast";
-import { useSearchShortcut } from "@/hooks/useSearchShortcut";
 import { cn } from "@/lib/utils";
 import type { Bookmark } from "@/types/database";
 import {
@@ -49,7 +45,6 @@ type SortOption = "newest" | "oldest" | "az" | "runtime" | "rating";
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { isSearchOpen, openSearch, closeSearch } = useSearchShortcut();
   const { showTour, dismissTour } = useDashboardTour();
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
@@ -88,13 +83,6 @@ const Dashboard = () => {
     queryKey: ['schedules', 'upcoming'],
     queryFn: () => scheduleService.getUpcomingSchedules(8),
     staleTime: 2 * 60 * 1000,
-  });
-
-  // Fetch notification count
-  const { data: unreadCount = 0 } = useQuery({
-    queryKey: ['notifications-count'],
-    queryFn: () => notificationService.getUnreadCount(),
-    staleTime: 60 * 1000,
   });
 
   // Fetch watch plans for the "Add to Plan" dialog
@@ -457,8 +445,7 @@ const Dashboard = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background">
-        <TopNav onSearchClick={openSearch} notificationCount={0} />
+      <div className="min-h-screen bg-background pt-[68px]">
         <div className="px-4 lg:px-6 pt-6 pb-8 space-y-4">
           <div className="h-14 bg-wm-surface rounded-xl animate-pulse" />
           <div className="h-10 bg-wm-surface rounded-lg animate-pulse w-2/3" />
@@ -541,45 +528,10 @@ const Dashboard = () => {
   // Empty state check
   const isEmpty = bookmarks.length === 0;
 
-  // Category tabs for the TopNav left slot — Netflix-style
-  const categoryTabs = (
-    <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
-      {(["all", "movie", "series", "video", "doc"] as const).map((type) => {
-        const labels: Record<string, string> = { all: "All", movie: "Movies", series: "Series", video: "Videos", doc: "Docs" };
-        const isActive = filterType === type;
-        return (
-          <button
-            key={type}
-            type="button"
-            onClick={() => setFilterType(type)}
-            className={cn(
-              "px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors",
-              isActive
-                ? "text-foreground font-semibold"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {labels[type]}
-            {type !== "all" && filterCounts[type] > 0 && (
-              <span className={cn("ml-1 text-xs", isActive ? "text-muted-foreground" : "text-muted-foreground/60")}>
-                {filterCounts[type]}
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
-
   return (
     <div className="min-h-full bg-background pb-20 md:pb-0">
-      <TopNav
-        onSearchClick={openSearch}
-        notificationCount={unreadCount}
-        leftContent={categoryTabs}
-      />
 
-      {/* Hero Banner — only when actively watching */}
+      {/* Hero Banner — sits behind the transparent fixed navbar */}
       {heroBookmark && (
         <HeroBanner
           bookmark={heroBookmark}
@@ -588,8 +540,8 @@ const Dashboard = () => {
         />
       )}
 
-      {/* Page body — main rails + right panel */}
-      <div className="flex gap-0">
+      {/* Page body — offset from top only when no hero banner */}
+      <div className={cn("flex gap-0", !heroBookmark && "pt-[68px]")}>
 
         {/* ── Main content column ── */}
         <div className="flex-1 min-w-0 relative z-10 pb-16 space-y-2">
@@ -959,12 +911,6 @@ const Dashboard = () => {
         )}
 
       </div>{/* end flex page body */}
-
-      <SearchOverlay
-        isOpen={isSearchOpen}
-        onClose={closeSearch}
-        bookmarks={bookmarks}
-      />
 
       {/* Schedule Dialog */}
       <ScheduleDialog

@@ -294,7 +294,7 @@ const BookmarkDetail = () => {
         <Button
           variant="ghost"
           size="icon"
-          className="absolute top-4 left-4 bg-background/80 backdrop-blur focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute top-[80px] left-4 bg-background/80 backdrop-blur focus-visible:ring-2 focus-visible:ring-ring"
           onClick={() => navigate(-1)}
           aria-label="Go back"
         >

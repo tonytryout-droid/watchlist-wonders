@@ -126,7 +126,7 @@ const TonightPick = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col pt-[68px]">
       {/* Header */}
       <div className="container mx-auto px-4 lg:px-8 py-6 text-center">
         <div className="flex items-center justify-center gap-2 mb-1">
