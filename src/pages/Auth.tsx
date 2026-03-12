@@ -289,7 +289,7 @@ const Auth = () => {
                       <button
                         type="button"
                         onClick={() => switchMode("forgot")}
-                        className="text-sm text-primary hover:underline py-1 px-1 -mr-1"
+                        className="text-sm text-primary hover:underline py-2 px-2 -mr-2 min-h-[44px] flex items-center"
                       >
                         Forgot password?
                       </button>

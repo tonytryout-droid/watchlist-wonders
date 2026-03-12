@@ -303,7 +303,7 @@ export function PosterCard({
         ref={cardRef}
         className={cn(
           "group relative flex-shrink-0 transition-all duration-300",
-          variant === "poster" ? "w-36 sm:w-40 md:w-44 lg:w-48" : "w-64 sm:w-72 md:w-80",
+          variant === "poster" ? "w-36 sm:w-40 md:w-44 lg:w-48" : "w-[min(72vw,16rem)] sm:w-64 md:w-72 lg:w-80",
           showExpanded && "z-30",
           isSelected && "ring-2 ring-primary rounded-md",
           className

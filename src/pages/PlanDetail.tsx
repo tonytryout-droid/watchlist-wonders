@@ -162,8 +162,8 @@ export default function PlanDetail() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 lg:px-8 pt-32 pb-16 max-w-3xl">
+    <div className="min-h-screen bg-background pt-[68px]">
+      <div className="container mx-auto px-4 lg:px-8 pt-8 pb-24 md:pb-16 max-w-3xl">
         {/* Back link */}
         <Link
           to="/plans"

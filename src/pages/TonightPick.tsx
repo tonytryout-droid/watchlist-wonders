@@ -126,7 +126,7 @@ const TonightPick = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col pt-[68px]">
+    <div className="min-h-screen bg-background flex flex-col pt-[68px] pb-20 md:pb-0">
       {/* Header */}
       <div className="container mx-auto px-4 lg:px-8 py-6 text-center">
         <div className="flex items-center justify-center gap-2 mb-1">
@@ -165,7 +165,7 @@ const TonightPick = () => {
                 <Button
                   variant="secondary"
                   size="sm"
-                  className="absolute top-2 right-2 h-8 bg-background/80 backdrop-blur gap-1 text-xs"
+                  className="absolute top-2 right-2 h-10 min-w-[44px] bg-background/80 backdrop-blur gap-1 text-xs"
                   onClick={() => handleSwapOne(index)}
                   title="Not feeling it"
                 >
@@ -246,7 +246,7 @@ const TonightPick = () => {
                   <Button
                     variant="secondary"
                     size="icon"
-                    className="h-9 w-9"
+                    className="h-11 w-11"
                     onClick={() => handleMarkDone(bookmark)}
                     disabled={markDoneMutation.isPending}
                   >

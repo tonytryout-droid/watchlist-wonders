@@ -280,7 +280,7 @@ const NewBookmark = () => {
   // ── Render: Step 1 — Paste ───────────────────────────────────────
   if (step === "paste") {
     return (
-      <div className="min-h-screen bg-background pt-[68px]">
+      <div className="min-h-screen bg-background pt-[68px] pb-20 md:pb-0">
         {/* Header */}
         <div className="sticky top-[68px] z-40 bg-background/95 backdrop-blur border-b border-border">
           <div className="container mx-auto px-4 lg:px-8 flex items-center gap-4 h-16">
@@ -406,7 +406,7 @@ const NewBookmark = () => {
 
   // ── Render: Step 2 — Confirm & Save ────────────────────────────
   return (
-    <div className="min-h-screen bg-background pt-[68px]">
+    <div className="min-h-screen bg-background pt-[68px] pb-20 md:pb-0">
       {/* Header */}
       <div className="sticky top-[68px] z-40 bg-background/95 backdrop-blur border-b border-border">
         <div className="container mx-auto px-4 lg:px-8 flex items-center gap-4 h-16">

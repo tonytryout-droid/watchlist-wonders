@@ -345,7 +345,7 @@ const BookmarkDetail = () => {
       </div>
 
       {/* Content — overlapping the hero */}
-      <div className="container mx-auto px-4 lg:px-8 -mt-48 relative z-10 pb-24">
+      <div className="container mx-auto px-4 lg:px-8 -mt-16 sm:-mt-28 md:-mt-48 relative z-10 pb-24">
         {isEditing ? (
           <div className="bg-card border border-border rounded-lg p-6 space-y-4 max-w-2xl">
             <div className="space-y-2">
@@ -441,7 +441,7 @@ const BookmarkDetail = () => {
               {/* Status selector */}
               <div className="mb-5">
                 <Select value={bookmark.status} onValueChange={handleStatusChange}>
-                  <SelectTrigger className="w-[200px]">
+                  <SelectTrigger className="w-full sm:w-[200px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

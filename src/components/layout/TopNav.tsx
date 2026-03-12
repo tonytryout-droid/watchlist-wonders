@@ -133,7 +133,7 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
                   Browse <ChevronDown className="w-3.5 h-3.5" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="bg-[#141414] border-white/10 w-44">
+              <DropdownMenuContent align="start" className="bg-[#141414] border-white/10 w-48 max-w-[calc(100vw-2rem)]">
                 {navLinks.map((link) => (
                   <DropdownMenuItem key={link.href} asChild>
                     <Link
@@ -166,7 +166,7 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
                     ref={searchInputRef}
                     type="text"
                     placeholder="Titles, people, genres"
-                    className="bg-transparent text-white text-sm w-40 outline-none placeholder:text-white/50"
+                    className="bg-transparent text-white text-sm w-28 sm:w-40 outline-none placeholder:text-white/50"
                     onBlur={() => setSearchExpanded(false)}
                   />
                   <button onClick={() => setSearchExpanded(false)} className="text-white/70 hover:text-white">
@@ -196,7 +196,7 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
                   <Plus className="w-5 h-5" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-96 p-4 bg-[#1a1a1a] border-white/10" sideOffset={8}>
+              <PopoverContent align="end" className="w-[min(96vw,24rem)] p-4 bg-[#1a1a1a] border-white/10" sideOffset={8}>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold text-white">Quick Add</p>

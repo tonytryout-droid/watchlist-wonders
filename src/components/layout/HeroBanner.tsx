@@ -35,17 +35,17 @@ const TYPE_LABEL: Record<string, string> = {
 export function HeroBanner({ bookmark, onPlay, onMoreInfo, className }: HeroBannerProps) {
   if (!bookmark) {
     return (
-      <div className={cn("relative h-[80vh] min-h-[520px] flex items-end overflow-hidden", className)}>
+      <div className={cn("relative h-[70vh] sm:h-[80vh] min-h-[400px] sm:min-h-[520px] flex items-end overflow-hidden", className)}>
         <GradientBarsBackground className="opacity-40" />
         {/* Strong gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-[#141414] via-[#141414]/50 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#141414]/80 via-[#141414]/20 to-transparent" />
 
-        <div className="relative z-10 px-8 md:px-12 lg:px-16 pb-20">
+        <div className="relative z-10 px-4 sm:px-8 md:px-12 lg:px-16 pb-12 sm:pb-20">
           <p className="text-primary font-bold text-xs tracking-widest uppercase mb-3">
             Your Watchlist
           </p>
-          <h2 className="text-4xl md:text-6xl lg:text-7xl font-extrabold text-white mb-4 leading-[1.05]">
+          <h2 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-extrabold text-white mb-4 leading-[1.05]">
             Save Anything.<br />Watch Everything.
           </h2>
           <p className="text-base md:text-lg text-white/70 max-w-lg mb-8 leading-relaxed">
@@ -92,7 +92,7 @@ export function HeroBanner({ bookmark, onPlay, onMoreInfo, className }: HeroBann
       <div className="absolute inset-0 bg-gradient-to-r from-[#141414]/90 via-[#141414]/40 to-transparent" />
 
       {/* Content — left-aligned, Netflix style */}
-      <div className="relative z-10 px-8 md:px-12 lg:px-16 pb-20 max-w-2xl">
+      <div className="relative z-10 px-4 sm:px-8 md:px-12 lg:px-16 pb-12 sm:pb-20 max-w-2xl">
 
         {/* Type label */}
         <p className="text-primary font-bold text-xs tracking-widest uppercase mb-2">
@@ -100,7 +100,7 @@ export function HeroBanner({ bookmark, onPlay, onMoreInfo, className }: HeroBann
         </p>
 
         {/* Title */}
-        <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold text-white mb-3 leading-[1.05] line-clamp-2 drop-shadow-2xl">
+        <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-3 leading-[1.05] line-clamp-2 drop-shadow-2xl">
           {bookmark.title}
         </h1>
 

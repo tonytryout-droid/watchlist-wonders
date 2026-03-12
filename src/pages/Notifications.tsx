@@ -230,7 +230,7 @@ const Notifications = () => {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-chart-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                              className="h-10 w-10 text-muted-foreground hover:text-chart-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                               onClick={() => markAsReadMutation.mutate(notification.id)}
                               disabled={markAsReadMutation.isPending}
                               aria-label="Mark as read"
@@ -241,7 +241,7 @@ const Notifications = () => {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-destructive opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                            className="h-10 w-10 text-muted-foreground hover:text-destructive opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                             onClick={() => deleteMutation.mutate(notification.id)}
                             disabled={deleteMutation.isPending}
                             aria-label="Delete notification"

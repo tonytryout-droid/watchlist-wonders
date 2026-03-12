@@ -294,14 +294,14 @@ const Plans = () => {
             {/* Preferred Days */}
             <div className="space-y-2">
               <Label>Preferred Days</Label>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-7 gap-1.5">
                 {DAYS.map((day, i) => (
                   <button
                     key={day}
                     type="button"
                     onClick={() => toggleDay(i)}
                     className={cn(
-                      "flex-1 py-2 rounded-md text-sm font-medium transition-colors",
+                      "py-2.5 rounded-md text-xs sm:text-sm font-medium transition-colors min-h-[44px]",
                       preferredDays.includes(i)
                         ? "bg-primary text-primary-foreground"
                         : "bg-secondary text-muted-foreground hover:text-foreground"

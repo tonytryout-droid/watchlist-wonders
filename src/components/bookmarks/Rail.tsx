@@ -72,7 +72,7 @@ export function Rail({
   return (
     <section className={cn("relative py-2 group/rail overflow-visible", className)}>
       {/* Row header */}
-      <div className="px-8 md:px-12 lg:px-16 mb-2 flex items-baseline gap-3">
+      <div className="px-4 sm:px-8 md:px-12 lg:px-16 mb-2 flex items-baseline gap-3">
         <h2 className="text-sm md:text-base font-bold text-white tracking-tight hover:text-white/80 cursor-default transition-colors">
           {title}
         </h2>
@@ -96,7 +96,7 @@ export function Rail({
           <button
             type="button"
             onClick={() => scroll("left")}
-            className="absolute left-0 h-full w-12 md:w-16 flex items-center justify-center text-white hover:bg-white/5 transition-colors"
+            className="absolute left-0 h-full w-10 md:w-14 flex items-center justify-center text-white hover:bg-white/5 transition-colors"
             aria-label="Scroll left"
           >
             <div className="w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm border border-white/20 flex items-center justify-center hover:bg-black/70 transition-colors">
@@ -116,7 +116,7 @@ export function Rail({
           <button
             type="button"
             onClick={() => scroll("right")}
-            className="absolute right-0 h-full w-12 md:w-16 flex items-center justify-center text-white hover:bg-white/5 transition-colors"
+            className="absolute right-0 h-full w-10 md:w-14 flex items-center justify-center text-white hover:bg-white/5 transition-colors"
             aria-label="Scroll right"
           >
             <div className="w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm border border-white/20 flex items-center justify-center hover:bg-black/70 transition-colors">
@@ -129,7 +129,7 @@ export function Rail({
         <div
           ref={scrollRef}
           onScroll={updateArrows}
-          className="flex gap-1.5 md:gap-2 overflow-x-auto scrollbar-hide px-8 md:px-12 lg:px-16 pb-3"
+          className="flex gap-1.5 md:gap-2 overflow-x-auto scrollbar-hide px-4 sm:px-8 md:px-12 lg:px-16 pb-3"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
           {bookmarks.map((bookmark) => (

@@ -272,18 +272,19 @@ const Settings = () => {
                     />
                     <Button
                       variant="outline"
-                      size="sm"
+                      size="default"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={uploading}
+                      className="min-h-[44px]"
                     >
                       {uploading ? "Uploading..." : "Change avatar"}
                     </Button>
                     {avatarUrl && (
                       <Button
                         variant="ghost"
-                        size="sm"
+                        size="default"
                         onClick={handleDeleteAvatar}
-                        className="text-destructive hover:text-destructive"
+                        className="text-destructive hover:text-destructive min-h-[44px]"
                       >
                         <Trash2 className="w-4 h-4 mr-1" />
                         Remove
