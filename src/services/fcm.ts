@@ -47,7 +47,7 @@ export const fcmService = {
       const user = auth.currentUser;
       if (user) {
         await setDoc(
-          doc(db, 'users', user.uid, 'profile', 'public'),
+          doc(db, 'users', user.uid, 'profile', 'private'),
           { fcm_token: token, push_enabled: true },
           { merge: true },
         );
@@ -73,7 +73,7 @@ export const fcmService = {
       console.error('[FCM] Failed to delete FCM token:', err);
     }
     await setDoc(
-      doc(db, 'users', user.uid, 'profile', 'public'),
+      doc(db, 'users', user.uid, 'profile', 'private'),
       { fcm_token: null, push_enabled: false },
       { merge: true },
     );

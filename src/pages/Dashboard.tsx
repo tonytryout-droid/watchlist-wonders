@@ -256,7 +256,7 @@ const Dashboard = () => {
     }).catch((error: any) => {
       toast({
         title: "Error restoring bookmark",
-        description: error.message || "Failed to restore the bookmark. Please try again.",
+        description: (!error.code && error.message) ? error.message : "Failed to restore the bookmark. Please try again.",
         variant: "destructive",
       });
     });
@@ -277,7 +277,7 @@ const Dashboard = () => {
       queryClient.setQueryData(['bookmarks'], ctx?.prev);
       toast({
         title: "Error deleting",
-        description: error.message || "Something went wrong.",
+        description: (!error.code && error.message) ? error.message : "Something went wrong.",
         variant: "destructive",
       });
     },
@@ -314,7 +314,7 @@ const Dashboard = () => {
     onError: (error: any) => {
       toast({
         title: "Error adding to plan",
-        description: error.message || "Something went wrong.",
+        description: (!error.code && error.message) ? error.message : "Something went wrong.",
         variant: "destructive",
       });
     },
