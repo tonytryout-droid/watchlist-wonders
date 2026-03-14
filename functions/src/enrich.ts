@@ -123,7 +123,7 @@ async function enrichYouTube(videoId: string): Promise<EnrichResponse> {
 
 // --- oEmbed (Twitter, TikTok) ---
 
-async function fetchOEmbed(oembedUrl: string): Promise<{ title?: string; html?: string } | null> {
+async function fetchOEmbed(oembedUrl: string): Promise<{ title?: string; html?: string; thumbnail_url?: string; author_name?: string } | null> {
   try {
     const res = await fetch(oembedUrl);
     if (!res.ok) return null;
@@ -134,28 +134,49 @@ async function fetchOEmbed(oembedUrl: string): Promise<{ title?: string; html?: 
 }
 
 async function enrichTwitter(url: string): Promise<EnrichResponse> {
+  // X.com serves full OG metadata to its own link-preview bot for public posts
+  const og = await fetchOpenGraph(url, 'Twitterbot/1.0');
+  if (og['title']) {
+    return { title: og['title'], description: og['description'], posterUrl: og['image'], provider: 'x' };
+  }
+  // Fallback: Microlink headless browser
+  const ml = await enrichWithMicrolink(url);
+  if (ml.title) return { ...ml, provider: 'x' };
+  // Last resort: legacy oEmbed endpoint (may require auth, kept as best-effort)
   const oembed = await fetchOEmbed(`https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}`);
-  const rawText = oembed?.html?.replace(/<[^>]+>/g, '') ?? '';
-  const cleaned = cleanTitleForTMDB(rawText.split('\n')[0]);
-  if (!cleaned) return { provider: 'x' };
-  const tmdb = await enrichTMDB(cleaned);
-  return { ...tmdb, provider: 'x' };
+  if (oembed?.title) return { title: oembed.title, posterUrl: oembed.thumbnail_url, provider: 'x' };
+  return { provider: 'x' };
 }
 
 async function enrichTikTok(url: string): Promise<EnrichResponse> {
+  // TikTok oEmbed works for public videos and includes thumbnail_url
   const oembed = await fetchOEmbed(`https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`);
-  if (!oembed?.title) return { provider: 'tiktok' };
-  const tmdb = await enrichTMDB(cleanTitleForTMDB(oembed.title));
-  return { ...tmdb, provider: 'tiktok' };
+  if (oembed?.title) {
+    return {
+      title: oembed.title,
+      posterUrl: oembed.thumbnail_url,
+      description: oembed.author_name ? `by @${oembed.author_name}` : undefined,
+      provider: 'tiktok',
+    };
+  }
+  // Fallback: OG scraping
+  const og = await fetchOpenGraph(url);
+  if (og['title']) {
+    return { title: og['title'], description: og['description'], posterUrl: og['image'], provider: 'tiktok' };
+  }
+  // Fallback: Microlink headless browser
+  const ml = await enrichWithMicrolink(url);
+  if (ml.title) return { ...ml, provider: 'tiktok' };
+  return { provider: 'tiktok' };
 }
 
 // --- OpenGraph ---
 
-async function fetchOpenGraph(url: string): Promise<Record<string, string>> {
+async function fetchOpenGraph(url: string, userAgent = 'Mozilla/5.0 (compatible; WatchWondersBot/1.0)'): Promise<Record<string, string>> {
   try {
     const res = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; WatchWondersBot/1.0)',
+        'User-Agent': userAgent,
       },
     });
     if (!res.ok) return {};
@@ -201,6 +222,29 @@ async function enrichWithMicrolink(url: string): Promise<Partial<EnrichResponse>
     logger.warn('[microlink] failed for', url, err);
     return {};
   }
+}
+
+// facebookexternalhit is trusted by both Instagram and Facebook for serving OG data on public posts
+const FB_CRAWLER_UA = 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)';
+
+async function enrichInstagram(url: string): Promise<EnrichResponse> {
+  const og = await fetchOpenGraph(url, FB_CRAWLER_UA);
+  if (og['title']) {
+    return { title: og['title'], description: og['description'], posterUrl: og['image'], provider: 'instagram' };
+  }
+  const ml = await enrichWithMicrolink(url);
+  if (ml.title) return { ...ml, provider: 'instagram' };
+  return { provider: 'instagram' };
+}
+
+async function enrichFacebook(url: string): Promise<EnrichResponse> {
+  const og = await fetchOpenGraph(url, FB_CRAWLER_UA);
+  if (og['title']) {
+    return { title: og['title'], description: og['description'], posterUrl: og['image'], provider: 'facebook' };
+  }
+  const ml = await enrichWithMicrolink(url);
+  if (ml.title) return { ...ml, provider: 'facebook' };
+  return { provider: 'facebook' };
 }
 
 async function enrichViaOG(url: string, provider: string): Promise<EnrichResponse> {
@@ -419,7 +463,11 @@ export const enrich = onCall(
           result = await enrichRottenTomatoes(url);
           break;
         case 'instagram':
+          result = await enrichInstagram(url);
+          break;
         case 'facebook':
+          result = await enrichFacebook(url);
+          break;
         case 'netflix':
         case 'generic':
           result = await enrichViaOG(url, provider);
