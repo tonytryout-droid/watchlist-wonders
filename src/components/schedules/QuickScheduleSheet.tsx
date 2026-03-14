@@ -106,7 +106,7 @@ export function QuickScheduleSheet({
       setShowCustom(false);
     },
     onError: (err: any) => {
-      toast.error(err.message || "Could not create schedule.");
+      toast.error((!err.code && err.message) ? err.message : "Could not create schedule.");
     },
   });
 

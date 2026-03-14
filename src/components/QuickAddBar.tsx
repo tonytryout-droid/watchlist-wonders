@@ -3,23 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link as LinkIcon, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn, detectProvider, extractYouTubeVideoId } from "@/lib/utils";
-import { auth, fbFunctions } from "@/lib/firebase";
+import { cn, detectProvider } from "@/lib/utils";
+import { fbFunctions } from "@/lib/firebase";
 import { httpsCallable } from "firebase/functions";
 import { bookmarkService } from "@/services/bookmarks";
 import { ConfirmMetadataDialog, type ConfirmMetadataPayload } from "@/components/bookmarks/ConfirmMetadataDialog";
-import {
-  enrichWithYouTube,
-  enrichWithTMDB,
-  enrichWithInstagram,
-  enrichWithFacebook,
-  enrichWithTwitter,
-  enrichWithTikTok,
-  enrichWithReddit,
-  enrichWithLetterboxd,
-  enrichWithRottenTomatoes,
-  extractYouTubeVideoId as enrichExtractYT,
-} from "@/services/enrichment";
 import { toast } from "sonner";
 import type { Bookmark } from "@/types/database";
 
@@ -59,7 +47,7 @@ export function QuickAddBar({ className }: QuickAddBarProps) {
       toast.success(`"${bookmark.title}" saved to your watchlist!`);
     },
     onError: (err: any) => {
-      toast.error(err.message || "Could not save bookmark.");
+      toast.error((!err.code && err.message) ? err.message : "Could not save bookmark.");
     },
   });
 
@@ -96,188 +84,31 @@ export function QuickAddBar({ className }: QuickAddBarProps) {
     const dp = detectProvider(trimmed);
 
     try {
-      // Use Firebase Callable Cloud Function
-      try {
-        const enrichCallable = httpsCallable(fbFunctions, 'enrich');
-        const result = await enrichCallable({ url: trimmed });
-        const data = result.data as any;
+      const enrichCallable = httpsCallable(fbFunctions, 'enrich');
+      const result = await enrichCallable({ url: trimmed });
+      const data = result.data as any;
 
-        const resolvedProvider = data.provider === "unknown" ? dp : data.provider;
-
-        setConfirmInitial({
-          url: trimmed,
-          provider: resolvedProvider,
-          title: data.title,
-          posterUrl: data.posterUrl,
-          runtimeMinutes: data.runtimeMinutes ?? null,
-          type: dp === "youtube" ? "video" : "movie",
-          blocked: data.blocked,
-          debugMessage: data.error?.message,
-        });
-        setConfirmOpen(true);
-        return;
-      } catch (err) {
-        // Remote enrichment failed, fall through to local enrichment
-        console.warn("Remote enrichment failed, falling back to local enrichment", err);
-      }
-
-      // Fallback to local enrichment
-      let enrichedData: {
-        title?: string;
-        posterUrl?: string;
-        runtimeMinutes?: number | null;
-      } = {};
-
-      if (dp === "youtube") {
-        // Try YouTube enrichment
-        const videoId = enrichExtractYT(trimmed);
-        if (videoId) {
-          try {
-            const ytData = await enrichWithYouTube(videoId);
-            if (ytData) {
-              enrichedData = {
-                title: ytData.title,
-                posterUrl: ytData.thumbnail_url || undefined,
-                runtimeMinutes: ytData.duration_minutes,
-              };
-            }
-          } catch (err) {
-            console.warn("YouTube enrichment failed:", err);
-          }
-        }
-      } else if (dp === "instagram") {
-        try {
-          const igData = await enrichWithInstagram(trimmed);
-          if (igData) {
-            enrichedData = {
-              title: igData.title || undefined,
-              posterUrl: igData.thumbnail_url || undefined,
-              runtimeMinutes: null,
-            };
-          }
-        } catch (err) {
-          console.warn("Instagram enrichment failed:", err);
-        }
-      } else if (dp === "facebook") {
-        try {
-          const fbData = await enrichWithFacebook(trimmed);
-          if (fbData) {
-            enrichedData = {
-              title: fbData.title || undefined,
-              posterUrl: fbData.thumbnail_url || undefined,
-              runtimeMinutes: null,
-            };
-          }
-        } catch (err) {
-          console.warn("Facebook enrichment failed:", err);
-        }
-      } else if (dp === "x") {
-        try {
-          const twitterData = await enrichWithTwitter(trimmed);
-          if (twitterData) {
-            enrichedData = {
-              title: twitterData.title || undefined,
-              posterUrl: twitterData.thumbnail_url || undefined,
-              runtimeMinutes: null,
-            };
-          }
-        } catch (err) {
-          console.warn("Twitter enrichment failed:", err);
-        }
-      } else if (dp === "tiktok") {
-        try {
-          const ttData = await enrichWithTikTok(trimmed);
-          if (ttData) {
-            enrichedData = {
-              title: ttData.title || undefined,
-              posterUrl: ttData.thumbnail_url || undefined,
-              runtimeMinutes: null,
-            };
-          }
-        } catch (err) {
-          console.warn("TikTok enrichment failed:", err);
-        }
-      } else if (dp === "reddit") {
-        try {
-          const redditData = await enrichWithReddit(trimmed);
-          if (redditData) {
-            enrichedData = {
-              title: redditData.title || undefined,
-              posterUrl: redditData.thumbnail_url || undefined,
-              runtimeMinutes: null,
-            };
-          }
-        } catch (err) {
-          console.warn("Reddit enrichment failed:", err);
-        }
-      } else if (dp === "letterboxd") {
-        try {
-          const lbData = await enrichWithLetterboxd(trimmed);
-          if (lbData) {
-            enrichedData = {
-              title: lbData.title || undefined,
-              posterUrl: lbData.thumbnail_url || undefined,
-              runtimeMinutes: null,
-            };
-          }
-        } catch (err) {
-          console.warn("Letterboxd enrichment failed:", err);
-        }
-      } else if (dp === "rottentomatoes") {
-        try {
-          const rtData = await enrichWithRottenTomatoes(trimmed);
-          if (rtData) {
-            enrichedData = {
-              title: rtData.title || undefined,
-              posterUrl: rtData.thumbnail_url || undefined,
-              runtimeMinutes: null,
-            };
-          }
-        } catch (err) {
-          console.warn("Rotten Tomatoes enrichment failed:", err);
-        }
-      } else if (dp === "netflix" || dp === "imdb") {
-        // For other providers, try to extract title from URL or use TMDB
-        let possibleTitle: string | undefined;
-        
-        // Try to extract from URL patterns
-        if (dp === "imdb") {
-          // IMDb URL patterns: /title/tt1234567 or ?title=Movie%20Name
-          const idMatch = trimmed.match(/\/title\/(tt\d+)/);
-          if (idMatch) {
-            possibleTitle = idMatch[1];
-          }
-        } else if (dp === "netflix") {
-          // Netflix URL patterns: /watch/1234567 or contains show/movie name
-          possibleTitle = trimmed.match(/\/watch\/(\d+)|\/[a-z-]+\/([0-9]+)|title=([^&]*)/i)?.[3];
-        }
-        
-        // Try TMDB enrichment if we have a potential title
-        if (possibleTitle) {
-          try {
-            const tmdbData = await enrichWithTMDB(possibleTitle, "movie");
-            if (tmdbData) {
-              enrichedData = {
-                title: possibleTitle,
-                posterUrl: tmdbData.poster_url || undefined,
-                runtimeMinutes: null,
-              };
-            }
-          } catch (err) {
-            console.warn("TMDB enrichment failed:", err);
-          }
-        }
-      }
+      const resolvedProvider = data.provider === "unknown" ? dp : data.provider;
 
       setConfirmInitial({
         url: trimmed,
+        provider: resolvedProvider,
+        title: data.title,
+        posterUrl: data.posterUrl,
+        runtimeMinutes: data.runtimeMinutes ?? null,
+        type: dp === "youtube" ? "video" : "movie",
+        blocked: data.blocked,
+        debugMessage: data.error?.message,
+      });
+      setConfirmOpen(true);
+    } catch (err) {
+      console.warn("Enrichment failed:", err);
+      setConfirmInitial({
+        url: trimmed,
         provider: dp,
-        title: enrichedData.title,
-        posterUrl: enrichedData.posterUrl,
-        runtimeMinutes: enrichedData.runtimeMinutes,
         type: dp === "youtube" ? "video" : "movie",
         blocked: false,
-        debugMessage: enrichedData.title ? undefined : "Could not fetch details automatically.",
+        debugMessage: "Could not fetch details automatically.",
       });
       setConfirmOpen(true);
     } finally {

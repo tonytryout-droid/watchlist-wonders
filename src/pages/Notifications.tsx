@@ -38,7 +38,10 @@ const Notifications = () => {
 
   const markAsReadMutation = useMutation({
     mutationFn: (id: string) => notificationService.markAsRead(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications-count"] });
+    },
     onError: (error: any) => {
       toast({ title: "Error", description: error?.message ?? "Could not mark as read.", variant: "destructive" });
     },
@@ -48,6 +51,7 @@ const Notifications = () => {
     mutationFn: () => notificationService.markAllAsRead(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications-count"] });
       toast({ title: "All caught up!", description: "All notifications marked as read." });
     },
     onError: (error: any) => {
@@ -57,7 +61,10 @@ const Notifications = () => {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => notificationService.deleteNotification(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications-count"] });
+    },
     onError: (error: any) => {
       toast({ title: "Error", description: error?.message ?? "Could not delete notification.", variant: "destructive" });
     },
