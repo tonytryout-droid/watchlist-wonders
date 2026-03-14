@@ -35,10 +35,14 @@ async function batchAttachBookmarks(uid: string, schedules: Schedule[]): Promise
   for (let i = 0; i < bookmarkIds.length; i += CHUNK) {
     const chunk = bookmarkIds.slice(i, i + CHUNK);
     const bq = query(collection(db, 'users', uid, 'bookmarks'), where(documentId(), 'in', chunk));
-    const bSnap = await getDocs(bq);
-    bSnap.docs.forEach((d) => {
-      bookmarkMap.set(d.id, { id: d.id, ...d.data() } as Bookmark);
-    });
+    try {
+      const bSnap = await getDocs(bq);
+      bSnap.docs.forEach((d) => {
+        bookmarkMap.set(d.id, { id: d.id, ...d.data() } as Bookmark);
+      });
+    } catch (err) {
+      console.error(`[schedules] Failed to fetch bookmark chunk starting at index ${i}:`, err);
+    }
   }
   return schedules
     .filter((s) => {

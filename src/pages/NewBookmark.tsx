@@ -149,7 +149,7 @@ const NewBookmark = () => {
       setUploadProgress(0);
       toast({
         title: "Error saving",
-        description: error.message || "Something went wrong.",
+        description: (!error.code && error.message) ? error.message : "Something went wrong.",
         variant: "destructive",
       });
     },
