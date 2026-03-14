@@ -12,7 +12,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
+import { cn, extractYouTubeVideoId } from "@/lib/utils";
 import { QuickScheduleSheet } from "@/components/schedules/QuickScheduleSheet";
 import type { Bookmark } from "@/types/database";
 
@@ -88,15 +88,6 @@ function getMetadataString(metadata: Record<string, unknown>, keys: string[]): s
     const value = metadata[key];
     if (typeof value === "string" && value.trim().length > 0) return value.trim();
   }
-  return null;
-}
-
-function extractYouTubeVideoId(url: string): string | null {
-  try {
-    const u = new URL(url);
-    if (u.hostname === "youtu.be") return u.pathname.slice(1).split("?")[0];
-    if (u.hostname.includes("youtube.com")) return u.searchParams.get("v");
-  } catch { /* ignore */ }
   return null;
 }
 
