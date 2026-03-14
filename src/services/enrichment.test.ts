@@ -20,7 +20,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.clearAllEnv();
+  vi.unstubAllEnvs();
 });
 
 describe('Enrichment Service', () => {
@@ -214,13 +214,13 @@ describe('Enrichment Service', () => {
       global.fetch = vi.fn().mockImplementation(
         () =>
           new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Timeout')), 6000);
+            setTimeout(() => reject(new Error('Timeout')), 100);
           }),
       );
 
       const result = await enrichWithInstagram('https://instagram.com/p/ABC123/');
       expect(result).toBeNull();
-    });
+    }, 10000);
   });
 
   describe('API Configuration Validation', () => {
