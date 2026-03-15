@@ -39,7 +39,7 @@
     --input: 0 0% 18%;
     --ring: 357 94% 47%;
 
-    --radius: 0.25rem;
+    --radius: 0.25rem; /* 4px */
 
     --sidebar-background: 0 0% 6%;
     --sidebar-foreground: 0 0% 95%;
@@ -154,10 +154,6 @@
   }
 }
 
-.animate-shimmer {
-  animation: shimmer 1.5s infinite;
-}
-
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -169,10 +165,64 @@
   }
 }
 
-.animate-fade-in {
-  animation: fadeIn 0.4s ease-out forwards;
+/* Animations: only run if user has no preference against motion */
+@media (prefers-reduced-motion: no-preference) {
+  .animate-shimmer {
+    animation: shimmer 1.5s infinite;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.4s ease-out forwards;
+  }
 }
-/* Hide scrollbars across all browsers */
+
+/* Disable all transitions & animations for users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-shimmer,
+  .animate-fade-in {
+    animation: none;
+  }
+}
+
+/* Increase contrast for users who prefer high contrast */
+@media (prefers-contrast: more) {
+  :root,
+  .dark {
+    --border: 0 0% 40%;
+    --muted-foreground: 0 0% 75%;
+    --input: 0 0% 30%;
+  }
+}
+/* Global thin scrollbar — visible but unobtrusive */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--border));
+  border-radius: 2px;
+}
+
+/* Utility class to hide scrollbars (carousels, rails, etc.) */
 .hide-scrollbar {
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE/Edge */
