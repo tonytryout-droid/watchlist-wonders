@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Mail, Lock, Loader2, Eye, EyeOff, ArrowLeft } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +39,7 @@ const Auth = () => {
   const { toast } = useToast();
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const { user, loading, signIn, signUp, signInWithGoogle } = useAuth();
+  const isMobile = useIsMobile();
 
   // Redirect if already logged in
   useEffect(() => {
@@ -183,7 +185,7 @@ const Auth = () => {
   // Show loading while checking auth state
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#141414] flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <LoadingSpinner size="lg" />
       </div>
     );
@@ -196,9 +198,9 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#141414] flex items-center justify-center px-4 py-8 relative overflow-hidden">
+    <div className="min-h-screen bg-background flex items-center justify-center px-4 py-8 relative overflow-hidden">
       {/* Netflix-style subtle background pattern */}
-      <div className="fixed inset-0 bg-gradient-to-br from-primary/8 via-[#141414] to-[#0a0a0a]" />
+      <div className="fixed inset-0 bg-gradient-to-br from-primary/8 via-background to-black" />
       <div className="fixed inset-0 opacity-[0.03]"
         style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "32px 32px" }}
       />
@@ -211,7 +213,7 @@ const Auth = () => {
         </div>
 
         {/* Auth Card — Netflix-style semi-transparent */}
-        <div className="bg-black/75 backdrop-blur-sm rounded-sm p-8 md:p-10 shadow-2xl">
+        <div className="bg-background/75 backdrop-blur-sm rounded-sm p-8 md:p-10 shadow-2xl">
           <h1 className="text-2xl md:text-3xl font-bold text-white mb-1.5">
             {mode === "login"
               ? "Sign In"
@@ -272,7 +274,7 @@ const Auth = () => {
                   className={`pl-10 ${errors.email ? "border-destructive" : ""}`}
                   disabled={isLoading}
                   autoComplete="email"
-                  autoFocus
+                  autoFocus={!isMobile}
                 />
               </div>
               {errors.email && (
@@ -409,6 +411,7 @@ const Auth = () => {
                   type="button"
                   onClick={() => switchMode("signup")}
                   className="text-primary hover:underline font-medium"
+                  aria-current={mode === "signup" ? "page" : undefined}
                 >
                   Sign up
                 </button>
@@ -420,6 +423,7 @@ const Auth = () => {
                   type="button"
                   onClick={() => switchMode("login")}
                   className="text-primary hover:underline font-medium"
+                  aria-current={mode === "login" ? "page" : undefined}
                 >
                   Sign in
                 </button>
@@ -429,6 +433,7 @@ const Auth = () => {
                 type="button"
                 onClick={() => switchMode("login")}
                 className="text-primary hover:underline font-medium inline-flex items-center gap-1"
+                aria-current={mode === "login" ? "page" : undefined}
               >
                 <ArrowLeft className="w-3 h-3" />
                 Back to sign in

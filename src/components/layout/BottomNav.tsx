@@ -13,7 +13,7 @@ export function BottomNav({ onSearchClick, onAddClick }: BottomNavProps) {
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-50 md:hidden bg-[#141414]/98 border-t border-white/10 pb-safe">
+    <nav className="fixed bottom-0 inset-x-0 z-50 md:hidden bg-background/98 border-t border-white/10 pb-safe" style={{ paddingLeft: "env(safe-area-inset-left)", paddingRight: "env(safe-area-inset-right)" }}>
       <div className="flex items-center justify-around h-14 px-2">
 
         {/* Home */}
