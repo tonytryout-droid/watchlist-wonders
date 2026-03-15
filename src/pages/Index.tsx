@@ -149,6 +149,65 @@ const Index = () => {
                 </div>
               </div>
 
+              {/* Mobile demo — visible only on smaller screens */}
+              <div className="lg:hidden mt-8 mb-6 w-full max-w-sm mx-auto bg-card rounded-xl border border-border p-4 shadow-xl">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium mb-3">
+                  See it in action
+                </p>
+                <div className="flex gap-2 mb-4">
+                  <div className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-xs font-mono min-h-[36px] flex items-center">
+                    {demoStep === "idle" ? (
+                      <span className="text-muted-foreground">Paste a link…</span>
+                    ) : (
+                      <span className="text-foreground break-all truncate">
+                        {demoUrl}
+                        {demoStep === "typing" && (
+                          <span className="inline-block w-0.5 h-3 bg-primary ml-0.5 animate-pulse align-middle" />
+                        )}
+                      </span>
+                    )}
+                  </div>
+                  <Button size="sm" className="shrink-0 h-9 text-xs" disabled={demoStep === "idle" || demoStep === "typing"}>
+                    {demoStep === "loading" ? (
+                      <span className="w-3 h-3 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                    ) : "Save"}
+                  </Button>
+                </div>
+                {demoStep === "enriched" && (
+                  <div className="flex gap-3">
+                    <div className="w-12 h-16 bg-gradient-to-br from-red-900 to-red-600 rounded-lg shrink-0 flex items-center justify-center">
+                      <Play className="w-5 h-5 text-white fill-current" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-foreground truncate">Never Gonna Give You Up</p>
+                      <p className="text-[10px] text-muted-foreground">Rick Astley · 1987 · 3m</p>
+                      <div className="flex items-center gap-1 mt-2 text-[10px] text-chart-3">
+                        <Check className="w-2.5 h-2.5" />
+                        Bookmarked!
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {(demoStep === "idle" || demoStep === "typing") && (
+                  <div className="flex gap-3 opacity-30">
+                    <div className="w-12 h-16 bg-muted rounded-lg shrink-0" />
+                    <div className="flex-1 space-y-2 pt-1">
+                      <div className="h-2.5 bg-muted rounded w-3/4" />
+                      <div className="h-2.5 bg-muted rounded w-1/2" />
+                    </div>
+                  </div>
+                )}
+                {demoStep === "loading" && (
+                  <div className="flex gap-3">
+                    <div className="w-12 h-16 bg-muted rounded-lg shrink-0 animate-pulse" />
+                    <div className="flex-1 space-y-2 pt-1">
+                      <div className="h-2.5 bg-muted rounded animate-pulse w-3/4" />
+                      <div className="h-2.5 bg-muted rounded animate-pulse w-1/2" />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="flex flex-col sm:flex-row gap-4">
                 <Button size="lg" onClick={() => navigate("/auth")} className="text-base px-8 py-6">
                   Get Started — it's free
@@ -160,7 +219,7 @@ const Index = () => {
               </div>
             </div>
 
-            {/* Right — animated demo */}
+            {/* Right — animated demo (desktop only) */}
             <div className="relative hidden lg:flex justify-center">
               <div className="relative w-full max-w-sm bg-card rounded-2xl border border-border p-6 shadow-2xl">
                 <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-3">

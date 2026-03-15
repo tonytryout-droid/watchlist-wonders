@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   Play, Plus, Check, CalendarPlus, MoreHorizontal, ExternalLink,
-  Trash2, Undo2, Eye, BookMarked, Minus, ThumbsUp, Info,
+  Trash2, Undo2, Eye, BookMarked, Minus, ThumbsUp, Info, Film,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -45,6 +45,16 @@ const PROVIDER_COLOR: Record<string, string> = {
   tiktok:         "bg-neutral-900",
   reddit:         "bg-orange-500",
   rottentomatoes: "bg-red-500",
+  disney:         "bg-blue-800",
+  disneyplus:     "bg-blue-800",
+  prime:          "bg-sky-600",
+  primevideo:     "bg-sky-600",
+  twitch:         "bg-purple-600",
+  appletv:        "bg-zinc-900",
+  appletvplus:    "bg-zinc-900",
+  hbo:            "bg-purple-900",
+  hbomax:         "bg-purple-900",
+  peacock:        "bg-yellow-600",
   generic:        "bg-neutral-500",
 };
 
@@ -176,9 +186,11 @@ export function PosterCard({
   const [imageError, setImageError] = useState(false);
   const [quickScheduleOpen, setQuickScheduleOpen] = useState(false);
   const [trailerUrl, setTrailerUrl] = useState<string | null>(() => getBookmarkTrailerUrl(bookmark));
+  const [isLoadingTrailer, setIsLoadingTrailer] = useState(false);
   const [episodePopoverOpen, setEpisodePopoverOpen] = useState(false);
   const [localEpisodeCount, setLocalEpisodeCount] = useState(0);
   const cardRef = useRef<HTMLDivElement>(null);
+  const trailerDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const imageUrl =
     variant === "poster"
@@ -258,12 +270,25 @@ export function PosterCard({
   }, [episodesWatched]);
 
   useEffect(() => {
-    if (!isPreviewActive || trailerUrl) return;
+    if (!isPreviewActive || trailerUrl) {
+      if (trailerDebounceRef.current) clearTimeout(trailerDebounceRef.current);
+      return;
+    }
     let cancelled = false;
-    fetchTmdbTrailerUrl(bookmark).then((url) => {
-      if (!cancelled && url) setTrailerUrl(url);
-    });
-    return () => { cancelled = true; };
+    setIsLoadingTrailer(true);
+    trailerDebounceRef.current = setTimeout(() => {
+      fetchTmdbTrailerUrl(bookmark).then((url) => {
+        if (!cancelled) {
+          if (url) setTrailerUrl(url);
+          setIsLoadingTrailer(false);
+        }
+      });
+    }, 400);
+    return () => {
+      cancelled = true;
+      if (trailerDebounceRef.current) clearTimeout(trailerDebounceRef.current);
+      setIsLoadingTrailer(false);
+    };
   }, [isPreviewActive, trailerUrl, bookmark]);
 
   // Clear isTouched on outside click (mobile)
@@ -330,10 +355,18 @@ export function PosterCard({
                 loading="lazy"
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center bg-[#2f2f2f]">
-                <span className="text-4xl font-extrabold text-white/20">
-                  {bookmark.title.charAt(0).toUpperCase()}
+              <div className="w-full h-full flex flex-col items-center justify-center bg-muted gap-2">
+                <Film className="w-8 h-8 text-muted-foreground" />
+                <span className="text-[10px] text-muted-foreground/60 text-center px-2 leading-tight truncate max-w-full">
+                  {bookmark.title}
                 </span>
+              </div>
+            )}
+
+            {/* Trailer preview loading skeleton */}
+            {isPreviewActive && isLoadingTrailer && !trailerUrl && (
+              <div className="absolute inset-0 z-[1] bg-black flex items-center justify-center">
+                <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               </div>
             )}
 
@@ -404,7 +437,7 @@ export function PosterCard({
                     />
                   </button>
                 </PopoverTrigger>
-                <PopoverContent side="top" className="w-48 p-3 bg-[#1a1a1a] border-white/10" onClick={(e) => e.stopPropagation()}>
+                <PopoverContent side="top" className="w-48 p-3 bg-card border-white/10" onClick={(e) => e.stopPropagation()}>
                   <p className="text-xs font-medium mb-2 text-white">Episodes watched</p>
                   <div className="flex items-center gap-2 mb-3">
                     <button
@@ -473,7 +506,7 @@ export function PosterCard({
                       <MoreHorizontal className="w-4 h-4 text-white" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48 bg-[#1a1a1a] border-white/10">
+                  <DropdownMenuContent align="end" className="w-48 bg-card border-white/10">
                     {bookmark.status !== "watching" && (
                       <DropdownMenuItem onClick={onSetWatching} className="text-white/90">
                         <Eye className="w-4 h-4 mr-2" />Set as Watching
@@ -513,7 +546,7 @@ export function PosterCard({
         {!isSelectable && (
           <div
             className={cn(
-              "overflow-hidden transition-all duration-300 bg-[#1a1a1a] rounded-b-sm",
+              "overflow-hidden transition-all duration-300 bg-card rounded-b-sm",
               showExpanded ? "max-h-40 opacity-100" : "max-h-0 opacity-0"
             )}
           >
@@ -567,7 +600,7 @@ export function PosterCard({
                       <MoreHorizontal className="w-4 h-4" />
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48 bg-[#1a1a1a] border-white/10">
+                  <DropdownMenuContent align="end" className="w-48 bg-card border-white/10">
                     {bookmark.status !== "watching" && (
                       <DropdownMenuItem onClick={onSetWatching} className="text-white/90">
                         <Eye className="w-4 h-4 mr-2" />Set as Watching
