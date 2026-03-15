@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Search, Bell, Plus, X, ChevronDown } from "lucide-react";
+import { Search, Bell, Plus, X, ChevronDown, Flame, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -37,6 +37,7 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
   const [scrolled, setScrolled] = useState(false);
   const [addPopoverOpen, setAddPopoverOpen] = useState(false);
   const [searchExpanded, setSearchExpanded] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const { user, signOut } = useAuth();
   const { avatarUrl } = useAvatar();
@@ -67,12 +68,15 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
   };
 
   const handleSignOut = async () => {
+    setIsSigningOut(true);
     try {
       await signOut();
       toast({ title: "Signed out", description: "You have been successfully signed out." });
       navigate("/auth");
     } catch {
       toast({ title: "Error signing out", variant: "destructive" });
+    } finally {
+      setIsSigningOut(false);
     }
   };
 
@@ -91,7 +95,7 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
         className={cn(
           "fixed top-0 inset-x-0 z-50 transition-all duration-500",
           scrolled
-            ? "bg-[#141414]"
+            ? "bg-background"
             : "bg-gradient-to-b from-black/80 via-black/40 to-transparent"
         )}
       >
@@ -133,7 +137,7 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
                   Browse <ChevronDown className="w-3.5 h-3.5" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="bg-[#141414] border-white/10 w-44">
+              <DropdownMenuContent align="start" className="bg-background border-white/10 w-44">
                 {navLinks.map((link) => (
                   <DropdownMenuItem key={link.href} asChild>
                     <Link
@@ -196,7 +200,7 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
                   <Plus className="w-5 h-5" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-96 p-4 bg-[#1a1a1a] border-white/10" sideOffset={8}>
+              <PopoverContent align="end" className="w-96 p-4 bg-card border-white/10" sideOffset={8}>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold text-white">Quick Add</p>
@@ -231,11 +235,11 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
                     className="hidden sm:flex w-10 h-10 items-center justify-center text-orange-400 font-bold text-sm hover:text-orange-300 transition-colors"
                     aria-label={`${streak} day watch streak`}
                   >
-                    🔥{streak}
+                    <Flame className="w-3.5 h-3.5 mr-0.5" />{streak}
                   </button>
                 </PopoverTrigger>
-                <PopoverContent align="end" className="w-56 p-4 bg-[#1a1a1a] border-white/10">
-                  <p className="font-semibold text-sm mb-1 text-white">🔥 {streak}-day streak!</p>
+                <PopoverContent align="end" className="w-56 p-4 bg-card border-white/10">
+                  <p className="font-semibold text-sm mb-1 text-white flex items-center gap-1"><Flame className="w-3.5 h-3.5" /> {streak}-day streak!</p>
                   <p className="text-xs text-white/60">
                     You've watched something {streak} days in a row. Keep it up!
                   </p>
@@ -254,8 +258,8 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
             >
               <Bell className="w-5 h-5" />
               {notificationCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-3.5 h-3.5 bg-primary text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-                  {notificationCount > 9 ? "9+" : notificationCount}
+                <span className="absolute top-1.5 right-1.5 min-w-[14px] h-3.5 bg-primary text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
+                  {notificationCount > 99 ? "99+" : notificationCount}
                 </span>
               )}
             </Link>
@@ -274,7 +278,7 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
                     <ChevronDown className="w-3 h-3 text-white/70 group-hover:text-white transition-all group-data-[state=open]:rotate-180" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48 bg-[#1a1a1a] border-white/10">
+                <DropdownMenuContent align="end" className="w-48 bg-card border-white/10">
                   <DropdownMenuItem asChild>
                     <Link to="/settings" className="text-white/90 hover:text-white cursor-pointer">
                       Account & Settings
@@ -283,9 +287,17 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
                   <DropdownMenuSeparator className="bg-white/10" />
                   <DropdownMenuItem
                     onClick={handleSignOut}
+                    disabled={isSigningOut}
                     className="text-white/70 hover:text-white cursor-pointer"
                   >
-                    Sign Out
+                    {isSigningOut ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                        Signing out...
+                      </>
+                    ) : (
+                      "Sign Out"
+                    )}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
