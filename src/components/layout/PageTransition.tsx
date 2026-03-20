@@ -7,29 +7,26 @@ interface PageTransitionProps {
 
 const PageTransition = ({ children }: PageTransitionProps) => {
   const location = useLocation();
-  const [isVisible, setIsVisible] = useState(false);
-  const [displayLocation, setDisplayLocation] = useState(location);
+  const [visible, setVisible] = useState(true);
+  const [activeKey, setActiveKey] = useState(location.key);
 
   useEffect(() => {
-    if (location.pathname !== displayLocation.pathname) {
-      setIsVisible(false);
-      const timer = setTimeout(() => {
-        setDisplayLocation(location);
-        setIsVisible(true);
-      }, 150);
-      return () => clearTimeout(timer);
-    } else {
-      setIsVisible(true);
-    }
-  }, [location, displayLocation]);
+    if (location.key === activeKey) return;
+    // Fade out, swap key (shows new route content), fade in
+    setVisible(false);
+    const t = setTimeout(() => {
+      setActiveKey(location.key);
+      setVisible(true);
+    }, 120);
+    return () => clearTimeout(t);
+  }, [location.key, activeKey]);
 
   return (
     <div
-      className={`transition-all duration-300 ease-out ${
-        isVisible
-          ? "opacity-100 translate-y-0"
-          : "opacity-0 translate-y-2"
-      }`}
+      style={{
+        transition: "opacity 0.2s ease",
+        opacity: visible ? 1 : 0,
+      }}
     >
       {children}
     </div>

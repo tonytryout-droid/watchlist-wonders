@@ -1,6 +1,7 @@
 import { Outlet } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { TopNav } from "./TopNav";
+import { Sidebar } from "./Sidebar";
 import { SearchOverlay } from "@/components/search/SearchOverlay";
 import { useSearchShortcut } from "@/hooks/useSearchShortcut";
 import { useAuth } from "@/contexts/AuthContext";
@@ -29,17 +30,20 @@ export function AppLayout() {
   });
 
   return (
-    <div className="min-h-screen bg-background" id="main-scroll-container">
-      <TopNav
-        onSearchClick={openSearch}
-        notificationCount={unreadCount}
-      />
-      <SearchOverlay
-        isOpen={isSearchOpen}
-        onClose={closeSearch}
-        bookmarks={bookmarks}
-      />
-      <Outlet />
+    <div className="flex min-h-screen bg-background">
+      <Sidebar />
+      <div className="flex-1 min-w-0" id="main-scroll-container">
+        <TopNav
+          onSearchClick={openSearch}
+          notificationCount={unreadCount}
+        />
+        <SearchOverlay
+          isOpen={isSearchOpen}
+          onClose={closeSearch}
+          bookmarks={bookmarks}
+        />
+        <Outlet />
+      </div>
     </div>
   );
 }

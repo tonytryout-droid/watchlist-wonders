@@ -2,11 +2,12 @@ import { Link, useLocation } from "react-router-dom";
 import {
   Home,
   ListChecks,
-  Telescope,
+  Moon,
   BarChart2,
   Settings,
   LogOut,
   CalendarDays,
+  Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -14,11 +15,12 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 
 const menuItems = [
-  { href: "/dashboard", label: "Home", icon: Home, exact: true },
-  { href: "/plans", label: "Watch List", icon: ListChecks },
-  { href: "/tonight", label: "Coming Soon", icon: Telescope },
-  { href: "/stats", label: "Discovery", icon: BarChart2 },
-  { href: "/calendar", label: "Calendar", icon: CalendarDays },
+  { href: "/dashboard",     label: "Home",           icon: Home,        exact: true },
+  { href: "/plans",         label: "My List",        icon: ListChecks },
+  { href: "/tonight",       label: "Tonight's Pick", icon: Moon },
+  { href: "/stats",         label: "Stats",          icon: BarChart2 },
+  { href: "/calendar",      label: "Calendar",       icon: CalendarDays },
+  { href: "/notifications", label: "Notifications",  icon: Bell },
 ];
 
 export function Sidebar() {
