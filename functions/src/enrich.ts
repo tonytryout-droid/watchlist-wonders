@@ -54,8 +54,33 @@ function isPrivateIpv4(hostname: string): boolean {
   return false;
 }
 
+function extractIpv4FromMappedIpv6(hostname: string): string | null {
+  const mapped = hostname.match(/^::ffff:(.+)$/);
+  if (!mapped) return null;
+
+  const embedded = mapped[1];
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(embedded)) {
+    const parts = embedded.split('.').map((part) => Number(part));
+    if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
+      return null;
+    }
+    return parts.join('.');
+  }
+
+  const hexMatch = embedded.match(/^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (!hexMatch) return null;
+
+  const high = Number.parseInt(hexMatch[1], 16);
+  const low = Number.parseInt(hexMatch[2], 16);
+  const octets = [(high >> 8) & 0xff, high & 0xff, (low >> 8) & 0xff, low & 0xff];
+  return octets.join('.');
+}
+
 function isPrivateIpv6(hostname: string): boolean {
   const h = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  const mappedIpv4 = extractIpv4FromMappedIpv6(h);
+  if (mappedIpv4) return isPrivateIpv4(mappedIpv4);
+
   return (
     h === '::1' ||
     h === '::' ||
