@@ -20,6 +20,14 @@ interface EnrichResponse {
 
 // --- URL helpers ---
 
+const DEFAULT_FETCH_TIMEOUT_MS = 8000;
+const DISALLOWED_HOSTS = new Set([
+  'localhost',
+  'metadata',
+  'metadata.google.internal',
+  '169.254.169.254',
+]);
+
 /** Strip query string and fragment for safe logging (avoids leaking tokens in query params) */
 function redactUrlForLog(url: string): string {
   try {
@@ -27,6 +35,90 @@ function redactUrlForLog(url: string): string {
     return `${u.protocol}//${u.host}${u.pathname}`;
   } catch {
     return url;
+  }
+}
+
+function isPrivateIpv4(hostname: string): boolean {
+  const parts = hostname.split('.').map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
+    return false;
+  }
+
+  const [a, b] = parts;
+  if (a === 10 || a === 127 || a === 0) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a === 198 && (b === 18 || b === 19)) return true;
+  return false;
+}
+
+function isPrivateIpv6(hostname: string): boolean {
+  const h = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  return (
+    h === '::1' ||
+    h === '::' ||
+    h.startsWith('fc') ||
+    h.startsWith('fd') ||
+    h.startsWith('fe80:')
+  );
+}
+
+function isIpLiteral(hostname: string): boolean {
+  const h = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  return /^\d+\.\d+\.\d+\.\d+$/.test(h) || h.includes(':');
+}
+
+function isDisallowedHostname(hostname: string): boolean {
+  const h = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+
+  if (DISALLOWED_HOSTS.has(h)) return true;
+  if (h.endsWith('.localhost') || h.endsWith('.local')) return true;
+
+  if (!isIpLiteral(h)) return false;
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) return isPrivateIpv4(h);
+  return isPrivateIpv6(h);
+}
+
+function normalizeAndValidateUrl(input: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(input);
+  } catch {
+    throw new HttpsError('invalid-argument', 'A valid absolute URL is required.');
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new HttpsError('invalid-argument', 'Only http:// and https:// URLs are supported.');
+  }
+
+  if (parsed.username || parsed.password) {
+    throw new HttpsError('invalid-argument', 'URLs with embedded credentials are not allowed.');
+  }
+
+  if (!parsed.hostname || isDisallowedHostname(parsed.hostname)) {
+    throw new HttpsError('invalid-argument', 'Private or local network URLs are not allowed.');
+  }
+
+  return parsed;
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = DEFAULT_FETCH_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -81,7 +173,7 @@ async function enrichYouTube(videoId: string): Promise<EnrichResponse> {
 
   try {
     const params = new URLSearchParams({ id: videoId, part: 'snippet,contentDetails', key: apiKey });
-    const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?${params}`);
+    const res = await fetchWithTimeout(`https://www.googleapis.com/youtube/v3/videos?${params}`);
     if (!res.ok) return { provider: 'youtube' };
 
     const data = (await res.json()) as any;
@@ -125,7 +217,7 @@ async function enrichYouTube(videoId: string): Promise<EnrichResponse> {
 
 async function fetchOEmbed(oembedUrl: string): Promise<{ title?: string; html?: string } | null> {
   try {
-    const res = await fetch(oembedUrl);
+    const res = await fetchWithTimeout(oembedUrl, {}, 6000);
     if (!res.ok) return null;
     return (await res.json()) as any;
   } catch {
@@ -153,7 +245,7 @@ async function enrichTikTok(url: string): Promise<EnrichResponse> {
 
 async function fetchOpenGraph(url: string): Promise<Record<string, string>> {
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; WatchWondersBot/1.0)',
       },
@@ -184,13 +276,13 @@ async function fetchOpenGraph(url: string): Promise<Record<string, string>> {
 async function enrichWithMicrolink(url: string): Promise<Partial<EnrichResponse>> {
   try {
     const endpoint = `https://api.microlink.io?url=${encodeURIComponent(url)}&meta=true`;
-    const res = await fetch(endpoint, { signal: AbortSignal.timeout(8000) });
+    const res = await fetchWithTimeout(endpoint);
     if (!res.ok) return {};
     const json = (await res.json()) as any;
     if (json.status !== 'success' || !json.data?.title) return {};
     const d = json.data;
     const year = d.date ? new Date(d.date).getFullYear() : undefined;
-    logger.info('[microlink] enriched:', url, d.title);
+    logger.info('[microlink] enriched:', redactUrlForLog(url), d.title);
     return {
       title: d.title ?? undefined,
       description: d.description ?? undefined,
@@ -198,7 +290,7 @@ async function enrichWithMicrolink(url: string): Promise<Partial<EnrichResponse>
       releaseYear: year || undefined,
     };
   } catch (err) {
-    logger.warn('[microlink] failed for', url, err);
+    logger.warn('[microlink] failed for', redactUrlForLog(url), err);
     return {};
   }
 }
@@ -243,7 +335,7 @@ async function enrichIMDb(url: string): Promise<EnrichResponse> {
   if (!imdbId) return enrichViaOG(url, 'imdb');
 
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://api.themoviedb.org/3/find/${imdbId}?external_source=imdb_id&api_key=${apiKey}`
     );
     if (!res.ok) return enrichViaOG(url, 'imdb');
@@ -257,7 +349,7 @@ async function enrichIMDb(url: string): Promise<EnrichResponse> {
     let runtimeMinutes: number | undefined;
     try {
       const mediaType = isTV ? 'tv' : 'movie';
-      const detailRes = await fetch(
+      const detailRes = await fetchWithTimeout(
         `https://api.themoviedb.org/3/${mediaType}/${result.id}?api_key=${apiKey}`
       );
       if (detailRes.ok) {
@@ -315,9 +407,9 @@ async function enrichRottenTomatoes(url: string): Promise<EnrichResponse> {
 async function enrichReddit(url: string): Promise<EnrichResponse> {
   try {
     const jsonUrl = url.replace(/\?.*$/, '').replace(/\/$/, '') + '.json';
-    const res = await fetch(jsonUrl, {
+    const res = await fetchWithTimeout(jsonUrl, {
       headers: { 'User-Agent': 'WatchWondersBot/1.0' },
-    });
+    }, 6000);
     if (!res.ok) return { provider: 'reddit' };
     const data = (await res.json()) as any;
     const post = data?.[0]?.data?.children?.[0]?.data;
@@ -337,7 +429,7 @@ async function enrichTMDB(title: string): Promise<EnrichResponse> {
 
   try {
     const params = new URLSearchParams({ api_key: apiKey, query: title });
-    const res = await fetch(`https://api.themoviedb.org/3/search/multi?${params}`);
+    const res = await fetchWithTimeout(`https://api.themoviedb.org/3/search/multi?${params}`);
     if (!res.ok) return { provider: 'generic' };
 
     const data = (await res.json()) as any;
@@ -349,7 +441,7 @@ async function enrichTMDB(title: string): Promise<EnrichResponse> {
 
     let runtimeMinutes: number | undefined;
     try {
-      const detailRes = await fetch(
+      const detailRes = await fetchWithTimeout(
         `https://api.themoviedb.org/3/${result.media_type}/${result.id}?api_key=${apiKey}`
       );
       if (detailRes.ok) {
@@ -390,46 +482,52 @@ export const enrich = onCall(
         throw new HttpsError('invalid-argument', 'URL is required.');
       }
 
-      logger.info('Enriching URL:', redactUrlForLog(url));
-      const provider = detectProvider(url);
+      const validatedUrl = normalizeAndValidateUrl(url);
+      const normalizedUrl = validatedUrl.toString();
+
+      logger.info('Enriching URL:', redactUrlForLog(normalizedUrl));
+      const provider = detectProvider(normalizedUrl);
       let result: EnrichResponse = { provider };
 
       switch (provider) {
         case 'youtube': {
-          const videoId = extractYouTubeVideoId(url);
+          const videoId = extractYouTubeVideoId(normalizedUrl);
           if (videoId) result = await enrichYouTube(videoId);
           break;
         }
         case 'x':
-          result = await enrichTwitter(url);
+          result = await enrichTwitter(normalizedUrl);
           break;
         case 'tiktok':
-          result = await enrichTikTok(url);
+          result = await enrichTikTok(normalizedUrl);
           break;
         case 'reddit':
-          result = await enrichReddit(url);
+          result = await enrichReddit(normalizedUrl);
           break;
         case 'imdb':
-          result = await enrichIMDb(url);
+          result = await enrichIMDb(normalizedUrl);
           break;
         case 'letterboxd':
-          result = await enrichLetterboxd(url);
+          result = await enrichLetterboxd(normalizedUrl);
           break;
         case 'rottentomatoes':
-          result = await enrichRottenTomatoes(url);
+          result = await enrichRottenTomatoes(normalizedUrl);
           break;
         case 'instagram':
         case 'facebook':
         case 'netflix':
         case 'generic':
-          result = await enrichViaOG(url, provider);
+          result = await enrichViaOG(normalizedUrl, provider);
           break;
       }
 
       return result;
     } catch (error) {
       logger.error('Enrichment error:', error);
-      throw error;
+      if (error instanceof HttpsError) {
+        throw error;
+      }
+      throw new HttpsError('internal', 'Unable to enrich URL at this time.');
     }
   }
 );

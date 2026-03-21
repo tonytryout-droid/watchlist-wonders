@@ -20,7 +20,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.clearAllEnv();
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 describe('Enrichment Service', () => {
@@ -214,7 +215,7 @@ describe('Enrichment Service', () => {
       global.fetch = vi.fn().mockImplementation(
         () =>
           new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Timeout')), 6000);
+            setTimeout(() => reject(new Error('Timeout')), 50);
           }),
       );
 
