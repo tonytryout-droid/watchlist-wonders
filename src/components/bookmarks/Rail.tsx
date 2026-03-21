@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { PosterCard } from "./PosterCard";
 import { cn } from "@/lib/utils";
@@ -9,6 +9,8 @@ interface RailProps {
   subtitle?: string;
   bookmarks: Bookmark[];
   variant?: "poster" | "backdrop";
+  showRanks?: boolean;
+  cardSize?: "default" | "featured";
   onSchedule?: (bookmark: Bookmark) => void;
   onMarkDone?: (bookmark: Bookmark) => void;
   onAddToPlan?: (bookmark: Bookmark) => void;
@@ -30,6 +32,8 @@ export function Rail({
   subtitle,
   bookmarks,
   variant = "poster",
+  showRanks = false,
+  cardSize = "default",
   onSchedule,
   onMarkDone,
   onAddToPlan,
@@ -49,35 +53,66 @@ export function Rail({
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(true);
 
-  const updateArrows = () => {
+  const updateArrows = useCallback(() => {
     if (!scrollRef.current) return;
     const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
     setShowLeftArrow(scrollLeft > 4);
     setShowRightArrow(scrollLeft < scrollWidth - clientWidth - 10);
-  };
+  }, []);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    updateArrows();
+
+    const resizeObserver = new ResizeObserver(() => updateArrows());
+    resizeObserver.observe(container);
+    window.addEventListener("resize", updateArrows);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateArrows);
+    };
+  }, [bookmarks.length, updateArrows]);
 
   const scroll = (direction: "left" | "right") => {
     if (!scrollRef.current) return;
-    const scrollAmount = scrollRef.current.clientWidth * 0.8;
+    const scrollAmount = scrollRef.current.clientWidth * 0.9;
     scrollRef.current.scrollBy({ left: direction === "left" ? -scrollAmount : scrollAmount, behavior: "smooth" });
     setTimeout(updateArrows, 350);
   };
 
+  const focusSiblingCard = (direction: "left" | "right") => {
+    if (!scrollRef.current) return false;
+    const links = Array.from(
+      scrollRef.current.querySelectorAll<HTMLElement>("[data-rail-card-link='true']")
+    );
+    if (links.length === 0) return false;
+    const activeIndex = links.findIndex((el) => el === document.activeElement);
+    if (activeIndex === -1) return false;
+    const nextIndex = direction === "right" ? activeIndex + 1 : activeIndex - 1;
+    if (nextIndex < 0 || nextIndex >= links.length) return false;
+    const next = links[nextIndex];
+    next.focus();
+    next.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    return true;
+  };
+
   if (bookmarks.length === 0) {
     if (emptyState) return <>{emptyState}</>;
-    if (emptyMessage) return <div className="px-8 md:px-12 lg:px-16 py-6 text-white/40 text-sm">{emptyMessage}</div>;
+    if (emptyMessage) return <div className="px-4 sm:px-6 lg:px-8 py-6 text-white/40 text-sm">{emptyMessage}</div>;
     return null;
   }
 
   return (
-    <section className={cn("relative py-2 group/rail overflow-visible", className)}>
+    <section className={cn("relative py-4 group/rail overflow-visible", className)}>
       {/* Row header */}
-      <div className="px-8 md:px-12 lg:px-16 mb-2 flex items-baseline gap-3">
-        <h2 className="text-sm md:text-base font-bold text-white tracking-tight hover:text-white/80 cursor-default transition-colors">
+      <div className="px-4 sm:px-6 lg:px-8 mb-3 flex items-baseline gap-3">
+        <h2 className="text-base md:text-lg font-semibold text-white tracking-tight hover:text-white/85 cursor-default transition-colors">
           {title}
         </h2>
         {subtitle && (
-          <span className="text-xs text-[#54b3d6] font-semibold hidden group-hover/rail:inline transition-opacity">
+          <span className="text-xs text-[#54b3d6] font-semibold hidden lg:inline opacity-0 group-hover/rail:opacity-100 transition-opacity">
             {subtitle}
           </span>
         )}
@@ -88,8 +123,8 @@ export function Rail({
         {/* Left gradient fade + arrow */}
         <div
           className={cn(
-            "absolute left-0 top-0 bottom-0 z-20 flex items-center transition-opacity duration-200",
-            showLeftArrow ? "opacity-100" : "opacity-0 pointer-events-none"
+            "absolute left-0 top-0 bottom-0 z-20 hidden md:flex items-center transition-opacity duration-300 ease-out opacity-0 group-hover/rail:opacity-100 group-focus-within/rail:opacity-100",
+            showLeftArrow ? "pointer-events-auto" : "opacity-0 pointer-events-none"
           )}
         >
           <div className="w-12 md:w-16 h-full bg-gradient-to-r from-[#141414] to-transparent" />
@@ -99,7 +134,7 @@ export function Rail({
             className="absolute left-0 h-full w-12 md:w-16 flex items-center justify-center text-white hover:bg-white/5 transition-colors"
             aria-label="Scroll left"
           >
-            <div className="w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm border border-white/20 flex items-center justify-center hover:bg-black/70 transition-colors">
+            <div className="w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm border border-white/20 flex items-center justify-center hover:bg-black/70 transition-colors duration-300 ease-out">
               <ChevronLeft className="w-5 h-5" />
             </div>
           </button>
@@ -108,8 +143,8 @@ export function Rail({
         {/* Right gradient fade + arrow */}
         <div
           className={cn(
-            "absolute right-0 top-0 bottom-0 z-20 flex items-center transition-opacity duration-200",
-            showRightArrow ? "opacity-100" : "opacity-0 pointer-events-none"
+            "absolute right-0 top-0 bottom-0 z-20 hidden md:flex items-center transition-opacity duration-300 ease-out opacity-0 group-hover/rail:opacity-100 group-focus-within/rail:opacity-100",
+            showRightArrow ? "pointer-events-auto" : "opacity-0 pointer-events-none"
           )}
         >
           <div className="w-12 md:w-16 h-full bg-gradient-to-l from-[#141414] to-transparent" />
@@ -119,7 +154,7 @@ export function Rail({
             className="absolute right-0 h-full w-12 md:w-16 flex items-center justify-center text-white hover:bg-white/5 transition-colors"
             aria-label="Scroll right"
           >
-            <div className="w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm border border-white/20 flex items-center justify-center hover:bg-black/70 transition-colors">
+            <div className="w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm border border-white/20 flex items-center justify-center hover:bg-black/70 transition-colors duration-300 ease-out">
               <ChevronRight className="w-5 h-5" />
             </div>
           </button>
@@ -129,14 +164,42 @@ export function Rail({
         <div
           ref={scrollRef}
           onScroll={updateArrows}
-          className="flex gap-1.5 md:gap-2 overflow-x-auto scrollbar-hide px-8 md:px-12 lg:px-16 pb-3"
+          onKeyDown={(event) => {
+            if (event.key === "ArrowRight") {
+              event.preventDefault();
+              const moved = focusSiblingCard("right");
+              if (!moved) scroll("right");
+            }
+            if (event.key === "ArrowLeft") {
+              event.preventDefault();
+              const moved = focusSiblingCard("left");
+              if (!moved) scroll("left");
+            }
+            if (event.key === "Home" && scrollRef.current) {
+              event.preventDefault();
+              scrollRef.current.scrollTo({ left: 0, behavior: "smooth" });
+              const first = scrollRef.current.querySelector<HTMLElement>("[data-rail-card-link='true']");
+              first?.focus();
+            }
+            if (event.key === "End" && scrollRef.current) {
+              event.preventDefault();
+              scrollRef.current.scrollTo({ left: scrollRef.current.scrollWidth, behavior: "smooth" });
+              const links = scrollRef.current.querySelectorAll<HTMLElement>("[data-rail-card-link='true']");
+              const last = links.item(links.length - 1);
+              last?.focus();
+            }
+          }}
+          tabIndex={0}
+          className="flex gap-2 md:gap-2.5 overflow-x-auto hide-scrollbar snap-x snap-mandatory scroll-smooth px-4 sm:px-6 lg:px-8 pb-4 outline-none focus-visible:ring-1 focus-visible:ring-primary/30 rounded-sm"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
-          {bookmarks.map((bookmark) => (
+          {bookmarks.map((bookmark, index) => (
             <PosterCard
               key={bookmark.id}
               bookmark={bookmark}
               variant={variant}
+              rank={showRanks ? index + 1 : undefined}
+              cardSize={cardSize}
               onSchedule={() => onSchedule?.(bookmark)}
               onMarkDone={() => onMarkDone?.(bookmark)}
               onAddToPlan={() => onAddToPlan?.(bookmark)}

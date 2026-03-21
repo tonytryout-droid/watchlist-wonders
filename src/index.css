@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -66,8 +66,11 @@
     --wm-gradient-rail: linear-gradient(90deg, hsl(0 0% 8%) 0%, transparent 10%, transparent 90%, hsl(0 0% 8%) 100%);
     --wm-poster-ratio: 2 / 3;
     --wm-backdrop-ratio: 16 / 9;
+    --wm-ease-snappy: cubic-bezier(0.22, 1, 0.36, 1);
+    --wm-ease-fluid: cubic-bezier(0.16, 1, 0.3, 1);
+    --wm-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
 
-    --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-sans: "Archivo", ui-sans-serif, system-ui, -apple-system, sans-serif;
   }
 
   .dark {
@@ -131,6 +134,16 @@
 
   body {
     @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    text-rendering: optimizeLegibility;
   }
 }
 
@@ -172,7 +185,7 @@
   }
 
   .animate-fade-in {
-    animation: fadeIn 0.4s ease-out forwards;
+    animation: fadeIn 0.45s var(--wm-ease-fluid) forwards;
   }
 }
 
