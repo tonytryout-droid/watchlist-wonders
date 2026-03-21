@@ -18,6 +18,8 @@ import type { Bookmark } from "@/types/database";
 
 interface PosterCardProps {
   bookmark: Bookmark;
+  rank?: number;
+  cardSize?: "default" | "featured";
   onPlay?: () => void;
   onSchedule?: () => void;
   onMarkDone?: () => void;
@@ -165,6 +167,8 @@ async function fetchTmdbTrailerUrl(bookmark: Bookmark): Promise<string | null> {
 
 export function PosterCard({
   bookmark,
+  rank,
+  cardSize = "default",
   onPlay,
   onSchedule,
   onMarkDone,
@@ -191,6 +195,8 @@ export function PosterCard({
   const [localEpisodeCount, setLocalEpisodeCount] = useState(0);
   const cardRef = useRef<HTMLDivElement>(null);
   const trailerDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverOpenRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverCloseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const imageUrl =
     variant === "poster"
@@ -261,6 +267,37 @@ export function PosterCard({
     setEpisodePopoverOpen(false);
   };
 
+  const clearHoverOpenTimer = () => {
+    if (hoverOpenRef.current) {
+      clearTimeout(hoverOpenRef.current);
+      hoverOpenRef.current = null;
+    }
+  };
+
+  const clearHoverCloseTimer = () => {
+    if (hoverCloseRef.current) {
+      clearTimeout(hoverCloseRef.current);
+      hoverCloseRef.current = null;
+    }
+  };
+
+  const scheduleHoverOpen = () => {
+    clearHoverCloseTimer();
+    clearHoverOpenTimer();
+    hoverOpenRef.current = setTimeout(() => {
+      setIsHovered(true);
+    }, 140);
+  };
+
+  const scheduleHoverClose = () => {
+    clearHoverOpenTimer();
+    clearHoverCloseTimer();
+    hoverCloseRef.current = setTimeout(() => {
+      setIsHovered(false);
+      setIsTouched(false);
+    }, 170);
+  };
+
   useEffect(() => {
     setTrailerUrl(getBookmarkTrailerUrl(bookmark));
   }, [bookmark.id, bookmark.source_url, bookmark.metadata]);
@@ -310,45 +347,90 @@ export function PosterCard({
     };
   }, [isTouched]);
 
+  useEffect(() => {
+    return () => {
+      if (hoverOpenRef.current) {
+        clearTimeout(hoverOpenRef.current);
+        hoverOpenRef.current = null;
+      }
+      if (hoverCloseRef.current) {
+        clearTimeout(hoverCloseRef.current);
+        hoverCloseRef.current = null;
+      }
+    };
+  }, []);
+
   const showExpanded = (isHovered || isTouched) && !isSelectable;
+  const shouldElevate = showExpanded && !isMobile;
+  const elevatedTransform =
+    variant === "poster" ? "translateY(-24px) scale(1.08)" : "translateY(-18px) scale(1.05)";
 
   return (
     <>
-      {/* Wrapper — expands on hover (Netflix-style scale + info panel) */}
+      {/* Wrapper Ã¢â‚¬â€ expands on hover (Netflix-style scale + info panel) */}
       <div
         ref={cardRef}
         className={cn(
-          "group relative flex-shrink-0 transition-all duration-300",
-          variant === "poster" ? "w-36 sm:w-40 md:w-44 lg:w-48" : "w-64 sm:w-72 md:w-80",
+          "group relative flex-shrink-0 snap-start transition-transform duration-300 ease-out will-change-transform",
+          variant === "poster"
+            ? cardSize === "featured"
+              ? "w-44 sm:w-48 md:w-52 lg:w-56"
+              : "w-36 sm:w-40 md:w-44 lg:w-48"
+            : cardSize === "featured"
+            ? "w-72 sm:w-80 md:w-[22rem]"
+            : "w-64 sm:w-72 md:w-80",
+          rank && "ml-6",
           showExpanded && "z-30",
           isSelected && "ring-2 ring-primary rounded-md",
           className
         )}
-        onMouseEnter={() => !isMobile && setIsHovered(true)}
-        onMouseLeave={() => { setIsHovered(false); setIsTouched(false); }}
+        style={{
+          transform: shouldElevate ? elevatedTransform : "translateY(0) scale(1)",
+          transformOrigin: "bottom center",
+        }}
+        onMouseEnter={() => !isMobile && scheduleHoverOpen()}
+        onMouseLeave={() => !isMobile && scheduleHoverClose()}
+        onFocusCapture={() => {
+          if (isMobile) return;
+          clearHoverCloseTimer();
+          setIsHovered(true);
+        }}
+        onBlurCapture={(event) => {
+          if (cardRef.current && !cardRef.current.contains(event.relatedTarget as Node)) {
+            scheduleHoverClose();
+          }
+        }}
       >
+        {rank && (
+          <span
+            aria-hidden="true"
+            className="absolute -left-7 bottom-[-2px] z-0 text-[5.2rem] font-black leading-none text-[#151515] pointer-events-none select-none"
+            style={{ WebkitTextStroke: "2px rgba(255,255,255,0.45)" }}
+          >
+            {rank}
+          </span>
+        )}
+
         <Link
           to={`/b/${bookmark.id}`}
-          className="block"
+          className="block rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          data-rail-card-link="true"
           onClick={handleCardClick}
         >
           {/* Image container */}
           <div
             className={cn(
-              "relative overflow-hidden rounded-sm transition-transform duration-300",
+              "relative overflow-hidden rounded-sm transition-transform duration-300 ease-out",
               aspectRatio,
-              showExpanded && "rounded-t-sm rounded-b-none"
+              showExpanded && "rounded-t-sm rounded-b-none shadow-[0_18px_30px_rgba(0,0,0,0.55)]"
             )}
-            style={{
-              transform: showExpanded ? "scale(1.0)" : "scale(1.0)",
-            }}
           >
             {imageUrl && !imageError ? (
               <img
                 src={imageUrl}
                 alt={bookmark.title}
                 className={cn(
-                  "w-full h-full object-cover transition-transform duration-300",
+                  "w-full h-full object-cover transition-transform duration-300 ease-out",
                   showExpanded && "scale-105"
                 )}
                 onError={() => setImageError(true)}
@@ -384,7 +466,7 @@ export function PosterCard({
             )}
 
             {/* Provider dot */}
-            <div className="absolute top-1.5 left-1.5">
+            <div className={cn("absolute left-1.5", rank ? "top-7" : "top-1.5")}>
               <div
                 title={bookmark.provider}
                 className={cn("w-2.5 h-2.5 rounded-full border border-black/30", PROVIDER_COLOR[bookmark.provider] || "bg-neutral-500")}
@@ -400,6 +482,14 @@ export function PosterCard({
               </div>
             )}
 
+            {rank && (
+              <div className="absolute top-1.5 left-1.5">
+                <span className="text-[9px] font-bold bg-primary text-white px-1.5 py-0.5 rounded-sm uppercase tracking-wide">
+                  Top 10
+                </span>
+              </div>
+            )}
+
             {/* Select checkbox */}
             {isSelectable && (
               <div className="absolute top-2 right-2 z-20">
@@ -411,7 +501,7 @@ export function PosterCard({
               </div>
             )}
 
-            {/* Status badge — watching */}
+            {/* Status badge Ã¢â‚¬â€ watching */}
             {!isSelectable && !onStatusCycle && bookmark.status === "watching" && !isNew && (
               <div className="absolute top-1.5 right-1.5">
                 <span className="flex items-center gap-1 text-[9px] font-bold bg-primary/90 text-white px-1.5 py-0.5 rounded-sm">
@@ -542,12 +632,12 @@ export function PosterCard({
           </div>
         </Link>
 
-        {/* Netflix-style expanded info panel — appears below on hover */}
+        {/* Netflix-style expanded info panel Ã¢â‚¬â€ appears below on hover */}
         {!isSelectable && (
           <div
             className={cn(
-              "overflow-hidden transition-all duration-300 bg-card rounded-b-sm",
-              showExpanded ? "max-h-40 opacity-100" : "max-h-0 opacity-0"
+              "overflow-hidden transition-all duration-300 ease-out bg-card rounded-b-sm",
+              showExpanded ? "max-h-48 opacity-100" : "max-h-0 opacity-0"
             )}
           >
             <div className="p-2.5">
@@ -633,7 +723,7 @@ export function PosterCard({
                   <span className="text-[10px] text-white/60">{formatRuntime(bookmark.runtime_minutes)}</span>
                 )}
                 {bookmark.mood_tags && bookmark.mood_tags.length > 0 && (
-                  <span className="text-[10px] text-white/50">{bookmark.mood_tags.slice(0, 2).join(" · ")}</span>
+                  <span className="text-[10px] text-white/50">{bookmark.mood_tags.slice(0, 2).join(" | ")}</span>
                 )}
               </div>
             </div>

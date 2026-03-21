@@ -234,7 +234,7 @@ const Dashboard = () => {
     },
   });
 
-  // Undo delete — recreate the bookmark with its original data
+  // Undo delete â€” recreate the bookmark with its original data
   const handleUndoDelete = (bookmark: Bookmark) => {
     bookmarkService.createBookmark({
       title: bookmark.title,
@@ -451,7 +451,7 @@ const Dashboard = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background pt-[68px]">
-        <div className="px-4 lg:px-6 pt-6 pb-8 space-y-4">
+        <div className="px-4 sm:px-6 lg:px-8 pt-6 pb-8 space-y-4">
           <div className="h-14 bg-wm-surface rounded-xl animate-pulse" />
           <div className="h-10 bg-wm-surface rounded-lg animate-pulse w-2/3" />
         </div>
@@ -515,6 +515,48 @@ const Dashboard = () => {
     });
   });
 
+  const watchedMoods = new Set(
+    completed.flatMap((b) => b.mood_tags || []).map((m) => m.toLowerCase())
+  );
+  const becauseYouWatched = backlog
+    .filter((item) => {
+      const moods = (item.mood_tags || []).map((m) => m.toLowerCase());
+      return moods.some((m) => watchedMoods.has(m));
+    })
+    .slice(0, 14);
+  const recommendationSeedTitle =
+    [...completed]
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .find((b) => b.title)?.title ?? "your favorites";
+
+  const topTenForYou = [...displayBookmarks]
+    .filter((item) => item.status !== "done")
+    .sort((a, b) => {
+      const aMoodScore = (a.mood_tags || []).reduce(
+        (sum, mood) => (watchedMoods.has(mood.toLowerCase()) ? sum + 6 : sum),
+        0
+      );
+      const bMoodScore = (b.mood_tags || []).reduce(
+        (sum, mood) => (watchedMoods.has(mood.toLowerCase()) ? sum + 6 : sum),
+        0
+      );
+      const aFreshness = Math.max(0, 14 - Math.floor((Date.now() - new Date(a.created_at).getTime()) / 86400000));
+      const bFreshness = Math.max(0, 14 - Math.floor((Date.now() - new Date(b.created_at).getTime()) / 86400000));
+      const aScore =
+        (a.status === "watching" ? 40 : 20) +
+        aMoodScore +
+        aFreshness +
+        (a.runtime_minutes && a.runtime_minutes >= 80 && a.runtime_minutes <= 160 ? 4 : 0);
+      const bScore =
+        (b.status === "watching" ? 40 : 20) +
+        bMoodScore +
+        bFreshness +
+        (b.runtime_minutes && b.runtime_minutes >= 80 && b.runtime_minutes <= 160 ? 4 : 0);
+      if (bScore !== aScore) return bScore - aScore;
+      return b.created_at.localeCompare(a.created_at);
+    })
+    .slice(0, 10);
+
   const handleSurpriseMe = () => {
     const pool = backlog.length > 0 ? backlog : displayBookmarks;
     if (pool.length === 0) return;
@@ -539,7 +581,7 @@ const Dashboard = () => {
   return (
     <div className="min-h-full bg-background pb-20 md:pb-0">
 
-      {/* Hero Banner — sits behind the transparent fixed navbar */}
+      {/* Hero Banner â€” sits behind the transparent fixed navbar */}
       {heroBookmark && (
         <HeroBanner
           bookmark={heroBookmark}
@@ -548,15 +590,32 @@ const Dashboard = () => {
         />
       )}
 
-      {/* Page body — offset from top only when no hero banner */}
-      <div className={cn("flex gap-0", !heroBookmark && "pt-[68px]")}>
+      {heroBookmark && (
+        <div className="relative z-10 -mt-24 md:-mt-28 lg:-mt-32 h-24 md:h-28 lg:h-32 bg-gradient-to-b from-transparent via-background/70 to-background pointer-events-none" />
+      )}
 
-        {/* ── Main content column ── */}
-        <div className="flex-1 min-w-0 relative z-10 pb-16 space-y-2">
+      {/* Page body â€” offset from top only when no hero banner */}
+      <div
+        className={cn(
+          "flex gap-0 relative",
+          heroBookmark ? "-mt-16 md:-mt-20 lg:-mt-24 z-20" : "pt-[68px]"
+        )}
+      >
+
+        {/* Main content column */}
+        <div className="flex-1 min-w-0 relative z-10 pb-16 space-y-3">
 
           {/* Filter status bar + advanced controls */}
           {bookmarks.length > 0 && (
-            <div id="filter-toolbar" className="animate-fade-in pt-4">
+            <div
+              id="filter-toolbar"
+              className={cn(
+                "animate-fade-in pt-3 pb-2",
+                heroBookmark
+                  ? "sticky top-[68px] z-30 border-y border-white/5 bg-background/75 supports-[backdrop-filter]:bg-background/55 backdrop-blur-md"
+                  : ""
+              )}
+            >
               <StatsBar
                 total={displayBookmarks.length}
                 backlog={backlog.length}
@@ -566,7 +625,7 @@ const Dashboard = () => {
                 onFilter={setFilterStatus}
                 className="mb-3"
               />
-              <div className="px-4 lg:px-6 flex items-center gap-3">
+              <div className="px-4 sm:px-6 lg:px-8 flex items-center gap-3">
                 {/* Status filter chips */}
                 <FilterChips
                   activeType="all"
@@ -584,7 +643,7 @@ const Dashboard = () => {
                     size="icon"
                     onClick={handleSurpriseMe}
                     className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                    title="Surprise me — pick a random title"
+                    title="Surprise me - pick a random title"
                     aria-label="Surprise me, pick a random title"
                   >
                     <Shuffle className="w-4 h-4" />
@@ -597,7 +656,7 @@ const Dashboard = () => {
                     <SelectContent>
                       <SelectItem value="newest">Newest</SelectItem>
                       <SelectItem value="oldest">Oldest</SelectItem>
-                      <SelectItem value="az">A–Z</SelectItem>
+                      <SelectItem value="az">A-Z</SelectItem>
                       <SelectItem value="runtime">Runtime</SelectItem>
                       <SelectItem value="rating">My Rating</SelectItem>
                     </SelectContent>
@@ -636,18 +695,18 @@ const Dashboard = () => {
                   />
                 </div>
               )}
-              <div className="px-4 lg:px-6 mt-3">
+              <div className="px-4 sm:px-6 lg:px-8 mt-3">
                 <MoodPicker activeMood={activeMood} onMoodSelect={setActiveMood} />
               </div>
             </div>
           )}
 
           {/* Rails */}
-          <div className="space-y-2 animate-fade-in">
-          {/* Up Next — upcoming scheduled items */}
+          <div className="space-y-3 animate-fade-in">
+          {/* Up Next â€” upcoming scheduled items */}
           {upcomingSchedules.length > 0 && (
             <section className="py-3">
-              <div className="px-4 lg:px-6 mb-4">
+              <div className="px-4 sm:px-6 lg:px-8 mb-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-xl font-semibold flex items-center gap-2">
@@ -661,7 +720,7 @@ const Dashboard = () => {
                   </Link>
                 </div>
               </div>
-              <div className="flex gap-3 overflow-x-auto px-4 lg:px-6 pb-2" style={{ scrollbarWidth: "none" }}>
+              <div className="flex gap-3 overflow-x-auto px-4 sm:px-6 lg:px-8 pb-2" style={{ scrollbarWidth: "none" }}>
                 {upcomingSchedules.map((sched) => {
                   const bm = sched.bookmarks;
                   if (!bm) return null;
@@ -716,9 +775,31 @@ const Dashboard = () => {
             </section>
           )}
 
+          {topTenForYou.length > 0 && (
+            <Rail
+              title="Top 10 In Your Queue"
+              subtitle="Ranked by momentum"
+              bookmarks={topTenForYou}
+              showRanks
+              cardSize="featured"
+              onSchedule={handleSchedule}
+              onMarkDone={handleMarkDone}
+              onAddToPlan={handleAddToPlan}
+              onDelete={handleDelete}
+              onUndoDone={handleUndoDone}
+              onSetWatching={handleSetWatching}
+              onStatusCycle={handleStatusCycle}
+              onEpisodeUpdate={handleEpisodeUpdate}
+              isSelectable={selectMode}
+              selectedIds={selectedIds}
+              onSelect={toggleSelect}
+            />
+          )}
+
           <Rail
             title="Continue Watching"
             bookmarks={continueWatching}
+            variant="backdrop"
             onSchedule={handleSchedule}
             onMarkDone={handleMarkDone}
             onAddToPlan={handleAddToPlan}
@@ -750,6 +831,25 @@ const Dashboard = () => {
               onSelect={toggleSelect}
             />
           </div>
+
+          {becauseYouWatched.length > 0 && (
+            <Rail
+              title={`Because you watched ${recommendationSeedTitle}`}
+              subtitle="More in your lane"
+              bookmarks={becauseYouWatched}
+              onSchedule={handleSchedule}
+              onMarkDone={handleMarkDone}
+              onAddToPlan={handleAddToPlan}
+              onDelete={handleDelete}
+              onUndoDone={handleUndoDone}
+              onSetWatching={handleSetWatching}
+              onStatusCycle={handleStatusCycle}
+              onEpisodeUpdate={handleEpisodeUpdate}
+              isSelectable={selectMode}
+              selectedIds={selectedIds}
+              onSelect={toggleSelect}
+            />
+          )}
 
           {/* Mood Rails */}
           {Object.entries(byMood)
@@ -793,7 +893,7 @@ const Dashboard = () => {
 
           {/* Filtered empty state */}
           {hasActiveFilters && filteredBookmarks.length === 0 && (
-            <div className="px-4 lg:px-6 text-center py-16">
+            <div className="px-4 sm:px-6 lg:px-8 text-center py-16">
               <p className="text-muted-foreground mb-4">No bookmarks match your filters</p>
               <Button
                 variant="outline"
@@ -809,19 +909,19 @@ const Dashboard = () => {
             </div>
           )}
 
-          {/* Empty state — new user */}
+          {/* Empty state - new user */}
           {isEmpty && (
-            <div className="px-4 lg:px-6">
+            <div className="px-4 sm:px-6 lg:px-8">
               <EmptyStateGuide />
             </div>
           )}
-          </div>{/* end rails space-y-2 div */}
-        </div>{/* end main rails column */}
+          </div>{/* end rails wrapper */}
+        </div>{/* end main content column */}
 
-        {/* ── Right Panel (xl screens) — Popular & Favorites ── */}
+        {/* Right panel (xl screens) - Popular and favorites */}
         {!isEmpty && (
           <aside className="hidden xl:flex flex-col w-72 shrink-0 border-l border-border px-4 pt-5 pb-16 gap-6 sticky top-0 max-h-screen overflow-y-auto">
-            {/* Saved for Later → "Popular" */}
+            {/* Saved for Later -> Popular */}
             {backlog.length > 0 && (
               <div>
                 <div className="flex items-center justify-between mb-3">
@@ -831,7 +931,7 @@ const Dashboard = () => {
                     onClick={() => setFilterStatus("backlog")}
                     className="text-xs text-primary hover:underline flex items-center gap-1"
                   >
-                    View More →
+                    View more
                   </button>
                 </div>
                 <div className="space-y-3">
@@ -864,7 +964,7 @@ const Dashboard = () => {
                         {bm.user_rating && (
                           <div className="flex items-center gap-1 mt-0.5">
                             <span className="text-[10px] font-bold bg-wm-gold text-background px-1.5 py-0.5 rounded">
-                              ★ {bm.user_rating.toFixed(1)}
+                              * {bm.user_rating.toFixed(1)}
                             </span>
                           </div>
                         )}
@@ -875,7 +975,7 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* Recently Watched → "Favorites" */}
+            {/* Recently Watched -> Favorites */}
             {completed.length > 0 && (
               <div>
                 <div className="flex items-center justify-between mb-3">
@@ -885,7 +985,7 @@ const Dashboard = () => {
                     onClick={() => setFilterStatus("done")}
                     className="text-xs text-primary hover:underline flex items-center gap-1"
                   >
-                    View More →
+                    View more
                   </button>
                 </div>
                 <div className="space-y-3">
@@ -921,7 +1021,7 @@ const Dashboard = () => {
                           {bm.user_rating && (
                             <div className="flex items-center gap-1 mt-0.5">
                               <span className="text-[10px] font-bold bg-wm-gold text-background px-1.5 py-0.5 rounded">
-                                ★ {bm.user_rating.toFixed(1)}
+                                * {bm.user_rating.toFixed(1)}
                               </span>
                             </div>
                           )}
@@ -1047,7 +1147,7 @@ const Dashboard = () => {
                   <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
                     {surpriseBookmark.release_year && <span>{surpriseBookmark.release_year}</span>}
                     {surpriseBookmark.runtime_minutes && (
-                      <span>· {formatRuntime(surpriseBookmark.runtime_minutes)}</span>
+                      <span>| {formatRuntime(surpriseBookmark.runtime_minutes)}</span>
                     )}
                   </div>
                   <div className="flex flex-wrap gap-2 mt-4">
@@ -1088,3 +1188,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+

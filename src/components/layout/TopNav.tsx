@@ -24,7 +24,6 @@ interface TopNavProps {
   onSearchClick?: () => void;
   leftContent?: React.ReactNode;
 }
-
 const navLinks = [
   { href: "/dashboard", label: "Home", exact: true },
   { href: "/plans", label: "My List" },
@@ -45,19 +44,43 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
-
-  // Scroll detection — Netflix nav transitions from transparent to solid
+  // Scroll detection - Netflix nav transitions from transparent to solid
   useEffect(() => {
-    const scrollContainer = document.getElementById("main-scroll-container");
-    const target = scrollContainer || window;
+    let activeTarget: Window | HTMLElement | null = null;
 
-    const handleScroll = () => {
-      const scrollY = scrollContainer ? scrollContainer.scrollTop : window.scrollY;
-      setScrolled(scrollY > 50);
+    const getScrollTarget = (): Window | HTMLElement => {
+      const scrollContainer = document.getElementById("main-scroll-container");
+      const canUseContainerScroll =
+        !!scrollContainer && scrollContainer.scrollHeight > scrollContainer.clientHeight + 1;
+      return canUseContainerScroll ? scrollContainer : window;
     };
 
-    target.addEventListener("scroll", handleScroll, { passive: true });
-    return () => target.removeEventListener("scroll", handleScroll);
+    const handleScroll = () => {
+      const target = activeTarget ?? getScrollTarget();
+      const scrollY = target === window ? window.scrollY : (target as HTMLElement).scrollTop;
+      setScrolled(scrollY > 24);
+    };
+
+    const rebindScrollTarget = () => {
+      const nextTarget = getScrollTarget();
+      if (activeTarget !== nextTarget) {
+        if (activeTarget) {
+          activeTarget.removeEventListener("scroll", handleScroll);
+        }
+        activeTarget = nextTarget;
+        activeTarget.addEventListener("scroll", handleScroll, { passive: true });
+      }
+      handleScroll();
+    };
+
+    rebindScrollTarget();
+    window.addEventListener("resize", rebindScrollTarget);
+    return () => {
+      if (activeTarget) {
+        activeTarget.removeEventListener("scroll", handleScroll);
+      }
+      window.removeEventListener("resize", rebindScrollTarget);
+    };
   }, []);
 
   const handleMobileAdd = () => navigate("/new");
@@ -93,38 +116,44 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
     <>
       <nav
         className={cn(
-          "fixed top-0 inset-x-0 z-50 transition-all duration-500",
+          "fixed top-0 inset-x-0 z-50 transition-all duration-500 ease-out",
           scrolled
-            ? "bg-background"
-            : "bg-gradient-to-b from-black/80 via-black/40 to-transparent"
+            ? "bg-black/90 supports-[backdrop-filter]:bg-black/70 backdrop-blur-md border-b border-white/10 shadow-[0_8px_30px_rgba(0,0,0,0.45)]"
+            : "bg-gradient-to-b from-black/85 via-black/45 to-transparent"
         )}
       >
-        <div className="flex items-center h-[68px] px-4 md:px-8 lg:px-12 gap-6">
+        <div className="flex items-center h-[68px] px-4 md:px-8 lg:px-12 gap-5">
 
           {/* Logo */}
           <Link to="/dashboard" className="shrink-0 flex items-center gap-2">
-            <span className="text-primary font-extrabold text-2xl tracking-tighter leading-none">
+            <span className="text-primary font-black text-[1.7rem] leading-none tracking-tight">
               W
             </span>
-            <span className="hidden sm:block text-white font-bold text-lg tracking-tight">
+            <span className="hidden sm:block text-white font-semibold text-base md:text-lg tracking-tight">
               WatchMarks
             </span>
           </Link>
 
           {/* Desktop Nav Links */}
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden md:flex items-center gap-0.5">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 to={link.href}
                 className={cn(
-                  "px-3 py-1.5 text-sm font-medium transition-colors rounded",
+                  "relative px-3 py-2 text-sm transition-colors duration-300 ease-out rounded",
                   isActive(link.href, link.exact)
-                    ? "text-white"
+                    ? "text-white font-semibold"
                     : "text-white/70 hover:text-white"
                 )}
               >
                 {link.label}
+                <span
+                  className={cn(
+                    "pointer-events-none absolute left-3 right-3 -bottom-0.5 h-0.5 rounded-full bg-primary transition-opacity duration-300 ease-out",
+                    isActive(link.href, link.exact) ? "opacity-100" : "opacity-0"
+                  )}
+                />
               </Link>
             ))}
           </nav>
@@ -133,7 +162,7 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
           <div className="md:hidden">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-1 text-white text-sm font-medium">
+                <button className="flex items-center gap-1 text-white/90 text-sm font-medium">
                   Browse <ChevronDown className="w-3.5 h-3.5" />
                 </button>
               </DropdownMenuTrigger>
@@ -156,7 +185,7 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
           </div>
 
           {/* Spacer */}
-          <div className="flex-1" />
+          <div className="flex-1">{leftContent}</div>
 
           {/* Right actions */}
           <div className="flex items-center gap-1 md:gap-2">
@@ -181,20 +210,19 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
                 <button
                   type="button"
                   onClick={handleSearchIconClick}
-                  className="w-10 h-10 flex items-center justify-center text-white/80 hover:text-white transition-colors"
-                  aria-label="Search (⌘K)"
+                  className="w-10 h-10 rounded flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                  aria-label="Search (Ctrl+K)"
                 >
                   <Search className="w-5 h-5" />
                 </button>
               )}
             </div>
-
-            {/* Quick Add — desktop only */}
+            {/* Quick Add - desktop only */}
             <Popover open={addPopoverOpen} onOpenChange={setAddPopoverOpen}>
               <PopoverTrigger asChild>
                 <button
                   type="button"
-                  className="hidden sm:flex w-10 h-10 items-center justify-center text-white/80 hover:text-white transition-colors"
+                  className="hidden sm:flex w-10 h-10 rounded items-center justify-center text-white/80 hover:text-white hover:bg-white/10 transition-colors"
                   aria-label="Quick Add"
                 >
                   <Plus className="w-5 h-5" />
@@ -220,7 +248,7 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
                       onClick={() => setAddPopoverOpen(false)}
                       className="text-xs text-primary hover:underline"
                     >
-                      Open full add page →
+                      Open full add page
                     </Link>
                   </div>
                 </div>
@@ -232,7 +260,7 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
               <Popover>
                 <PopoverTrigger asChild>
                   <button
-                    className="hidden sm:flex w-10 h-10 items-center justify-center text-orange-400 font-bold text-sm hover:text-orange-300 transition-colors"
+                    className="hidden sm:flex w-10 h-10 rounded items-center justify-center text-orange-400 font-bold text-sm hover:text-orange-300 hover:bg-white/10 transition-colors"
                     aria-label={`${streak} day watch streak`}
                   >
                     <Flame className="w-3.5 h-3.5 mr-0.5" />{streak}
@@ -244,7 +272,7 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
                     You've watched something {streak} days in a row. Keep it up!
                   </p>
                   <Link to="/stats" className="text-xs text-primary hover:underline block mt-3">
-                    View your stats →
+                    View your stats
                   </Link>
                 </PopoverContent>
               </Popover>
@@ -253,7 +281,7 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
             {/* Notifications */}
             <Link
               to="/notifications"
-              className="relative w-10 h-10 flex items-center justify-center text-white/80 hover:text-white transition-colors"
+              className="relative w-10 h-10 rounded flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 transition-colors"
               aria-label={notificationCount > 0 ? `${notificationCount} unread notifications` : "Notifications"}
             >
               <Bell className="w-5 h-5" />
@@ -319,3 +347,5 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent }: To
     </>
   );
 }
+
+
