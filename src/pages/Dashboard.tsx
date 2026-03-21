@@ -8,6 +8,8 @@ import { Rail } from "@/components/bookmarks/Rail";
 import { FilterChips } from "@/components/dashboard/FilterChips";
 import { FilterPanel, type AdvancedFilters } from "@/components/dashboard/FilterPanel";
 import { BulkActionBar } from "@/components/dashboard/BulkActionBar";
+import { StatsBar } from "@/components/dashboard/StatsBar";
+import { MoodPicker } from "@/components/dashboard/MoodPicker";
 import { SkeletonRail } from "@/components/ui/skeleton-card";
 import { EmptyStateGuide } from "@/components/EmptyStateGuide";
 import { DashboardTour } from "@/components/onboarding/DashboardTour";
@@ -56,6 +58,7 @@ const Dashboard = () => {
   // Filter state
   const [filterType, setFilterType] = useState<FilterType>("all");
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
+  const [activeMood, setActiveMood] = useState<string | null>(null);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>({
     providers: [], moods: [], runtimeMin: null, runtimeMax: null,
@@ -105,6 +108,7 @@ const Dashboard = () => {
   // Apply filters + sort
   const filteredBookmarks = useMemo(() => {
     const hasAdvanced =
+      activeMood !== null ||
       advancedFilters.providers.length > 0 ||
       advancedFilters.moods.length > 0 ||
       advancedFilters.runtimeMin !== null ||
@@ -117,12 +121,13 @@ const Dashboard = () => {
       if (!hasAdvanced) return true;
       const providerMatch = advancedFilters.providers.length === 0 || advancedFilters.providers.includes(b.provider);
       const moodMatch = advancedFilters.moods.length === 0 || (b.mood_tags || []).some((m) => advancedFilters.moods.includes(m));
+      const quickMoodMatch = activeMood === null || (b.mood_tags || []).includes(activeMood);
       const rtMin = advancedFilters.runtimeMin;
       const rtMax = advancedFilters.runtimeMax;
       const runtimeMatch =
         (rtMin === null || (b.runtime_minutes !== null && b.runtime_minutes >= rtMin)) &&
         (rtMax === null || (b.runtime_minutes !== null && b.runtime_minutes <= rtMax));
-      return providerMatch && moodMatch && runtimeMatch;
+      return providerMatch && moodMatch && quickMoodMatch && runtimeMatch;
     });
 
     return [...filtered].sort((a, b) => {
@@ -134,7 +139,7 @@ const Dashboard = () => {
         default: return b.created_at.localeCompare(a.created_at); // newest
       }
     });
-  }, [bookmarks, filterType, filterStatus, advancedFilters, sortBy]);
+  }, [bookmarks, filterType, filterStatus, activeMood, advancedFilters, sortBy]);
 
   // Mark as done mutation
   const markDoneMutation = useMutation({
@@ -476,6 +481,7 @@ const Dashboard = () => {
   const hasActiveFilters =
     filterType !== "all" ||
     filterStatus !== "all" ||
+    activeMood !== null ||
     advancedFilters.providers.length > 0 ||
     advancedFilters.moods.length > 0 ||
     advancedFilters.runtimeMin !== null ||
@@ -484,6 +490,7 @@ const Dashboard = () => {
   const totalActiveFilterCount =
     (filterType !== "all" ? 1 : 0) +
     (filterStatus !== "all" ? 1 : 0) +
+    (activeMood !== null ? 1 : 0) +
     advancedFilters.providers.length +
     advancedFilters.moods.length +
     (advancedFilters.runtimeMin !== null ? 1 : 0) +
@@ -494,6 +501,7 @@ const Dashboard = () => {
   const continueWatching = displayBookmarks.filter((b) => b.status === "watching");
   const backlog = displayBookmarks.filter((b) => b.status === "backlog");
   const completed = displayBookmarks.filter((b) => b.status === "done");
+  const totalWatchMinutes = completed.reduce((sum, b) => sum + (b.runtime_minutes || 0), 0);
 
   // Hero bookmark: only show when actively watching something
   const heroBookmark = continueWatching[0] || null;
@@ -549,6 +557,15 @@ const Dashboard = () => {
           {/* Filter status bar + advanced controls */}
           {bookmarks.length > 0 && (
             <div id="filter-toolbar" className="animate-fade-in pt-4">
+              <StatsBar
+                total={displayBookmarks.length}
+                backlog={backlog.length}
+                watching={continueWatching.length}
+                done={completed.length}
+                totalMinutes={totalWatchMinutes}
+                onFilter={setFilterStatus}
+                className="mb-3"
+              />
               <div className="px-4 lg:px-6 flex items-center gap-3">
                 {/* Status filter chips */}
                 <FilterChips
@@ -612,10 +629,16 @@ const Dashboard = () => {
                 <div className="mt-2">
                   <FilterPanel
                     onApply={(f) => { setAdvancedFilters(f); }}
-                    onReset={() => { setAdvancedFilters({ providers: [], moods: [], runtimeMin: null, runtimeMax: null }); }}
+                    onReset={() => {
+                      setAdvancedFilters({ providers: [], moods: [], runtimeMin: null, runtimeMax: null });
+                      setActiveMood(null);
+                    }}
                   />
                 </div>
               )}
+              <div className="px-4 lg:px-6 mt-3">
+                <MoodPicker activeMood={activeMood} onMoodSelect={setActiveMood} />
+              </div>
             </div>
           )}
 
@@ -777,6 +800,7 @@ const Dashboard = () => {
                 onClick={() => {
                   setFilterType("all");
                   setFilterStatus("all");
+                  setActiveMood(null);
                   setAdvancedFilters({ providers: [], moods: [], runtimeMin: null, runtimeMax: null });
                 }}
               >
