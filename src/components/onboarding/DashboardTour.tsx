@@ -73,7 +73,6 @@ const STEPS = [
 
 export function DashboardTour({ open, onDismiss, onFinish }: DashboardTourProps) {
   const [step, setStep] = useState(0);
-  const [direction, setDirection] = useState<"forward" | "back">("forward");
 
   if (!open) return null;
 
@@ -86,12 +85,10 @@ export function DashboardTour({ open, onDismiss, onFinish }: DashboardTourProps)
       onFinish();
       return;
     }
-    setDirection("forward");
     setStep((s) => s + 1);
   };
 
   const goBack = () => {
-    setDirection("back");
     setStep((s) => s - 1);
   };
 
@@ -153,7 +150,7 @@ export function DashboardTour({ open, onDismiss, onFinish }: DashboardTourProps)
               {STEPS.map((_, i) => (
                 <button
                   key={i}
-                  onClick={() => { setDirection(i > step ? "forward" : "back"); setStep(i); }}
+                  onClick={() => setStep(i)}
                   className={cn(
                     "h-1.5 rounded-full transition-all duration-300",
                     i === step
