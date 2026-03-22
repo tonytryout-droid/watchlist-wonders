@@ -6,8 +6,11 @@ import {
   Clock, Tag, ExternalLink, Save, X,
   Paperclip, FileText, Download, Upload, Loader2, Star,
   Share2, Globe, Lock, Copy, Plus, Shuffle, ChevronDown,
+  CalendarCheck,
 } from "lucide-react";
+import { format } from "date-fns";
 import { useWatchProviders } from "@/hooks/useWatchProviders";
+import { useTmdbSearch } from "@/hooks/useTmdbSearch";
 import { useSimilarTitles } from "@/hooks/useSimilarTitles";
 import { useTmdbDetails } from "@/hooks/useTmdbDetails";
 import { Button } from "@/components/ui/button";
@@ -54,6 +57,17 @@ const STATUS_OPTIONS: { value: Bookmark["status"]; label: string }[] = [
   { value: "scheduled", label: "Scheduled" },
 ];
 
+const STATUS_CONFIG: Record<
+  Bookmark["status"],
+  { dotClass: string; borderClass: string }
+> = {
+  backlog:   { dotClass: "bg-muted-foreground",   borderClass: "border-l-muted-foreground" },
+  watching:  { dotClass: "bg-blue-500",            borderClass: "border-l-blue-500" },
+  done:      { dotClass: "bg-green-500",           borderClass: "border-l-green-500" },
+  dropped:   { dotClass: "bg-destructive/70",      borderClass: "border-l-destructive/70" },
+  scheduled: { dotClass: "bg-amber-400",           borderClass: "border-l-amber-400" },
+};
+
 const BookmarkDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -61,6 +75,7 @@ const BookmarkDetail = () => {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [moreInfoOpen, setMoreInfoOpen] = useState(false);
+  const [synopsisExpanded, setSynopsisExpanded] = useState(false);
   const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
   const attachFileRef = useRef<HTMLInputElement>(null);
 
@@ -230,10 +245,20 @@ const BookmarkDetail = () => {
 
   // Handle both camelCase (tmdbId) and snake_case (tmdb_id) — legacy data may differ
   const tmdbId = (bookmark?.metadata?.tmdb_id ?? bookmark?.metadata?.tmdbId) as number | string | undefined;
+  // When the bookmark has no TMDB ID (e.g. manually added), search by title + type.
+  // The stored overview is used to disambiguate when multiple results match the same title.
+  const storedOverview = bookmark?.metadata?.overview as string | undefined;
+  const { data: resolvedTmdbId } = useTmdbSearch(
+    !tmdbId ? bookmark?.title : null,
+    bookmark?.type || 'movie',
+    storedOverview,
+  );
+  const effectiveTmdbId = tmdbId ?? resolvedTmdbId ?? undefined;
+
   const preferredRegion = getPreferredRegionFromBrowser();
-  const { data: watchProviders } = useWatchProviders(tmdbId, bookmark?.type || 'movie', preferredRegion);
-  const { data: similarTitles = [] } = useSimilarTitles(tmdbId, bookmark?.type || 'movie');
-  const { data: tmdbDetails } = useTmdbDetails(tmdbId, bookmark?.type || 'movie');
+  const { data: watchProviders } = useWatchProviders(effectiveTmdbId, bookmark?.type || 'movie', preferredRegion);
+  const { data: similarTitles = [] } = useSimilarTitles(effectiveTmdbId, bookmark?.type || 'movie');
+  const { data: tmdbDetails } = useTmdbDetails(effectiveTmdbId, bookmark?.type || 'movie');
 
   const { data: allBookmarks = [] } = useQuery({
     queryKey: ['bookmarks'],
@@ -468,16 +493,28 @@ const BookmarkDetail = () => {
                 )}
               </div>
 
-              {/* Status selector */}
+              {/* Status selector — colored left border per status */}
               <div className="mb-5">
                 <Select value={bookmark.status} onValueChange={handleStatusChange}>
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue />
+                  <SelectTrigger
+                    className={`w-[200px] border-l-4 pl-3 ${STATUS_CONFIG[bookmark.status].borderClass}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`w-2 h-2 rounded-full shrink-0 ${STATUS_CONFIG[bookmark.status].dotClass}`}
+                      />
+                      <SelectValue />
+                    </div>
                   </SelectTrigger>
                   <SelectContent>
                     {STATUS_OPTIONS.map((opt) => (
                       <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`w-2 h-2 rounded-full ${STATUS_CONFIG[opt.value].dotClass}`}
+                          />
+                          {opt.label}
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -518,6 +555,64 @@ const BookmarkDetail = () => {
                   {bookmark.status === "done" ? "Already Watched" : "Mark as Watched"}
                 </Button>
               </div>
+
+              {/* My Rating — visible at a glance */}
+              <div className="flex items-center gap-3 mb-5">
+                <div className="flex items-center gap-1">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() =>
+                        rateMutation.mutate({
+                          rating: bookmark.user_rating === star ? null : star,
+                        })
+                      }
+                      className="p-1 hover:scale-110 transition-transform"
+                      aria-label={`Rate ${star} star${star !== 1 ? "s" : ""}`}
+                    >
+                      <Star
+                        className={`w-5 h-5 ${
+                          (bookmark.user_rating || 0) >= star
+                            ? "fill-yellow-400 text-yellow-400"
+                            : "text-muted-foreground/50 hover:text-yellow-400/60"
+                        }`}
+                      />
+                    </button>
+                  ))}
+                </div>
+                {bookmark.user_rating ? (
+                  <span className="text-sm text-muted-foreground">
+                    {bookmark.user_rating}/5
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground/50 italic">
+                    Rate this
+                  </span>
+                )}
+              </div>
+
+              {/* User review — displayed when present (was never rendered before) */}
+              {bookmark.user_review && (
+                <blockquote className="mb-5 border-l-2 border-primary/40 pl-4 max-w-xl">
+                  <p className="text-sm text-muted-foreground italic leading-relaxed">
+                    {bookmark.user_review}
+                  </p>
+                </blockquote>
+              )}
+
+              {/* Watched date — shown for completed bookmarks */}
+              {bookmark.status === "done" && bookmark.watched_at && (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-5">
+                  <CalendarCheck className="w-3.5 h-3.5 text-green-500" />
+                  <span>
+                    Watched on{" "}
+                    <span className="text-foreground font-medium">
+                      {format(new Date(bookmark.watched_at), "MMMM d, yyyy")}
+                    </span>
+                  </span>
+                </div>
+              )}
 
               {/* WHERE TO WATCH — decision layer */}
               {watchProviders !== undefined && (
@@ -586,12 +681,25 @@ const BookmarkDetail = () => {
                 </div>
               )}
 
-              {/* Short synopsis — truncated */}
+              {/* Synopsis — inline expand/collapse */}
               {overview && (
                 <div className="mb-6 max-w-xl">
-                  <p className="text-muted-foreground text-sm leading-relaxed line-clamp-3">
+                  <p
+                    className={`text-muted-foreground text-sm leading-relaxed ${
+                      synopsisExpanded ? "" : "line-clamp-3"
+                    }`}
+                  >
                     {overview}
                   </p>
+                  {overview.length > 200 && (
+                    <button
+                      type="button"
+                      onClick={() => setSynopsisExpanded((prev) => !prev)}
+                      className="mt-1 text-xs text-primary hover:underline focus-visible:outline-none"
+                    >
+                      {synopsisExpanded ? "Show less" : "Show more"}
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -656,7 +764,56 @@ const BookmarkDetail = () => {
                 </div>
               )}
 
-              {/* ── LEVEL 3: COLLAPSIBLE "MORE DETAILS" ── */}
+              {/* Personal content — mood tags, tags, notes (moved from collapsible) */}
+              {(bookmark.mood_tags?.length > 0 ||
+                bookmark.tags?.length > 0 ||
+                bookmark.notes) && (
+                <div className="mb-6 space-y-4">
+                  {bookmark.mood_tags && bookmark.mood_tags.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                        Mood
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {bookmark.mood_tags.map((mood) => (
+                          <Badge key={mood} variant="outline">
+                            {getMoodEmoji(mood)} {mood}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {bookmark.tags && bookmark.tags.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                        Tags
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {bookmark.tags.map((tag) => (
+                          <Badge key={tag} variant="secondary">
+                            <Tag className="w-3 h-3 mr-1" />
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {bookmark.notes && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                        My Notes
+                      </p>
+                      <p className="text-foreground text-sm whitespace-pre-wrap leading-relaxed">
+                        {bookmark.notes}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── LEVEL 3: COLLAPSIBLE "SHARING & ATTACHMENTS" ── */}
               <Collapsible open={moreInfoOpen} onOpenChange={setMoreInfoOpen} className="mb-6">
                 <CollapsibleTrigger asChild>
                   <button
@@ -668,20 +825,10 @@ const BookmarkDetail = () => {
                         moreInfoOpen ? 'rotate-180' : ''
                       }`}
                     />
-                    {moreInfoOpen ? 'Less details' : 'More details'}
+                    {moreInfoOpen ? 'Less' : 'Sharing & attachments'}
                   </button>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
-                  {/* Full synopsis */}
-                  {overview && (
-                    <div className="mb-6">
-                      <h3 className="text-sm font-medium text-muted-foreground mb-2">Synopsis</h3>
-                      <p className="text-foreground text-sm whitespace-pre-wrap leading-relaxed">
-                        {overview}
-                      </p>
-                    </div>
-                  )}
-
                   {/* My Rating */}
                   <div className="mb-6">
                     <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1">
@@ -715,43 +862,6 @@ const BookmarkDetail = () => {
                       )}
                     </div>
                   </div>
-
-                  {/* Mood Tags */}
-                  {bookmark.mood_tags && bookmark.mood_tags.length > 0 && (
-                    <div className="mb-6">
-                      <h3 className="text-sm font-medium text-muted-foreground mb-2">Mood</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {bookmark.mood_tags.map((mood) => (
-                          <Badge key={mood} variant="outline">
-                            {getMoodEmoji(mood)} {mood}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Tags */}
-                  {bookmark.tags && bookmark.tags.length > 0 && (
-                    <div className="mb-6">
-                      <h3 className="text-sm font-medium text-muted-foreground mb-2">Tags</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {bookmark.tags.map((tag) => (
-                          <Badge key={tag} variant="secondary">
-                            <Tag className="w-3 h-3 mr-1" />
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Notes */}
-                  {bookmark.notes && (
-                    <div className="mb-6">
-                      <h3 className="text-sm font-medium text-muted-foreground mb-2">My Notes</h3>
-                      <p className="text-foreground text-sm whitespace-pre-wrap leading-relaxed">{bookmark.notes}</p>
-                    </div>
-                  )}
 
                   {/* Source Link */}
                   {bookmark.source_url && (
