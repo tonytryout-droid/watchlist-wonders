@@ -5,16 +5,18 @@ import {
   ArrowLeft, Play, Check, Trash2, Edit2,
   Clock, Tag, ExternalLink, Save, X,
   Paperclip, FileText, Download, Upload, Loader2, Star,
-  Share2, Globe, Lock, Copy, Tv, Plus, Shuffle,
+  Share2, Globe, Lock, Copy, Plus, Shuffle, ChevronDown,
 } from "lucide-react";
 import { useWatchProviders } from "@/hooks/useWatchProviders";
 import { useSimilarTitles } from "@/hooks/useSimilarTitles";
+import { useTmdbDetails } from "@/hooks/useTmdbDetails";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { sharingService } from "@/services/sharing";
 import {
   AlertDialog,
@@ -31,6 +33,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { bookmarkService } from "@/services/bookmarks";
 import { attachmentService } from "@/services/attachments";
 import { useToast } from "@/hooks/use-toast";
+import { getPreferredRegionFromBrowser } from "@/lib/localeRegion";
 import { formatRuntime, getMoodEmoji } from "@/lib/utils";
 import type { Bookmark } from "@/types/database";
 
@@ -57,6 +60,7 @@ const BookmarkDetail = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
+  const [moreInfoOpen, setMoreInfoOpen] = useState(false);
   const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
   const attachFileRef = useRef<HTMLInputElement>(null);
 
@@ -226,8 +230,10 @@ const BookmarkDetail = () => {
 
   // Handle both camelCase (tmdbId) and snake_case (tmdb_id) — legacy data may differ
   const tmdbId = (bookmark?.metadata?.tmdb_id ?? bookmark?.metadata?.tmdbId) as number | string | undefined;
-  const { data: watchProviders } = useWatchProviders(tmdbId, bookmark?.type || 'movie');
+  const preferredRegion = getPreferredRegionFromBrowser();
+  const { data: watchProviders } = useWatchProviders(tmdbId, bookmark?.type || 'movie', preferredRegion);
   const { data: similarTitles = [] } = useSimilarTitles(tmdbId, bookmark?.type || 'movie');
+  const { data: tmdbDetails } = useTmdbDetails(tmdbId, bookmark?.type || 'movie');
 
   const { data: allBookmarks = [] } = useQuery({
     queryKey: ['bookmarks'],
@@ -268,6 +274,27 @@ const BookmarkDetail = () => {
 
   const hasProviders = watchProviders &&
     (watchProviders.flatrate.length > 0 || watchProviders.rent.length > 0 || watchProviders.buy.length > 0);
+
+  const allProviderPills = watchProviders
+    ? [
+        ...watchProviders.flatrate.map((p) => ({ ...p, kind: 'flatrate' as const })),
+        ...watchProviders.rent.map((p) => ({ ...p, kind: 'rent' as const })),
+        ...watchProviders.buy.map((p) => ({ ...p, kind: 'buy' as const })),
+      ]
+    : [];
+
+  const openProvider = (providerName: string) => {
+    if (watchProviders?.link && isSafeUrl(watchProviders.link)) {
+      window.open(watchProviders.link, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    window.open(
+      `https://www.google.com/search?q=${encodeURIComponent(`${providerName} ${bookmark.title}`)}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -408,6 +435,9 @@ const BookmarkDetail = () => {
 
             {/* Main info */}
             <div className="flex-1 min-w-0">
+
+              {/* ── LEVEL 1: DECISION LAYER ── */}
+
               {/* Title */}
               <h1 className="text-2xl sm:text-4xl font-bold text-foreground mb-3 leading-tight">
                 {bookmark.title}
@@ -461,7 +491,7 @@ const BookmarkDetail = () => {
                     size="lg"
                     className="bg-red-600 hover:bg-red-700 text-white gap-2 px-6"
                     onClick={() => {
-                      if (!isSafeUrl(bookmark.source_url)) {
+                      if (!isSafeUrl(bookmark.source_url!)) {
                         toast({
                           title: "URL blocked",
                           description: "This URL was blocked as it may be unsafe. Please verify the source before accessing it.",
@@ -469,7 +499,7 @@ const BookmarkDetail = () => {
                         });
                         return;
                       }
-                      window.open(bookmark.source_url, "_blank");
+                      window.open(bookmark.source_url!, "_blank");
                     }}
                     disabled={!isSafeUrl(bookmark.source_url)}
                   >
@@ -489,314 +519,392 @@ const BookmarkDetail = () => {
                 </Button>
               </div>
 
-              {/* Description/overview from TMDB */}
-              {overview && (
-                <p className="text-muted-foreground text-sm leading-relaxed mb-6 max-w-xl">
-                  {overview}
-                </p>
-              )}
-
-              {/* ── WHERE TO WATCH ── */}
-              {hasProviders && (
-                <div className="mb-8 p-4 bg-wm-surface border border-border rounded-xl">
-                  <h3 className="font-semibold mb-4 flex items-center gap-2 text-foreground">
-                    <Tv className="w-4 h-4 text-primary" />
-                    Where to Watch
-                  </h3>
-                  <div className="space-y-4">
-                    {watchProviders!.flatrate.length > 0 && (
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                          Included with subscription
-                        </p>
-                        <div className="flex flex-wrap gap-3">
-                          {watchProviders!.flatrate.map((p) => (
-                            <div
-                              key={p.provider_id}
-                              className="flex items-center gap-2 bg-background rounded-lg px-3 py-2 ring-1 ring-border"
-                              title={p.provider_name}
-                            >
-                              <img src={p.logoUrl} alt={p.provider_name} className="w-7 h-7 rounded-md" />
-                              <span className="text-sm font-medium">{p.provider_name}</span>
-                            </div>
-                          ))}
-                        </div>
+              {/* WHERE TO WATCH — decision layer */}
+              {watchProviders !== undefined && (
+                <div className="mb-6">
+                  {hasProviders ? (
+                    <>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                        Where to Watch
+                        {watchProviders.resolvedRegion ? ` (${watchProviders.resolvedRegion})` : ""}
+                      </p>
+                      <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
+                        {allProviderPills.map((p) => (
+                          <button
+                            key={`${p.provider_id}-${p.kind}`}
+                            type="button"
+                            onClick={() => openProvider(p.provider_name)}
+                            className="flex items-center gap-2 shrink-0 bg-white/10 hover:bg-white/20 backdrop-blur rounded-xl px-3 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                          >
+                            {p.logoUrl && (
+                              <img
+                                src={p.logoUrl}
+                                alt={p.provider_name}
+                                className="w-5 h-5 rounded-sm"
+                              />
+                            )}
+                            <span className="text-sm font-medium whitespace-nowrap">
+                              {p.provider_name}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {p.kind === 'flatrate'
+                                ? 'Included'
+                                : p.kind === 'rent'
+                                ? 'Rent'
+                                : 'Buy'}
+                            </span>
+                          </button>
+                        ))}
                       </div>
-                    )}
-                    {watchProviders!.rent.length > 0 && (
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                          Rent
-                        </p>
-                        <div className="flex flex-wrap gap-3">
-                          {watchProviders!.rent.map((p) => (
-                            <div
-                              key={p.provider_id}
-                              className="flex items-center gap-2 bg-background rounded-lg px-3 py-2 ring-1 ring-border"
-                              title={p.provider_name}
-                            >
-                              <img src={p.logoUrl} alt={p.provider_name} className="w-7 h-7 rounded-md" />
-                              <span className="text-sm font-medium">{p.provider_name}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {watchProviders!.buy.length > 0 && (
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                          Buy
-                        </p>
-                        <div className="flex flex-wrap gap-3">
-                          {watchProviders!.buy.map((p) => (
-                            <div
-                              key={p.provider_id}
-                              className="flex items-center gap-2 bg-background rounded-lg px-3 py-2 ring-1 ring-border"
-                              title={p.provider_name}
-                            >
-                              <img src={p.logoUrl} alt={p.provider_name} className="w-7 h-7 rounded-md" />
-                              <span className="text-sm font-medium">{p.provider_name}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {watchProviders!.link && (
-                      <a
-                        href={watchProviders!.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-primary hover:underline inline-flex items-center gap-1 mt-1"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        See all options on JustWatch
-                      </a>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* My Rating */}
-              <div className="mb-6">
-                <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1">
-                  <Star className="w-4 h-4" />
-                  My Rating
-                </h3>
-                <div className="flex items-center gap-1">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => rateMutation.mutate({
-                        rating: bookmark.user_rating === star ? null : star,
-                      })}
-                      className="p-1.5 hover:scale-110 transition-transform"
-                      aria-label={`Rate ${star} star${star !== 1 ? 's' : ''}`}
-                    >
-                      <Star
-                        className={`w-6 h-6 ${
-                          (bookmark.user_rating || 0) >= star
-                            ? 'fill-yellow-400 text-yellow-400'
-                            : 'text-muted-foreground'
-                        }`}
-                      />
-                    </button>
-                  ))}
-                  {bookmark.user_rating && (
-                    <span className="text-sm text-muted-foreground ml-2">
-                      {bookmark.user_rating}/5
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Mood Tags */}
-              {bookmark.mood_tags && bookmark.mood_tags.length > 0 && (
-                <div className="mb-6">
-                  <h3 className="text-sm font-medium text-muted-foreground mb-2">Mood</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {bookmark.mood_tags.map((mood) => (
-                      <Badge key={mood} variant="outline">
-                        {getMoodEmoji(mood)} {mood}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Tags */}
-              {bookmark.tags && bookmark.tags.length > 0 && (
-                <div className="mb-6">
-                  <h3 className="text-sm font-medium text-muted-foreground mb-2">Tags</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {bookmark.tags.map((tag) => (
-                      <Badge key={tag} variant="secondary">
-                        <Tag className="w-3 h-3 mr-1" />
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Notes */}
-              {bookmark.notes && (
-                <div className="mb-6">
-                  <h3 className="text-sm font-medium text-muted-foreground mb-2">My Notes</h3>
-                  <p className="text-foreground text-sm whitespace-pre-wrap leading-relaxed">{bookmark.notes}</p>
-                </div>
-              )}
-
-              {/* Source Link */}
-              {bookmark.source_url && (
-                <div className="mb-6">
-                  <h3 className="text-sm font-medium text-muted-foreground mb-2">Source</h3>
-                  <a
-                    href={bookmark.source_url && isSafeUrl(bookmark.source_url) ? bookmark.source_url : "#"}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline flex items-center gap-1 text-sm"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    {bookmark.source_url}
-                  </a>
-                </div>
-              )}
-
-              {/* Sharing */}
-              <div className="mb-6">
-                <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1">
-                  <Share2 className="w-4 h-4" />
-                  Sharing
-                </h3>
-                {bookmark.is_public && bookmark.share_token ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="secondary" className="gap-1">
-                      <Globe className="w-3 h-3" />
-                      Anyone with the link can view
-                    </Badge>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={() => {
-                        const url = `${window.location.origin}/share/${bookmark.share_token}`;
-                        navigator.clipboard.writeText(url).catch(() => {});
-                        toast({ title: "Link copied!" });
-                      }}
-                    >
-                      <Copy className="w-3 h-3 mr-1" />
-                      Copy link
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs text-muted-foreground"
-                      onClick={() => makePrivateMutation.mutate()}
-                      disabled={makePrivateMutation.isPending}
-                    >
-                      <Lock className="w-3 h-3 mr-1" />
-                      Make private
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => makePublicMutation.mutate()}
-                    disabled={makePublicMutation.isPending}
-                  >
-                    <Globe className="w-4 h-4 mr-2" />
-                    Share & copy link
-                  </Button>
-                )}
-              </div>
-
-              {/* Attachments */}
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                    <Paperclip className="w-4 h-4" />
-                    Attachments {attachments.length > 0 && `(${attachments.length})`}
-                  </h3>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => attachFileRef.current?.click()}
-                  >
-                    <Upload className="w-3 h-3 mr-1" />
-                    Add
-                  </Button>
-                  <input
-                    ref={attachFileRef}
-                    type="file"
-                    accept="image/*,.pdf"
-                    className="hidden"
-                    onChange={handleAttachFile}
-                  />
-                </div>
-                {attachments.length === 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => attachFileRef.current?.click()}
-                    className="w-full border border-dashed border-border rounded-lg p-4 text-center text-sm text-muted-foreground hover:border-primary/50 transition-colors"
-                  >
-                    No attachments yet — click to upload
-                  </button>
-                ) : (
-                  <div className="space-y-2">
-                    {attachments.map((att) => (
-                      <div
-                        key={att.id}
-                        className="flex items-center gap-3 p-3 bg-secondary rounded-lg"
-                      >
-                        {att.file_type?.startsWith("image/") ? (
-                          <img
-                            src={att.file_url}
-                            alt={att.file_name}
-                            className="w-10 h-10 object-cover rounded"
-                          />
-                        ) : (
-                          <FileText className="w-8 h-8 text-muted-foreground shrink-0" />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{att.file_name}</p>
-                          {att.size && (
-                            <p className="text-xs text-muted-foreground">
-                              {(att.size / 1024).toFixed(1)} KB
-                            </p>
-                          )}
-                        </div>
+                      {watchProviders.link && (
                         <a
-                          href={isSafeUrl(att.file_url) ? att.file_url : "#"}
+                          href={watchProviders.link}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="p-1.5 hover:bg-background rounded transition-colors"
-                          title="Download"
+                          className="text-xs text-primary hover:underline inline-flex items-center gap-1 mt-2"
                         >
-                          <Download className="w-4 h-4 text-muted-foreground" />
+                          <ExternalLink className="w-3 h-3" />
+                          See all on JustWatch
                         </a>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={() => { setDeletingAttachmentId(att.id); deleteAttachmentMutation.mutate(att.id); }}
-                          disabled={deletingAttachmentId === att.id}
+                      )}
+                    </>
+                  ) : (
+                    <div className="rounded-xl bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+                      Not available on major platforms yet.
+                      {watchProviders.link && (
+                        <a
+                          href={watchProviders.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="ml-1 text-primary hover:underline"
                         >
-                          {deletingAttachmentId === att.id ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
+                          Check JustWatch
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Short synopsis — truncated */}
+              {overview && (
+                <div className="mb-6 max-w-xl">
+                  <p className="text-muted-foreground text-sm leading-relaxed line-clamp-3">
+                    {overview}
+                  </p>
+                </div>
+              )}
+
+              {/* ── LEVEL 2: MID LAYER ── */}
+
+              {/* Genre chips */}
+              {tmdbDetails?.genres && tmdbDetails.genres.length > 0 && (
+                <div className="mb-4 flex flex-wrap gap-2">
+                  {tmdbDetails.genres.map((g) => (
+                    <span
+                      key={g.id}
+                      className="text-xs bg-white/10 text-foreground rounded-full px-3 py-1"
+                    >
+                      {g.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Cast row */}
+              {tmdbDetails?.cast && tmdbDetails.cast.length > 0 && (
+                <div className="mb-6">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
+                    Top Cast
+                  </p>
+                  <div className="flex gap-4 overflow-x-auto pb-1 hide-scrollbar">
+                    {tmdbDetails.cast.map((actor) => (
+                      <div
+                        key={actor.name}
+                        className="shrink-0 flex flex-col items-center w-16 text-center"
+                      >
+                        <div className="w-12 h-12 rounded-full overflow-hidden bg-muted mb-1.5 ring-1 ring-white/10">
+                          {actor.profileUrl ? (
+                            <img
+                              src={actor.profileUrl}
+                              alt={actor.name}
+                              className="w-full h-full object-cover"
+                            />
                           ) : (
-                            <X className="w-3 h-3" />
+                            <div className="w-full h-full flex items-center justify-center text-lg font-bold text-muted-foreground">
+                              {actor.name.charAt(0)}
+                            </div>
                           )}
-                        </Button>
+                        </div>
+                        <p className="text-[10px] font-medium leading-tight truncate w-full">
+                          {actor.name}
+                        </p>
+                        <p className="text-[9px] text-muted-foreground leading-tight truncate w-full">
+                          {actor.character}
+                        </p>
                       </div>
                     ))}
                   </div>
-                )}
-              </div>
+                  {tmdbDetails.director && (
+                    <p className="text-xs text-muted-foreground mt-3">
+                      Directed by{' '}
+                      <span className="text-foreground font-medium">
+                        {tmdbDetails.director}
+                      </span>
+                    </p>
+                  )}
+                </div>
+              )}
 
-              {/* Similar Titles */}
+              {/* ── LEVEL 3: COLLAPSIBLE "MORE DETAILS" ── */}
+              <Collapsible open={moreInfoOpen} onOpenChange={setMoreInfoOpen} className="mb-6">
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mb-4 w-full text-left"
+                  >
+                    <ChevronDown
+                      className={`w-4 h-4 transition-transform duration-200 ${
+                        moreInfoOpen ? 'rotate-180' : ''
+                      }`}
+                    />
+                    {moreInfoOpen ? 'Less details' : 'More details'}
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  {/* Full synopsis */}
+                  {overview && (
+                    <div className="mb-6">
+                      <h3 className="text-sm font-medium text-muted-foreground mb-2">Synopsis</h3>
+                      <p className="text-foreground text-sm whitespace-pre-wrap leading-relaxed">
+                        {overview}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* My Rating */}
+                  <div className="mb-6">
+                    <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1">
+                      <Star className="w-4 h-4" />
+                      My Rating
+                    </h3>
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => rateMutation.mutate({
+                            rating: bookmark.user_rating === star ? null : star,
+                          })}
+                          className="p-1.5 hover:scale-110 transition-transform"
+                          aria-label={`Rate ${star} star${star !== 1 ? 's' : ''}`}
+                        >
+                          <Star
+                            className={`w-6 h-6 ${
+                              (bookmark.user_rating || 0) >= star
+                                ? 'fill-yellow-400 text-yellow-400'
+                                : 'text-muted-foreground'
+                            }`}
+                          />
+                        </button>
+                      ))}
+                      {bookmark.user_rating && (
+                        <span className="text-sm text-muted-foreground ml-2">
+                          {bookmark.user_rating}/5
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Mood Tags */}
+                  {bookmark.mood_tags && bookmark.mood_tags.length > 0 && (
+                    <div className="mb-6">
+                      <h3 className="text-sm font-medium text-muted-foreground mb-2">Mood</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {bookmark.mood_tags.map((mood) => (
+                          <Badge key={mood} variant="outline">
+                            {getMoodEmoji(mood)} {mood}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tags */}
+                  {bookmark.tags && bookmark.tags.length > 0 && (
+                    <div className="mb-6">
+                      <h3 className="text-sm font-medium text-muted-foreground mb-2">Tags</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {bookmark.tags.map((tag) => (
+                          <Badge key={tag} variant="secondary">
+                            <Tag className="w-3 h-3 mr-1" />
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Notes */}
+                  {bookmark.notes && (
+                    <div className="mb-6">
+                      <h3 className="text-sm font-medium text-muted-foreground mb-2">My Notes</h3>
+                      <p className="text-foreground text-sm whitespace-pre-wrap leading-relaxed">{bookmark.notes}</p>
+                    </div>
+                  )}
+
+                  {/* Source Link */}
+                  {bookmark.source_url && (
+                    <div className="mb-6">
+                      <h3 className="text-sm font-medium text-muted-foreground mb-2">Source</h3>
+                      <a
+                        href={bookmark.source_url && isSafeUrl(bookmark.source_url) ? bookmark.source_url : "#"}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline flex items-center gap-1 text-sm"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        {bookmark.source_url}
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Sharing */}
+                  <div className="mb-6">
+                    <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1">
+                      <Share2 className="w-4 h-4" />
+                      Sharing
+                    </h3>
+                    {bookmark.is_public && bookmark.share_token ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary" className="gap-1">
+                          <Globe className="w-3 h-3" />
+                          Anyone with the link can view
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            const url = `${window.location.origin}/share/${bookmark.share_token}`;
+                            navigator.clipboard.writeText(url).catch(() => {});
+                            toast({ title: "Link copied!" });
+                          }}
+                        >
+                          <Copy className="w-3 h-3 mr-1" />
+                          Copy link
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-muted-foreground"
+                          onClick={() => makePrivateMutation.mutate()}
+                          disabled={makePrivateMutation.isPending}
+                        >
+                          <Lock className="w-3 h-3 mr-1" />
+                          Make private
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => makePublicMutation.mutate()}
+                        disabled={makePublicMutation.isPending}
+                      >
+                        <Globe className="w-4 h-4 mr-2" />
+                        Share & copy link
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Attachments */}
+                  <div className="mb-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                        <Paperclip className="w-4 h-4" />
+                        Attachments {attachments.length > 0 && `(${attachments.length})`}
+                      </h3>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => attachFileRef.current?.click()}
+                      >
+                        <Upload className="w-3 h-3 mr-1" />
+                        Add
+                      </Button>
+                      <input
+                        ref={attachFileRef}
+                        type="file"
+                        accept="image/*,.pdf"
+                        className="hidden"
+                        onChange={handleAttachFile}
+                      />
+                    </div>
+                    {attachments.length === 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => attachFileRef.current?.click()}
+                        className="w-full border border-dashed border-border rounded-lg p-4 text-center text-sm text-muted-foreground hover:border-primary/50 transition-colors"
+                      >
+                        No attachments yet — click to upload
+                      </button>
+                    ) : (
+                      <div className="space-y-2">
+                        {attachments.map((att) => (
+                          <div
+                            key={att.id}
+                            className="flex items-center gap-3 p-3 bg-secondary rounded-lg"
+                          >
+                            {att.file_type?.startsWith("image/") ? (
+                              <img
+                                src={att.file_url}
+                                alt={att.file_name}
+                                className="w-10 h-10 object-cover rounded"
+                              />
+                            ) : (
+                              <FileText className="w-8 h-8 text-muted-foreground shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{att.file_name}</p>
+                              {att.size && (
+                                <p className="text-xs text-muted-foreground">
+                                  {(att.size / 1024).toFixed(1)} KB
+                                </p>
+                              )}
+                            </div>
+                            <a
+                              href={isSafeUrl(att.file_url) ? att.file_url : "#"}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1.5 hover:bg-background rounded transition-colors"
+                              title="Download"
+                            >
+                              <Download className="w-4 h-4 text-muted-foreground" />
+                            </a>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                              onClick={() => { setDeletingAttachmentId(att.id); deleteAttachmentMutation.mutate(att.id); }}
+                              disabled={deletingAttachmentId === att.id}
+                            >
+                              {deletingAttachmentId === att.id ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <X className="w-3 h-3" />
+                              )}
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+
+              {/* ── LEVEL 4: SIMILAR TITLES ── */}
               {similarTitles.length > 0 && (
                 <div className="mb-6">
                   <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-1">
