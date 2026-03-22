@@ -18,6 +18,22 @@ interface EnrichResponse {
   error?: { message: string };
 }
 
+interface OEmbedResponse {
+  title?: string;
+  html?: string;
+  thumbnail_url?: string;
+  author_name?: string;
+  provider_name?: string;
+}
+
+interface OpenGraphMetadata {
+  title?: string;
+  description?: string;
+  image?: string;
+  canonicalUrl?: string;
+  siteName?: string;
+}
+
 // --- URL helpers ---
 
 const DEFAULT_FETCH_TIMEOUT_MS = 8000;
@@ -175,10 +191,156 @@ function cleanTitleForTMDB(raw: string): string {
     .replace(/\(?\d{4}\)?/g, '') // remove years
     .replace(/official\s*(trailer|teaser|clip|video)/gi, '')
     .replace(/\|\s*.+$/i, '') // strip "| Netflix" suffixes
-    .replace(/[-–]\s*(trailer|teaser|season\s*\d+).*/gi, '')
+    .replace(/[\-\u2013]\s*(trailer|teaser|season\s*\d+).*/gi, '')
     .replace(/[^\w\s']/g, ' ') // strip emoji/symbols
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&#x2F;|&#47;/gi, '/');
+}
+
+function stripHtmlTags(value: string): string {
+  return value.replace(/<[^>]+>/g, ' ');
+}
+
+function normalizeText(value: string): string {
+  return decodeHtmlEntities(value)
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function pickFirstNonEmpty(...values: Array<string | undefined | null>): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string') {
+      const normalized = normalizeText(value);
+      if (normalized) return normalized;
+    }
+  }
+  return undefined;
+}
+
+function resolveAbsoluteUrl(value: string | undefined, baseUrl: string): string | undefined {
+  if (!value) return undefined;
+  try {
+    return new URL(value, baseUrl).toString();
+  } catch {
+    return value;
+  }
+}
+
+function stripSocialPrefix(value: string): string {
+  return value
+    .replace(/^.+?\s+on\s+(instagram|facebook|tiktok|x|twitter)\s*:\s*/i, '')
+    .replace(/\s*\|\s*(instagram|facebook|tiktok|x|twitter).*/i, '')
+    .replace(/^["']+|["']+$/g, '')
+    .trim();
+}
+
+function cleanSocialText(raw: string): string {
+  return normalizeText(stripSocialPrefix(raw))
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/\bwww\.[^\s]+/gi, ' ')
+    .replace(/(?:^|\s)[#@][A-Za-z0-9_]+/g, ' ')
+    .replace(/\b(link in bio|original sound)\b/gi, ' ')
+    .replace(/\b(fyp|foryou|viral|trending|reels|shorts)\b/gi, ' ')
+    .replace(/\b(follow|subscribe|like|share|comment)\s+(for\s+)?(more|updates?)\b.*$/i, ' ')
+    .replace(/\s*[|\u2022\u00b7]+\s*/g, ' - ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function truncateAtWord(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  const slice = value.slice(0, maxLength + 1);
+  const cut = slice.lastIndexOf(' ');
+  return (cut > 0 ? slice.slice(0, cut) : value.slice(0, maxLength)).trim();
+}
+
+function firstSentence(value: string): string {
+  const part = value.split(/(?<=[.!?])\s+/)[0] ?? value;
+  return part.trim();
+}
+
+function getSocialTitleAndDescription(rawTitle?: string, rawDescription?: string): {
+  title?: string;
+  description?: string;
+} {
+  let title = cleanSocialText(rawTitle ?? '');
+  let description = cleanSocialText(rawDescription ?? '');
+
+  if (!title && description) {
+    const guessed = truncateAtWord(firstSentence(description), 110);
+    title = guessed;
+    if (guessed && guessed === description) {
+      description = '';
+    }
+  }
+
+  if (title && !description) {
+    const split = title.match(/^(.{4,90}?)\s*(?:\||-|:)\s*(.{15,})$/);
+    if (split) {
+      title = split[1].trim();
+      description = split[2].trim();
+    }
+  }
+
+  if (title.length > 120) {
+    const conciseTitle = truncateAtWord(firstSentence(title), 110);
+    if (conciseTitle && conciseTitle !== title) {
+      description = description || title;
+      title = conciseTitle;
+    }
+  }
+
+  if (description && description === title) {
+    description = '';
+  }
+
+  return {
+    title: title || undefined,
+    description: description || undefined,
+  };
+}
+
+function isLikelyMediaTitle(value: string): boolean {
+  const cleaned = cleanTitleForTMDB(value);
+  if (!cleaned) return false;
+  if (cleaned.length < 2 || cleaned.length > 120) return false;
+  if (/[@#]|https?:\/\//i.test(value)) return false;
+  if (/\b(follow|subscribe|link in bio|fyp|viral|trending|reels|shorts)\b/i.test(value)) return false;
+  return cleaned.split(/\s+/).length <= 12;
+}
+
+async function maybeMergeTMDB(base: EnrichResponse): Promise<EnrichResponse> {
+  if (!base.title || !isLikelyMediaTitle(base.title)) return base;
+
+  const tmdb = await enrichTMDB(cleanTitleForTMDB(base.title));
+  if (!tmdb.title) return base;
+  return mergeWithTMDB(base, tmdb);
+}
+
+function mergeWithTMDB(base: EnrichResponse, tmdb: EnrichResponse): EnrichResponse {
+  return {
+    ...base,
+    title: tmdb.title,
+    description: tmdb.description ?? base.description,
+    posterUrl: tmdb.posterUrl ?? base.posterUrl,
+    backdropUrl: tmdb.backdropUrl ?? base.backdropUrl,
+    runtimeMinutes: tmdb.runtimeMinutes ?? base.runtimeMinutes,
+    releaseYear: tmdb.releaseYear ?? base.releaseYear,
+    mediaType: tmdb.mediaType ?? base.mediaType,
+    tmdbId: tmdb.tmdbId ?? base.tmdbId,
+  };
 }
 
 // --- YouTube ---
@@ -240,35 +402,169 @@ async function enrichYouTube(videoId: string): Promise<EnrichResponse> {
 
 // --- oEmbed (Twitter, TikTok) ---
 
-async function fetchOEmbed(oembedUrl: string): Promise<{ title?: string; html?: string } | null> {
+async function fetchOEmbed(oembedUrl: string): Promise<OEmbedResponse | null> {
   try {
     const res = await fetchWithTimeout(oembedUrl, {}, 6000);
     if (!res.ok) return null;
-    return (await res.json()) as any;
+    return (await res.json()) as OEmbedResponse;
   } catch {
     return null;
   }
 }
 
+async function fillMissingWithMicrolink(base: EnrichResponse, url: string): Promise<EnrichResponse> {
+  if (base.title && base.description && base.posterUrl) return base;
+  const ml = await enrichWithMicrolink(url);
+  return {
+    ...base,
+    title: base.title ?? ml.title,
+    description: base.description ?? ml.description,
+    posterUrl: base.posterUrl ?? ml.posterUrl,
+    releaseYear: base.releaseYear ?? ml.releaseYear,
+  };
+}
+
 async function enrichTwitter(url: string): Promise<EnrichResponse> {
-  const oembed = await fetchOEmbed(`https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}`);
-  const rawText = oembed?.html?.replace(/<[^>]+>/g, '') ?? '';
-  const cleaned = cleanTitleForTMDB(rawText.split('\n')[0]);
-  if (!cleaned) return { provider: 'x' };
-  const tmdb = await enrichTMDB(cleaned);
-  return { ...tmdb, provider: 'x' };
+  const [oembed, og] = await Promise.all([
+    fetchOEmbed(`https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}`),
+    fetchOpenGraph(url),
+  ]);
+
+  const oembedText = normalizeText(stripHtmlTags(oembed?.html ?? ''));
+  const social = getSocialTitleAndDescription(
+    pickFirstNonEmpty(og.title, oembed?.title, oembedText),
+    pickFirstNonEmpty(og.description, oembedText)
+  );
+
+  let result: EnrichResponse = {
+    title: social.title,
+    description: social.description,
+    posterUrl: resolveAbsoluteUrl(pickFirstNonEmpty(og.image, oembed?.thumbnail_url), url),
+    provider: 'x',
+  };
+
+  result = await maybeMergeTMDB(result);
+  return fillMissingWithMicrolink(result, url);
 }
 
 async function enrichTikTok(url: string): Promise<EnrichResponse> {
-  const oembed = await fetchOEmbed(`https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`);
-  if (!oembed?.title) return { provider: 'tiktok' };
-  const tmdb = await enrichTMDB(cleanTitleForTMDB(oembed.title));
-  return { ...tmdb, provider: 'tiktok' };
+  const [oembed, og] = await Promise.all([
+    fetchOEmbed(`https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`),
+    fetchOpenGraph(url),
+  ]);
+
+  const oembedText = normalizeText(stripHtmlTags(oembed?.html ?? ''));
+  const social = getSocialTitleAndDescription(
+    pickFirstNonEmpty(og.title, oembed?.title, oembedText),
+    pickFirstNonEmpty(og.description, oembedText)
+  );
+
+  let result: EnrichResponse = {
+    title: social.title,
+    description: social.description,
+    posterUrl: resolveAbsoluteUrl(pickFirstNonEmpty(oembed?.thumbnail_url, og.image), url),
+    provider: 'tiktok',
+  };
+
+  result = await maybeMergeTMDB(result);
+  return fillMissingWithMicrolink(result, url);
 }
 
 // --- OpenGraph ---
 
-async function fetchOpenGraph(url: string): Promise<Record<string, string>> {
+function parseTagAttributes(tag: string): Record<string, string> {
+  const attrs: Record<string, string> = {};
+  const attrRegex = /([a-zA-Z_:][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g;
+  for (const match of tag.matchAll(attrRegex)) {
+    const key = match[1].toLowerCase();
+    const value = match[2] ?? match[3] ?? match[4] ?? '';
+    if (!value || attrs[key]) continue;
+    attrs[key] = decodeHtmlEntities(value);
+  }
+  return attrs;
+}
+
+function collectJsonLdObjects(node: unknown, out: Array<Record<string, unknown>>): void {
+  if (!node) return;
+  if (Array.isArray(node)) {
+    for (const item of node) collectJsonLdObjects(item, out);
+    return;
+  }
+  if (typeof node !== 'object') return;
+  const obj = node as Record<string, unknown>;
+  out.push(obj);
+  if (obj['@graph']) collectJsonLdObjects(obj['@graph'], out);
+}
+
+const READ_IMAGE_MAX_DEPTH = 10;
+
+function readImageFromValue(
+  value: unknown,
+  depth: number = READ_IMAGE_MAX_DEPTH
+): string | undefined {
+  if (depth <= 0) return undefined;
+  if (typeof value === 'string') return normalizeText(value);
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const parsed = readImageFromValue(item, depth - 1);
+      if (parsed) return parsed;
+    }
+    return undefined;
+  }
+  if (typeof value !== 'object' || !value) return undefined;
+
+  const obj = value as Record<string, unknown>;
+  return pickFirstNonEmpty(
+    typeof obj.url === 'string' ? obj.url : undefined,
+    typeof obj.contentUrl === 'string' ? obj.contentUrl : undefined,
+    typeof obj.thumbnailUrl === 'string' ? obj.thumbnailUrl : undefined,
+    readImageFromValue(obj.image, depth - 1)
+  );
+}
+
+function extractJsonLdMetadata(html: string): {
+  title?: string;
+  description?: string;
+  image?: string;
+} {
+  const objects: Array<Record<string, unknown>> = [];
+  const jsonLdPattern = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+
+  for (const match of html.matchAll(jsonLdPattern)) {
+    const raw = match[1]?.trim();
+    if (!raw) continue;
+
+    try {
+      collectJsonLdObjects(JSON.parse(raw), objects);
+    } catch {
+      // Skip invalid JSON-LD blocks.
+    }
+  }
+
+  let title: string | undefined;
+  let description: string | undefined;
+  let image: string | undefined;
+
+  for (const obj of objects) {
+    title =
+      title ??
+      pickFirstNonEmpty(
+        typeof obj.headline === 'string' ? obj.headline : undefined,
+        typeof obj.name === 'string' ? obj.name : undefined,
+        typeof obj.alternativeHeadline === 'string' ? obj.alternativeHeadline : undefined
+      );
+    description =
+      description ??
+      pickFirstNonEmpty(typeof obj.description === 'string' ? obj.description : undefined);
+    image = image ?? readImageFromValue(obj.image ?? obj.thumbnailUrl);
+
+    if (title && description && image) break;
+  }
+
+  return { title, description, image };
+}
+
+async function fetchOpenGraph(url: string): Promise<OpenGraphMetadata> {
   try {
     const res = await fetchWithTimeout(url, {
       headers: {
@@ -276,21 +572,95 @@ async function fetchOpenGraph(url: string): Promise<Record<string, string>> {
       },
     });
     if (!res.ok) return {};
+
     const html = await res.text();
     const og: Record<string, string> = {};
-    // Match property-before-content order
-    for (const m of html.matchAll(/<meta[^>]+property=["']og:(\w+)["'][^>]+content=["']([^"']+)["']/gi)) {
-      if (!og[m[1]]) og[m[1]] = m[2];
+    const twitter: Record<string, string> = {};
+    const nameMeta: Record<string, string> = {};
+    const itemProp: Record<string, string> = {};
+
+    for (const tag of html.matchAll(/<meta\b[^>]*>/gi)) {
+      const attrs = parseTagAttributes(tag[0]);
+      const content = attrs.content ? normalizeText(attrs.content) : '';
+      if (!content) continue;
+
+      const property = attrs.property?.toLowerCase();
+      if (property?.startsWith('og:')) {
+        const key = property.slice(3);
+        if (!og[key]) og[key] = content;
+      }
+
+      const name = attrs.name?.toLowerCase();
+      if (name?.startsWith('twitter:')) {
+        const key = name.slice(8);
+        if (!twitter[key]) twitter[key] = content;
+      }
+      if (name && !nameMeta[name]) {
+        nameMeta[name] = content;
+      }
+
+      const prop = attrs.itemprop?.toLowerCase();
+      if (prop && !itemProp[prop]) {
+        itemProp[prop] = content;
+      }
     }
-    // Match content-before-property order (common in WordPress, Shopify, etc.)
-    for (const m of html.matchAll(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:(\w+)["']/gi)) {
-      if (!og[m[2]]) og[m[2]] = m[1];
+
+    let canonicalUrl: string | undefined;
+    let imageFromLink: string | undefined;
+    for (const tag of html.matchAll(/<link\b[^>]*>/gi)) {
+      const attrs = parseTagAttributes(tag[0]);
+      const rel = attrs.rel?.toLowerCase();
+      const href = attrs.href;
+      if (!rel || !href) continue;
+
+      const relTokens = rel.split(/\s+/);
+      if (!canonicalUrl && relTokens.includes('canonical')) {
+        canonicalUrl = href;
+      }
+      if (!imageFromLink && (relTokens.includes('image_src') || relTokens.includes('thumbnail'))) {
+        imageFromLink = href;
+      }
     }
-    if (!og['title']) {
-      const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
-      if (titleMatch) og['title'] = titleMatch[1];
-    }
-    return og;
+
+    const jsonLd = extractJsonLdMetadata(html);
+    const htmlTitle = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
+
+    const title = pickFirstNonEmpty(
+      og['title'],
+      twitter['title'],
+      nameMeta['title'],
+      itemProp['name'],
+      jsonLd.title,
+      htmlTitle
+    );
+    const description = pickFirstNonEmpty(
+      og['description'],
+      twitter['description'],
+      nameMeta['description'],
+      itemProp['description'],
+      jsonLd.description
+    );
+    const image = pickFirstNonEmpty(
+      og['image:secure_url'],
+      og['image:url'],
+      og['image'],
+      twitter['image'],
+      twitter['image:src'],
+      twitter['player:image'],
+      nameMeta['image'],
+      itemProp['image'],
+      itemProp['thumbnailurl'],
+      imageFromLink,
+      jsonLd.image
+    );
+
+    return {
+      title,
+      description,
+      image: resolveAbsoluteUrl(image, url),
+      canonicalUrl: resolveAbsoluteUrl(pickFirstNonEmpty(og['url'], canonicalUrl), url),
+      siteName: pickFirstNonEmpty(og['site_name']),
+    };
   } catch {
     return {};
   }
@@ -323,28 +693,37 @@ async function enrichWithMicrolink(url: string): Promise<Partial<EnrichResponse>
 async function enrichViaOG(url: string, provider: string): Promise<EnrichResponse> {
   const og = await fetchOpenGraph(url);
 
-  if (og['title']) {
-    const cleaned = cleanTitleForTMDB(og['title']);
-    const tmdb = await enrichTMDB(cleaned);
-    return {
-      title: tmdb.title ?? og['title'],
-      description: tmdb.description ?? og['description'],
-      posterUrl: tmdb.posterUrl ?? og['image'],
-      backdropUrl: tmdb.backdropUrl,
-      releaseYear: tmdb.releaseYear,
-      mediaType: tmdb.mediaType,
-      tmdbId: tmdb.tmdbId,
-      provider,
-    };
+  const isSocialProvider = provider === 'instagram' || provider === 'facebook';
+  const social = isSocialProvider
+    ? getSocialTitleAndDescription(og.title, og.description)
+    : { title: og.title, description: og.description };
+
+  let result: EnrichResponse = {
+    title: social.title,
+    description: social.description,
+    posterUrl: og.image,
+    provider,
+  };
+
+  if (provider === 'netflix' && result.title) {
+    const tmdb = await enrichTMDB(cleanTitleForTMDB(result.title));
+    if (tmdb.title) {
+      result = mergeWithTMDB(result, tmdb);
+    }
+  } else if (provider === 'generic' && result.title && isLikelyMediaTitle(result.title)) {
+    const tmdb = await enrichTMDB(cleanTitleForTMDB(result.title));
+    if (tmdb.title) {
+      result = mergeWithTMDB(result, tmdb);
+    }
+  } else if (isSocialProvider) {
+    result = await maybeMergeTMDB(result);
   }
 
-  // OG scraping failed (blocked or JS-rendered) — try Microlink headless browser
-  const ml = await enrichWithMicrolink(url);
-  if (ml.title) return { ...ml, provider };
+  result = await fillMissingWithMicrolink(result, url);
+  if (result.title || result.description || result.posterUrl) return result;
 
   return { provider };
 }
-
 // --- IMDb ---
 
 function extractImdbId(url: string): string | null {
@@ -436,11 +815,32 @@ async function enrichReddit(url: string): Promise<EnrichResponse> {
       headers: { 'User-Agent': 'WatchWondersBot/1.0' },
     }, 6000);
     if (!res.ok) return { provider: 'reddit' };
+
     const data = (await res.json()) as any;
     const post = data?.[0]?.data?.children?.[0]?.data;
-    if (!post?.title) return { provider: 'reddit' };
-    const tmdb = await enrichTMDB(cleanTitleForTMDB(post.title));
-    return { ...tmdb, provider: 'reddit' };
+    const og = await fetchOpenGraph(url);
+
+    const previewImage = post?.preview?.images?.[0]?.source?.url;
+    const thumbnail = typeof post?.thumbnail === 'string' ? post.thumbnail : undefined;
+    const imageCandidate =
+      (typeof previewImage === 'string' ? previewImage : undefined) ??
+      (/^https?:\/\//i.test(thumbnail ?? '') ? thumbnail : undefined) ??
+      og.image;
+
+    const social = getSocialTitleAndDescription(
+      pickFirstNonEmpty(post?.title, og.title),
+      pickFirstNonEmpty(post?.selftext, og.description)
+    );
+
+    let result: EnrichResponse = {
+      title: social.title,
+      description: social.description,
+      posterUrl: resolveAbsoluteUrl(imageCandidate ? decodeHtmlEntities(imageCandidate) : undefined, url),
+      provider: 'reddit',
+    };
+
+    result = await maybeMergeTMDB(result);
+    return fillMissingWithMicrolink(result, url);
   } catch {
     return { provider: 'reddit' };
   }
@@ -556,3 +956,5 @@ export const enrich = onCall(
     }
   }
 );
+
+
