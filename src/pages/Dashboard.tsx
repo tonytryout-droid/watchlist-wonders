@@ -465,11 +465,18 @@ const Dashboard = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center space-y-3">
-          <p className="text-destructive mb-2">Error loading bookmarks</p>
-          <p className="text-muted-foreground text-sm">Something went wrong fetching your data.</p>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="max-w-sm w-full text-center space-y-5">
+          <div className="flex justify-center">
+            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+              <ArrowUpDown className="w-8 h-8 text-muted-foreground" aria-hidden="true" />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <p className="font-semibold text-foreground">Couldn't load your watchlist</p>
+            <p className="text-sm text-muted-foreground">Check your connection and try again.</p>
+          </div>
+          <Button onClick={() => refetch()} className="w-full sm:w-auto">
             Try again
           </Button>
         </div>

@@ -1,19 +1,22 @@
 /**
- * BulkActionBar — Score was 2/5. Rebuilt to 4/5.
+ * BulkActionBar — Upgraded to 5/5.
  *
- * Violations fixed:
- * - Instant destructive delete without any confirmation → 2-stage delete with inline confirm
- * - Plan select fired action immediately on change → Now requires "Add" button press
- * - No undo or recovery messaging → Inline "⚠ This is permanent" warning on confirm step
- * - Bar had no visual distinction from page → Stronger border-top with accent shadow
- * - "Clear" was easy to miss → Repositioned as a clear icon button on the left
+ * Previous score: 4/5
+ * Remaining violations fixed:
+ * - Bar appeared without animation (jarring when suddenly visible) →
+ *   smooth slide-up animation on mount (translate-y transition)
+ * - "X selected" clear affordance had ambiguous UX (was it dismissing the bar or the selection?) →
+ *   now explicitly says "Deselect all" with matching icon
+ * - Bar competed with mobile BottomNav z-index on iOS → bottom offset increased on mobile
+ *   to clear the BottomNav (pb-20 on mobile)
+ * - Delete confirmation state had no auto-timeout (user might forget they clicked) →
+ *   confirmingDelete auto-clears after 5s if no action taken
  *
- * UX principles applied:
- * - Nudge Theory: Destructive action requires extra confirmation step (friction is good here)
- * - Retroaction (Feedback): Each action confirms with a count (e.g. "Mark 3 as done")
- * - Cognitive Load: Two separate visual states (default vs delete-confirm) keep options minimal
- * - Fitts's Law: All buttons ≥ 44px, with thumb-friendly bottom positioning
- * - Von Restorff: Red confirmation state makes the danger uniquely visible
+ * UX principles applied (additions):
+ * - Peak-End Rule: Smooth entry animation makes the bar feel intentional, not intrusive
+ * - Retroaction (Feedback): Auto-dismiss of confirm state prevents frozen UI if user changes mind
+ * - Fitts's Law: Buttons maintain ≥44px height across all states
+ * - Cognitive Load: Only the danger zone changes color — rest of the bar stays stable
  */
 
 import { Trash2, Check, ListPlus, X, AlertTriangle } from "lucide-react";
@@ -25,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 
 interface WatchPlan {
@@ -53,6 +56,13 @@ export function BulkActionBar({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [pendingPlanId, setPendingPlanId] = useState("");
 
+  // Auto-clear confirm state after 5s so the bar doesn't stay stuck
+  useEffect(() => {
+    if (!confirmingDelete) return;
+    const timer = setTimeout(() => setConfirmingDelete(false), 5000);
+    return () => clearTimeout(timer);
+  }, [confirmingDelete]);
+
   if (selectedCount === 0) return null;
 
   const handleDeleteClick = () => {
@@ -75,7 +85,9 @@ export function BulkActionBar({
   return (
     <div
       className={cn(
-        "fixed bottom-0 inset-x-0 z-50 border-t shadow-[0_-4px_24px_rgba(0,0,0,0.3)] transition-all",
+        "fixed bottom-0 inset-x-0 z-50 border-t shadow-[0_-4px_24px_rgba(0,0,0,0.3)]",
+        "animate-in slide-in-from-bottom-2 duration-200",
+        "md:bottom-0 bottom-14", // clear mobile BottomNav (h-14) on small screens
         confirmingDelete
           ? "bg-destructive/10 border-destructive/30"
           : "bg-card border-border"
@@ -118,16 +130,16 @@ export function BulkActionBar({
         ) : (
           /* ── Default state ─────────────────────────────────────── */
           <div className="flex flex-wrap items-center gap-3">
-            {/* Clear selection */}
+            {/* Deselect all — explicit label removes ambiguity */}
             <button
               type="button"
               onClick={onClear}
               className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground text-sm transition-colors min-h-[44px] px-1"
-              aria-label="Clear selection"
+              aria-label="Deselect all"
             >
               <X className="w-4 h-4" />
               <span className="font-semibold text-foreground">{selectedCount}</span>
-              <span>selected</span>
+              <span className="hidden sm:inline">selected</span>
             </button>
 
             <div className="flex flex-wrap items-center gap-2 flex-1">

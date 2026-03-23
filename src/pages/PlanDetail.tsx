@@ -148,14 +148,20 @@ export default function PlanDetail() {
 
   if (!plan) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 pt-32 text-center">
-          <p className="text-muted-foreground">Plan not found.</p>
-          <Link to="/plans">
-            <Button variant="outline" className="mt-4">
-              Back to Plans
-            </Button>
-          </Link>
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="max-w-sm w-full text-center space-y-5">
+          <div className="flex justify-center">
+            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+              <Calendar className="w-8 h-8 text-muted-foreground" aria-hidden="true" />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <p className="font-semibold text-foreground">Plan not found</p>
+            <p className="text-sm text-muted-foreground">This plan may have been removed or doesn't exist.</p>
+          </div>
+          <Button asChild className="w-full sm:w-auto">
+            <Link to="/plans">Back to Plans</Link>
+          </Button>
         </div>
       </div>
     );

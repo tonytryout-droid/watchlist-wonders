@@ -167,10 +167,10 @@ const TonightPick = () => {
                   size="sm"
                   className="absolute top-2 right-2 h-8 bg-background/80 backdrop-blur gap-1 text-xs"
                   onClick={() => handleSwapOne(index)}
-                  title="Not feeling it"
+                  aria-label="Not feeling it — swap for another pick"
                 >
-                  <Shuffle className="w-3.5 h-3.5 shrink-0" />
-                  <span className="hidden sm:inline">Not feeling it</span>
+                  <Shuffle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  <span>Skip</span>
                 </Button>
                 {/* Runtime */}
                 {bookmark.runtime_minutes && (

@@ -148,17 +148,23 @@ export function DashboardTour({ open, onDismiss, onFinish }: DashboardTourProps)
             {/* Dot indicators */}
             <div className="flex items-center gap-1.5">
               {STEPS.map((_, i) => (
+                /* Wrap in a larger tap target for Fitts's Law */
                 <button
                   key={i}
                   onClick={() => setStep(i)}
-                  className={cn(
-                    "h-1.5 rounded-full transition-all duration-300",
-                    i === step
-                      ? "w-6 bg-primary"
-                      : "w-1.5 bg-border hover:bg-muted-foreground"
-                  )}
+                  className="flex items-center justify-center w-6 h-6 -mx-1"
                   aria-label={`Go to step ${i + 1}`}
-                />
+                  aria-current={i === step ? "step" : undefined}
+                >
+                  <span
+                    className={cn(
+                      "block h-1.5 rounded-full transition-all duration-300 pointer-events-none",
+                      i === step
+                        ? "w-6 bg-primary"
+                        : "w-1.5 bg-border hover:bg-muted-foreground"
+                    )}
+                  />
+                </button>
               ))}
             </div>
 
