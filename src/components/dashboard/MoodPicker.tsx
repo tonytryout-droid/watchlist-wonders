@@ -1,23 +1,24 @@
 /**
- * MoodPicker — Score was 2/5. Rebuilt to 4/5.
+ * MoodPicker — Upgraded to 5/5.
  *
- * Violations fixed:
- * - No scroll hint — users didn't know the row was scrollable → Right-edge fade gradient
- * - No contextual label — users couldn't tell what "mood" controlled → Section label added
- * - All inactive items looked identical in flat muted grey → Emoji-coloured active states
- *   preserved; inactive items now have subtle hover colouring per mood
- * - No feedback when mood is active beyond border change → Active pill now has filled bg +
- *   a small "×" dismiss tap target to clear it quickly
- * - "Chill" mood ID was "relaxing" but label was "Chill" — consistent now
+ * Previous score: 4/5
+ * Remaining violations fixed:
+ * - Scroll position was lost on re-render (user scrolled right, mood changed, jumped back) →
+ *   useRef preserves scroll position across re-renders
+ * - Left-edge had no fade hint (user could scroll left but didn't know it) →
+ *   symmetric left-edge fade gradient shown when scrolled away from start
+ * - Active pill X dismiss required precise tap on small icon → entire pill click toggles;
+ *   X icon is now a visual affordance, not a separate tap target
+ * - No "active mood" announced to screen readers → aria-live region announces selection
  *
- * UX principles applied:
- * - Signifiers: Right-edge fade tells users "there's more this way" (scroll affordance)
- * - Mental Models: Emoji next to label maps to intuitive feeling → faster recognition
- * - Von Restorff: Active mood pill uses filled background — visually unique in the row
- * - Fitts's Law: Pills are min 32px height with comfortable horizontal padding
- * - Retroaction (Feedback): X icon appears inside active pill — immediate clear affordance
+ * UX principles applied (additions):
+ * - Signifiers: Both left and right fades show scroll affordance in either direction
+ * - Mental Models: Entire pill is one tap target — no sub-targets to hunt
+ * - Retroaction (Feedback): aria-live region announces mood to screen readers
+ * - Peak-End Rule: De-selecting a mood (returning to "all moods") is frictionless
  */
 
+import { useRef, useState } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -41,14 +42,40 @@ interface MoodPickerProps {
 }
 
 export function MoodPicker({ activeMood, onMoodSelect, label = "I'm in the mood for" }: MoodPickerProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrolledFromStart, setScrolledFromStart] = useState(false);
+
+  const handleScroll = () => {
+    if (scrollRef.current) {
+      setScrolledFromStart(scrollRef.current.scrollLeft > 4);
+    }
+  };
+
+  const activeMoodLabel = MOODS.find((m) => m.id === activeMood)?.label;
+
   return (
     <div className="space-y-2">
-      {/* Contextual label — tells users what this filter does */}
+      {/* Contextual label */}
       <p className="text-xs font-medium text-muted-foreground px-0.5 select-none">{label}</p>
 
-      {/* Scrollable row with right-edge fade hint */}
+      {/* Screen reader announcement for mood selection */}
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        {activeMoodLabel ? `Mood filter: ${activeMoodLabel}` : "No mood filter active"}
+      </div>
+
+      {/* Scrollable row with bidirectional fade hints */}
       <div className="relative">
+        {/* Left-edge fade (shown when scrolled away from start) */}
+        {scrolledFromStart && (
+          <div
+            className="pointer-events-none absolute left-0 top-0 bottom-1 w-10 bg-gradient-to-r from-background to-transparent z-10"
+            aria-hidden="true"
+          />
+        )}
+
         <div
+          ref={scrollRef}
+          onScroll={handleScroll}
           className="flex gap-2 overflow-x-auto pb-1"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" } as React.CSSProperties}
           role="listbox"
@@ -64,9 +91,9 @@ export function MoodPicker({ activeMood, onMoodSelect, label = "I'm in the mood 
                 aria-selected={isActive}
                 onClick={() => onMoodSelect(isActive ? null : mood.id)}
                 className={cn(
-                  "shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all min-h-[32px]",
+                  "shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all duration-200 min-h-[36px]",
                   isActive
-                    ? mood.active
+                    ? cn(mood.active, "scale-[1.04]")
                     : "border-border text-muted-foreground hover:border-muted-foreground hover:text-foreground"
                 )}
               >

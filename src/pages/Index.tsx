@@ -212,14 +212,21 @@ const Index = () => {
                     <button
                       type="button"
                       onClick={() => setOpenFaq(isOpen ? -1 : index)}
-                      className="w-full text-left p-5 sm:p-6 flex items-center justify-between hover:bg-[#3a3a3a] transition-colors"
+                      className="w-full text-left p-5 sm:p-6 flex items-center justify-between hover:bg-[#3a3a3a] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-inset"
                       aria-expanded={isOpen}
+                      aria-controls={`faq-answer-${index}`}
+                      id={`faq-question-${index}`}
                     >
                       <span className="text-lg sm:text-xl font-medium pr-4">{item.q}</span>
                       <ChevronDown className={cn("w-5 h-5 shrink-0 transition-transform", isOpen && "rotate-180")} />
                     </button>
                     {isOpen && (
-                      <div className="px-5 sm:px-6 pb-6 text-white/85 text-base leading-relaxed">
+                      <div
+                        id={`faq-answer-${index}`}
+                        role="region"
+                        aria-labelledby={`faq-question-${index}`}
+                        className="px-5 sm:px-6 pb-6 text-white/85 text-base leading-relaxed"
+                      >
                         {item.a}
                       </div>
                     )}
