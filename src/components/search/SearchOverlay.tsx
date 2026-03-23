@@ -150,7 +150,7 @@ export function SearchOverlay({ isOpen, onClose, bookmarks }: SearchOverlayProps
 
         {/* Results */}
         {(query.trim() || results.length > 0) && (
-          <div 
+          <div
             ref={resultsRef}
             className="mt-2 bg-card border border-border rounded-lg overflow-hidden max-h-[60vh] overflow-y-auto"
             role="listbox"
@@ -158,7 +158,8 @@ export function SearchOverlay({ isOpen, onClose, bookmarks }: SearchOverlayProps
           >
             {results.length === 0 && query.trim() && (
               <div className="p-8 text-center text-muted-foreground">
-                <p>No results found for "{query}"</p>
+                <p>No results for <span className="text-foreground font-medium">"{query}"</span></p>
+                <p className="text-xs mt-1">Try a different title, type, or provider</p>
               </div>
             )}
 
@@ -218,19 +219,20 @@ export function SearchOverlay({ isOpen, onClose, bookmarks }: SearchOverlayProps
           </div>
         )}
 
-        {/* Hint / close */}
+        {/* Hint / close — visible on all screen sizes */}
         <div className="mt-3 flex items-center justify-center gap-3">
           <Button
             variant="ghost"
             size="sm"
             onClick={onClose}
-            className="md:hidden text-sm text-muted-foreground gap-1.5"
+            className="text-sm text-muted-foreground gap-1.5"
+            aria-label="Close search"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" aria-hidden="true" />
             Close
           </Button>
           <span className="hidden md:inline text-sm text-muted-foreground">
-            Press <kbd className="px-1.5 py-0.5 bg-secondary rounded text-xs">ESC</kbd> to close
+            or press <kbd className="px-1.5 py-0.5 bg-secondary rounded text-xs">ESC</kbd>
           </span>
         </div>
       </div>

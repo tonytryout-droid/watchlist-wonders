@@ -526,24 +526,35 @@ const NewBookmark = () => {
               {/* Mood tags — Hick's Law: show subset by default */}
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Mood Tags</Label>
-                <div className="flex flex-wrap gap-1.5">
-                  {(showAllMoods ? MOOD_OPTIONS : MOOD_OPTIONS.slice(0, MOOD_DEFAULT_VISIBLE)).map((mood) => (
-                    <Badge
-                      key={mood}
-                      variant={selectedMoods.includes(mood) ? "default" : "outline"}
-                      className="cursor-pointer select-none text-xs transition-colors"
-                      onClick={() => handleMoodToggle(mood)}
-                    >
-                      {getMoodEmoji(mood)} {mood}
-                    </Badge>
-                  ))}
-                  <Badge
-                    variant="outline"
-                    className="cursor-pointer select-none text-xs text-muted-foreground border-dashed transition-colors hover:border-solid"
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Mood tags">
+                  {(showAllMoods ? MOOD_OPTIONS : MOOD_OPTIONS.slice(0, MOOD_DEFAULT_VISIBLE)).map((mood) => {
+                    const isSelected = selectedMoods.includes(mood);
+                    return (
+                      <button
+                        key={mood}
+                        type="button"
+                        role="checkbox"
+                        aria-checked={isSelected}
+                        onClick={() => handleMoodToggle(mood)}
+                        className={cn(
+                          "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-xs font-medium select-none transition-colors min-h-[28px]",
+                          isSelected
+                            ? "bg-primary text-primary-foreground border-transparent"
+                            : "bg-transparent text-foreground border-border hover:bg-white/10"
+                        )}
+                      >
+                        {getMoodEmoji(mood)} {mood}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
                     onClick={() => setShowAllMoods((v) => !v)}
+                    className="inline-flex items-center px-2.5 py-0.5 rounded-full border border-dashed border-border text-xs text-muted-foreground hover:border-solid hover:text-foreground transition-colors min-h-[28px]"
+                    aria-expanded={showAllMoods}
                   >
                     {showAllMoods ? "Show less" : `+${MOOD_OPTIONS.length - MOOD_DEFAULT_VISIBLE} more`}
-                  </Badge>
+                  </button>
                 </div>
                 {selectedMoods.length > 0 && (
                   <p className="text-xs text-muted-foreground">{selectedMoods.length} selected</p>
@@ -608,7 +619,7 @@ const NewBookmark = () => {
                         {tags.map((tag) => (
                           <Badge key={tag} variant="secondary" className="gap-1 text-xs">
                             {tag}
-                            <button type="button" onClick={() => setTags(tags.filter((t) => t !== tag))} className="hover:text-destructive">
+                            <button type="button" onClick={() => setTags(tags.filter((t) => t !== tag))} className="hover:text-destructive min-w-[20px] min-h-[20px] flex items-center justify-center" aria-label={`Remove tag ${tag}`}>
                               <X className="w-3 h-3" />
                             </button>
                           </Badge>

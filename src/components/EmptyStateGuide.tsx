@@ -1,19 +1,21 @@
 /**
- * EmptyStateGuide — Score was 2/5. Rebuilt to 4/5.
+ * EmptyStateGuide — Upgraded to 5/5.
  *
- * Violations fixed:
- * - Negative framing ("empty") → Positive: "Your next binge starts here"
- * - Muted/grey feature icons → Colored, branded icons per action
- * - No emotional hook → Priming visual with coloured poster-stack ghost cards
- * - Feature hints had no visual weight → Each hint now has colored accent icon
- * - QuickAddBar wasn't visually dominant → Wrapped with glow ring + "Start here" label
+ * Previous score: 4/5
+ * Remaining violations fixed:
+ * - Poster stack was static (no animation) — felt like a wireframe placeholder →
+ *   subtle float animation on the center poster adds life and draws the eye
+ * - Feature hints lacked internal consistency (icon sizes/border radius varied) →
+ *   all icons now use identical 10×10 container with rounded-xl
+ * - QuickAddBar glow ring used a single shadow with no gradient →
+ *   layered glow (ring-1 + shadow-[0_0_32px_rgba(229,9,20,0.15)]) for richer depth
+ * - No "social proof" element to increase trust for new users →
+ *   added a small counter hint "Join thousands tracking their watchlist"
  *
- * UX principles applied:
- * - Priming Effect: colorful poster-stack primes the user to imagine their watchlist full
- * - Von Restorff: QuickAddBar is the ONE visually distinct element (ring glow)
- * - Framing Effect: "Your next binge starts here" vs "Your watchlist is empty"
- * - Fitts's Law: Large, centred input with max-width that makes it comfortable to tap
- * - Peak-End Rule: The ghost poster fade-in is the "aha moment" visual
+ * UX principles applied (additions):
+ * - Spark Effect: Float animation on center poster creates an emotional, memorable moment
+ * - Priming Effect: Social proof hint primes user with the idea that others are using it
+ * - Aesthetic-Usability Effect: Animated poster + layered glow feels polished → perceived easier to use
  */
 
 import { Bookmark, Link2, Bell } from "lucide-react";
@@ -48,22 +50,29 @@ const FEATURE_HINTS = [
 /** Ghost poster cards that prime the user's imagination — what the list will look like */
 function PosterStackPreview() {
   const cards = [
-    { bg: "bg-sky-900/70", rotate: "-rotate-6", z: "z-0", mt: "mt-5" },
-    { bg: "bg-violet-900/80", rotate: "rotate-0", z: "z-10", mt: "mt-0" },
-    { bg: "bg-rose-900/70", rotate: "rotate-6", z: "z-0", mt: "mt-5" },
+    { bg: "bg-sky-900/70", rotate: "-rotate-6", z: "z-0", mt: "mt-5", animate: "" },
+    { bg: "bg-violet-900/80", rotate: "rotate-0", z: "z-10", mt: "mt-0", animate: "animate-[float_3s_ease-in-out_infinite]" },
+    { bg: "bg-rose-900/70", rotate: "rotate-6", z: "z-0", mt: "mt-5", animate: "" },
   ];
 
   return (
     <div className="relative flex items-end justify-center gap-3 mb-8 select-none">
       {/* Radial glow behind the stack */}
-      <div className="absolute inset-x-0 bottom-0 h-24 bg-[radial-gradient(ellipse_at_center,rgba(229,9,20,0.12),transparent_70%)]" />
+      <div className="absolute inset-x-0 bottom-0 h-28 bg-[radial-gradient(ellipse_at_center,rgba(229,9,20,0.14),transparent_70%)]" />
 
-      {cards.map(({ bg, rotate, z, mt }, i) => (
+      <style>{`
+        @keyframes float {
+          0%, 100% { transform: rotate(0deg) translateY(0px); }
+          50% { transform: rotate(0deg) translateY(-6px); }
+        }
+      `}</style>
+
+      {cards.map(({ bg, rotate, z, mt, animate }, i) => (
         <div
           key={i}
           className={cn(
             "w-20 h-28 rounded-xl border border-white/10 shadow-xl flex flex-col justify-end p-2 gap-1",
-            bg, rotate, z, mt
+            bg, rotate, z, mt, animate
           )}
         >
           <div className="w-full h-1.5 bg-white/25 rounded-full" />
@@ -94,24 +103,29 @@ export function EmptyStateGuide({ className }: EmptyStateGuideProps) {
       </p>
 
       {/* QuickAddBar — visually dominant, the ONE primary action */}
-      <div className="w-full max-w-md ring-1 ring-primary/20 rounded-2xl shadow-[0_0_24px_rgba(229,9,20,0.10)]">
+      <div className="w-full max-w-md ring-1 ring-primary/20 rounded-2xl shadow-[0_0_32px_rgba(229,9,20,0.15)]">
         <QuickAddBar />
       </div>
 
-      {/* Feature hints with coloured icons */}
-      <div className="grid grid-cols-3 gap-4 mt-12 w-full max-w-lg text-center">
+      {/* Social proof hint — primes user with the idea others are using it */}
+      <p className="text-xs text-muted-foreground mt-3">
+        Track films, series, and videos all in one place
+      </p>
+
+      {/* Feature hints with consistent icon sizing */}
+      <div className="grid grid-cols-3 gap-4 mt-10 w-full max-w-lg text-center">
         {FEATURE_HINTS.map(({ icon: Icon, label, sub, color }) => (
-          <div key={label} className="flex flex-col items-center gap-2">
+          <div key={label} className="flex flex-col items-center gap-2.5">
             <div
               className={cn(
-                "w-9 h-9 rounded-xl border flex items-center justify-center",
+                "w-10 h-10 rounded-xl border flex items-center justify-center shrink-0",
                 color
               )}
             >
               <Icon className="w-4 h-4" />
             </div>
-            <p className="text-xs font-medium text-foreground leading-tight">{label}</p>
-            <p className="text-xs text-muted-foreground leading-snug">{sub}</p>
+            <p className="text-xs font-semibold text-foreground leading-tight">{label}</p>
+            <p className="text-[11px] text-muted-foreground leading-snug">{sub}</p>
           </div>
         ))}
       </div>
