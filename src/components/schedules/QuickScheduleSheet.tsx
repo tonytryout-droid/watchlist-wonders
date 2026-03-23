@@ -150,31 +150,37 @@ export function QuickScheduleSheet({
         <div className="grid grid-cols-2 gap-3 mb-6">
           {QUICK_OPTIONS.map(({ label, getDate }) => {
             const date = getDate();
-            if (!date) return null;
+            const isUnavailable = !date;
             const isPending = mutation.isPending && selectedQuick === label;
             return (
               <button
                 key={label}
                 type="button"
-                disabled={mutation.isPending}
-                onClick={() => handleQuickPick(label, getDate)}
+                disabled={mutation.isPending || isUnavailable}
+                onClick={() => date && handleQuickPick(label, getDate)}
+                title={isUnavailable && label === "Tonight" ? "Tonight is only available before 6 PM" : undefined}
                 className={cn(
                   "flex flex-col items-start gap-1 p-4 rounded-xl border text-left transition-all",
-                  selectedQuick === label && mutation.isPending
+                  isUnavailable
+                    ? "border-border bg-muted/40 opacity-50 cursor-not-allowed"
+                    : selectedQuick === label && mutation.isPending
                     ? "border-primary bg-primary/10"
                     : "border-border bg-wm-surface hover:border-primary/50 hover:bg-wm-surface-hover"
                 )}
+                aria-disabled={isUnavailable}
               >
                 <span className="text-sm font-semibold text-foreground">{label}</span>
                 <span className="text-xs text-muted-foreground">
-                  {isPending ? (
+                  {isUnavailable && label === "Tonight" ? (
+                    "Available before 6 PM"
+                  ) : isPending ? (
                     <span className="flex items-center gap-1">
                       <Loader2 className="w-3 h-3 animate-spin" />
                       Scheduling…
                     </span>
-                  ) : (
+                  ) : date ? (
                     format(date, "EEE, MMM d 'at' h:mm a")
-                  )}
+                  ) : null}
                 </span>
               </button>
             );

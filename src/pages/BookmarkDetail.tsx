@@ -284,9 +284,21 @@ const BookmarkDetail = () => {
 
   if (error || !bookmark) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
-        <p className="text-muted-foreground">We couldn't find this title</p>
-        <Button onClick={() => navigate("/dashboard")}>Back to My List</Button>
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="max-w-sm w-full text-center space-y-5">
+          <div className="flex justify-center">
+            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+              <ArrowLeft className="w-8 h-8 text-muted-foreground" aria-hidden="true" />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <p className="font-semibold text-foreground">Title not found</p>
+            <p className="text-sm text-muted-foreground">This bookmark may have been removed or doesn't exist.</p>
+          </div>
+          <Button onClick={() => navigate("/dashboard")} className="w-full sm:w-auto">
+            Back to My List
+          </Button>
+        </div>
       </div>
     );
   }
