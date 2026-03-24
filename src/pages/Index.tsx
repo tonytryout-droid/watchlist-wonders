@@ -49,7 +49,7 @@ const FEATURES = [
 const FAQ_ITEMS = [
   {
     q: "What is WatchMarks?",
-    a: "WatchMarks is a Netflix-inspired organizer for links. Save shows and movies from any platform, then browse and schedule them in one place.",
+    a: "WatchMarks is a personal watchlist organizer. Save shows and movies from any platform, then browse and schedule them in one place.",
   },
   {
     q: "Is WatchMarks free?",
@@ -120,12 +120,12 @@ const Index = () => {
 
           <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-10 py-20 sm:py-24 text-center">
             <p className="text-xs uppercase tracking-[0.28em] text-white/70 font-semibold mb-6">
-              Netflix-inspired UX for your personal queue
+              Your personal streaming home screen
             </p>
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black leading-[1.04] max-w-4xl mx-auto">
               Save Anything.
               <br />
-              Browse It Like Netflix.
+              Watch It Your Way.
             </h1>
             <p className="text-base sm:text-lg text-white/80 max-w-2xl mx-auto mt-6">
               Turn scattered streaming links into a cinematic home screen with hero banners, rails, and smart reminders.
