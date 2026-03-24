@@ -38,6 +38,7 @@ interface RailProps {
   onSetWatching?: (bookmark: Bookmark) => void;
   onStatusCycle?: (bookmark: Bookmark, newStatus: Bookmark["status"]) => void;
   onEpisodeUpdate?: (bookmark: Bookmark, count: number) => void;
+  onToggleUpNext?: (bookmark: Bookmark) => void;
   emptyMessage?: string;
   emptyState?: React.ReactNode;
   className?: string;
@@ -76,6 +77,7 @@ export function Rail({
   onSetWatching,
   onStatusCycle,
   onEpisodeUpdate,
+  onToggleUpNext,
   emptyMessage = "No items yet",
   emptyState,
   className,
@@ -264,6 +266,7 @@ export function Rail({
               onSetWatching={() => onSetWatching?.(bookmark)}
               onStatusCycle={onStatusCycle}
               onEpisodeUpdate={onEpisodeUpdate}
+              onToggleUpNext={onToggleUpNext}
               isSelectable={isSelectable}
               isSelected={selectedIds?.has(bookmark.id)}
               onSelect={() => onSelect?.(bookmark.id)}
