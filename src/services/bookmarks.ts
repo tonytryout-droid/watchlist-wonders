@@ -88,6 +88,10 @@ export const bookmarkService = {
       user_id: uid,
       last_shown_at: null,
       shown_count: 0,
+      // Queue engine defaults
+      priority: bookmark.priority ?? 100,
+      queue_status: bookmark.queue_status ?? 'queued',
+      progress_percent: bookmark.progress_percent ?? 0,
       created_at: now,
       updated_at: now,
     };
