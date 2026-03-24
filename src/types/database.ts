@@ -28,6 +28,10 @@ export interface Bookmark {
   // Sharing
   is_public?: boolean;
   share_token?: string;
+  // Queue engine (Phase 2)
+  priority?: number;               // float — higher value = sooner in queue (default 100)
+  queue_status?: "queued" | "up_next" | "in_progress" | "completed";
+  progress_percent?: number;       // 0–100 watch progress
 }
 
 export interface Attachment {

@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Sparkles, RefreshCw, Play, Calendar, Check, X, Clock, Shuffle } from "lucide-react";
+import { Sparkles, RefreshCw, Play, Check, X, Clock, Shuffle } from "lucide-react";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ToastAction } from "@/components/ui/toast";
 import { cn, formatRuntime, getMoodEmoji } from "@/lib/utils";
 import { bookmarkService } from "@/services/bookmarks";
 import { useToast } from "@/hooks/use-toast";
@@ -24,7 +25,8 @@ const TonightPick = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [picks, setPicks] = useState<Bookmark[]>([]);
-  const [hasInitialized, setHasInitialized] = useState(false);
+  // Use a ref so initialization only fires once without being a useEffect dependency
+  const hasInitializedRef = useRef(false);
 
   // Fetch backlog items under 90 minutes
   const { data: candidates = [], isLoading, error } = useQuery({
@@ -32,11 +34,13 @@ const TonightPick = () => {
     queryFn: () => bookmarkService.getTonightCandidates(),
   });
 
-  // Initialize picks when data loads
-  if (candidates.length > 0 && !hasInitialized) {
-    setPicks(shuffleArray(candidates).slice(0, 3));
-    setHasInitialized(true);
-  }
+  // Initialize picks exactly once when candidates first arrive
+  useEffect(() => {
+    if (candidates.length > 0 && !hasInitializedRef.current) {
+      hasInitializedRef.current = true;
+      setPicks(shuffleArray(candidates).slice(0, 3));
+    }
+  }, [candidates]);
 
   // Mark as done mutation
   const markDoneMutation = useMutation({
@@ -64,14 +68,34 @@ const TonightPick = () => {
   };
 
   const handleSwapOne = (index: number) => {
+    const swapped = picks[index];
     const currentIds = new Set(picks.map((p) => p.id));
     const available = candidates.filter((b) => !currentIds.has(b.id));
     if (available.length === 0) return;
-    
+
     const newPick = shuffleArray(available)[0];
     const newPicks = [...picks];
     newPicks[index] = newPick;
     setPicks(newPicks);
+
+    toast({
+      title: "Swapped out",
+      description: `"${swapped.title}" removed from tonight's picks.`,
+      action: (
+        <ToastAction
+          altText="Undo"
+          onClick={() => {
+            setPicks((prev) => {
+              const restored = [...prev];
+              restored[index] = swapped;
+              return restored;
+            });
+          }}
+        >
+          Undo
+        </ToastAction>
+      ),
+    });
   };
 
   const handleWatch = (bookmark: Bookmark) => {

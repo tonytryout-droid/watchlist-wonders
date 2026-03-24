@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { CalendarClock, Shuffle, ArrowUpDown, Play, Check } from "lucide-react";
+import { generateRails } from "@/lib/railGenerator";
 import { HeroBanner } from "@/components/layout/HeroBanner";
 import { Rail } from "@/components/bookmarks/Rail";
 import { FilterChips } from "@/components/dashboard/FilterChips";
@@ -16,6 +17,7 @@ import { DashboardTour } from "@/components/onboarding/DashboardTour";
 import { useDashboardTour } from "@/hooks/useDashboardTour";
 import { CompletionSheet } from "@/components/bookmarks/CompletionSheet";
 import { bookmarkService } from "@/services/bookmarks";
+import { queueService } from "@/services/queue";
 import { scheduleService } from "@/services/schedules";
 import { ScheduleDialog } from "@/components/schedules/ScheduleDialog";
 import { watchPlanService } from "@/services/watchPlans";
@@ -372,6 +374,43 @@ const Dashboard = () => {
     updateEpisodesMutation.mutate({ id: bookmark.id, count, existing: bookmark.metadata ?? {} });
   };
 
+  // Toggle Up Next mutation
+  const toggleUpNextMutation = useMutation({
+    mutationFn: ({ id, promote }: { id: string; promote: boolean }) =>
+      queueService.toggleUpNext(id, promote),
+    onMutate: async ({ id, promote }) => {
+      await queryClient.cancelQueries({ queryKey: ["bookmarks"] });
+      const prev = queryClient.getQueryData<Bookmark[]>(["bookmarks"]);
+      queryClient.setQueryData<Bookmark[]>(["bookmarks"], (old = []) =>
+        old.map((b) =>
+          b.id === id
+            ? { ...b, queue_status: promote ? "up_next" : "queued", priority: promote ? 200 : 100 }
+            : b,
+        ),
+      );
+      return { prev };
+    },
+    onError: (_, __, ctx) => {
+      queryClient.setQueryData(["bookmarks"], ctx?.prev);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
+    },
+    onSuccess: (_, { promote }) => {
+      toast({
+        title: promote ? "Added to Up Next" : "Removed from Up Next",
+        description: promote ? "This will appear at the top of your queue." : "Moved back to your main queue.",
+      });
+    },
+  });
+
+  const handleToggleUpNext = (bookmark: Bookmark) => {
+    toggleUpNextMutation.mutate({
+      id: bookmark.id,
+      promote: bookmark.queue_status !== "up_next",
+    });
+  };
+
   const handleAddToPlan = (bookmark: Bookmark) => {
     setSelectedBookmark(bookmark);
     setSelectedPlanId("");
@@ -525,16 +564,6 @@ const Dashboard = () => {
   const watchedMoods = new Set(
     completed.flatMap((b) => b.mood_tags || []).map((m) => m.toLowerCase())
   );
-  const becauseYouWatched = backlog
-    .filter((item) => {
-      const moods = (item.mood_tags || []).map((m) => m.toLowerCase());
-      return moods.some((m) => watchedMoods.has(m));
-    })
-    .slice(0, 14);
-  const recommendationSeedTitle =
-    [...completed]
-      .sort((a, b) => b.created_at.localeCompare(a.created_at))
-      .find((b) => b.title)?.title ?? "your favorites";
 
   const topTenForYou = [...displayBookmarks]
     .filter((item) => item.status !== "done")
@@ -564,6 +593,12 @@ const Dashboard = () => {
     })
     .slice(0, 10);
 
+  // Generate cinematic rails from current display bookmarks
+  const generatedRails = useMemo(
+    () => generateRails(displayBookmarks),
+    [displayBookmarks],
+  );
+
   const handleSurpriseMe = () => {
     const pool = backlog.length > 0 ? backlog : displayBookmarks;
     if (pool.length === 0) return;
@@ -584,6 +619,9 @@ const Dashboard = () => {
 
   // Empty state check
   const isEmpty = bookmarks.length === 0;
+
+  // When filters are active, rails use a contextual empty message instead of the default
+  const filteredEmptyMessage = hasActiveFilters ? "No matches for your current filters" : undefined;
 
   return (
     <div className="min-h-full bg-background pb-20 md:pb-0">
@@ -649,6 +687,7 @@ const Dashboard = () => {
                     variant="ghost"
                     size="icon"
                     onClick={handleSurpriseMe}
+                    disabled={!!surpriseBookmark}
                     className="h-8 w-8 text-muted-foreground hover:text-foreground"
                     title="Surprise me - pick a random title"
                     aria-label="Surprise me, pick a random title"
@@ -709,25 +748,26 @@ const Dashboard = () => {
           )}
 
           {/* Rails */}
-          <div className="space-y-3 animate-fade-in">
-          {/* Up Next â€” upcoming scheduled items */}
+          <div className=”space-y-3 animate-fade-in”>
+
+          {/* ── Scheduled / Up Next calendar strip ───────────────────────── */}
           {upcomingSchedules.length > 0 && (
-            <section className="py-3">
-              <div className="px-4 sm:px-6 lg:px-8 mb-4">
-                <div className="flex items-center justify-between">
+            <section className=”py-3”>
+              <div className=”px-4 sm:px-6 lg:px-8 mb-4”>
+                <div className=”flex items-center justify-between”>
                   <div>
-                    <h2 className="text-xl font-semibold flex items-center gap-2">
-                      <CalendarClock className="w-5 h-5 text-wm-gold" />
-                      Up Next
+                    <h2 className=”text-xl font-semibold flex items-center gap-2”>
+                      <CalendarClock className=”w-5 h-5 text-wm-gold” />
+                      Scheduled
                     </h2>
-                    <p className="text-sm text-muted-foreground mt-0.5">Scheduled & coming up</p>
+                    <p className=”text-sm text-muted-foreground mt-0.5”>Coming up on your calendar</p>
                   </div>
-                  <Link to="/calendar" className="text-xs text-primary hover:underline">
+                  <Link to=”/calendar” className=”text-xs text-primary hover:underline”>
                     View calendar
                   </Link>
                 </div>
               </div>
-              <div className="flex gap-3 overflow-x-auto px-4 sm:px-6 lg:px-8 pb-2" style={{ scrollbarWidth: "none" }}>
+              <div className=”flex gap-3 overflow-x-auto px-4 sm:px-6 lg:px-8 pb-2” style={{ scrollbarWidth: “none” }}>
                 {upcomingSchedules.map((sched) => {
                   const bm = sched.bookmarks;
                   if (!bm) return null;
@@ -738,39 +778,36 @@ const Dashboard = () => {
                     <Link
                       key={sched.id}
                       to={`/b/${bm.id}`}
-                      className="shrink-0 w-56 bg-wm-surface border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-all group"
+                      className=”shrink-0 w-56 bg-wm-surface border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-all group”
                     >
-                      {/* Poster strip */}
-                      <div className="relative h-28 bg-muted overflow-hidden">
+                      <div className=”relative h-28 bg-muted overflow-hidden”>
                         {bm.backdrop_url || bm.poster_url ? (
                           <img
-                            src={bm.backdrop_url || bm.poster_url || ""}
+                            src={bm.backdrop_url || bm.poster_url || “”}
                             alt={bm.title}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            className=”w-full h-full object-cover group-hover:scale-105 transition-transform duration-300”
                           />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <span className="text-3xl font-bold text-muted-foreground">{bm.title.charAt(0)}</span>
+                          <div className=”w-full h-full flex items-center justify-center”>
+                            <span className=”text-3xl font-bold text-muted-foreground”>{bm.title.charAt(0)}</span>
                           </div>
                         )}
-                        <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
-                        {/* Time badge */}
+                        <div className=”absolute inset-0 bg-gradient-to-t from-background/80 to-transparent” />
                         {scheduledDate && (
                           <div className={cn(
-                            "absolute bottom-2 left-2 text-[10px] font-semibold px-2 py-0.5 rounded-full",
-                            isToday ? "bg-primary text-primary-foreground" : "bg-wm-gold text-background"
+                            “absolute bottom-2 left-2 text-[10px] font-semibold px-2 py-0.5 rounded-full”,
+                            isToday ? “bg-primary text-primary-foreground” : “bg-wm-gold text-background”
                           )}>
-                            {isToday ? `Today ${format(scheduledDate, "h:mm a")}` : format(scheduledDate, "EEE, MMM d")}
+                            {isToday ? `Today ${format(scheduledDate, “h:mm a”)}` : format(scheduledDate, “EEE, MMM d”)}
                           </div>
                         )}
                       </div>
-                      {/* Info */}
-                      <div className="p-3">
-                        <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
+                      <div className=”p-3”>
+                        <p className=”text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors”>
                           {bm.title}
                         </p>
                         {bm.runtime_minutes && (
-                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                          <p className=”text-[11px] text-muted-foreground mt-0.5”>
                             {bm.runtime_minutes < 60 ? `${bm.runtime_minutes}m` : `${Math.floor(bm.runtime_minutes / 60)}h ${bm.runtime_minutes % 60}m`}
                           </p>
                         )}
@@ -782,13 +819,14 @@ const Dashboard = () => {
             </section>
           )}
 
-          {topTenForYou.length > 0 && (
+          {/* ── Top 10 scoring rail (shown when no active filters) ────────── */}
+          {!hasActiveFilters && topTenForYou.length > 0 && (
             <Rail
-              title="Top 10 In Your Queue"
-              subtitle="Ranked by momentum"
+              title=”Top 10 In Your Queue”
+              subtitle=”Ranked by momentum”
               bookmarks={topTenForYou}
               showRanks
-              cardSize="featured"
+              cardSize=”featured”
               onSchedule={handleSchedule}
               onMarkDone={handleMarkDone}
               onAddToPlan={handleAddToPlan}
@@ -797,34 +835,22 @@ const Dashboard = () => {
               onSetWatching={handleSetWatching}
               onStatusCycle={handleStatusCycle}
               onEpisodeUpdate={handleEpisodeUpdate}
+              onToggleUpNext={handleToggleUpNext}
               isSelectable={selectMode}
               selectedIds={selectedIds}
               onSelect={toggleSelect}
             />
           )}
 
-          <Rail
-            title="Continue Watching"
-            bookmarks={continueWatching}
-            variant="backdrop"
-            onSchedule={handleSchedule}
-            onMarkDone={handleMarkDone}
-            onAddToPlan={handleAddToPlan}
-            onDelete={handleDelete}
-            onUndoDone={handleUndoDone}
-            onSetWatching={handleSetWatching}
-            onStatusCycle={handleStatusCycle}
-            onEpisodeUpdate={handleEpisodeUpdate}
-            isSelectable={selectMode}
-            selectedIds={selectedIds}
-            onSelect={toggleSelect}
-          />
-
-          <div id="backlog-rail">
+          {/* ── Cinematic generated rails ─────────────────────────────────── */}
+          {generatedRails.map((rail) => (
             <Rail
-              title="Saved for Later"
-              subtitle="Ready when you are"
-              bookmarks={backlog}
+              key={rail.id}
+              title={rail.title}
+              subtitle={rail.subtitle ?? rail.reason}
+              bookmarks={rail.bookmarks}
+              variant={rail.variant}
+              emptyMessage={filteredEmptyMessage}
               onSchedule={handleSchedule}
               onMarkDone={handleMarkDone}
               onAddToPlan={handleAddToPlan}
@@ -833,17 +859,45 @@ const Dashboard = () => {
               onSetWatching={handleSetWatching}
               onStatusCycle={handleStatusCycle}
               onEpisodeUpdate={handleEpisodeUpdate}
+              onToggleUpNext={handleToggleUpNext}
               isSelectable={selectMode}
               selectedIds={selectedIds}
               onSelect={toggleSelect}
             />
-          </div>
+          ))}
 
-          {becauseYouWatched.length > 0 && (
+          {/* ── Mood rails (up to 3, ≥ 2 items) ─────────────────────────── */}
+          {!hasActiveFilters &&
+            Object.entries(byMood)
+              .filter(([, items]) => items.length >= 2)
+              .sort(([, a], [, b]) => b.length - a.length)
+              .slice(0, 3)
+              .map(([mood, items]) => (
+                <Rail
+                  key={mood}
+                  title={`${mood.charAt(0).toUpperCase()}${mood.slice(1)} Picks`}
+                  bookmarks={items}
+                  onSchedule={handleSchedule}
+                  onMarkDone={handleMarkDone}
+                  onAddToPlan={handleAddToPlan}
+                  onDelete={handleDelete}
+                  onUndoDone={handleUndoDone}
+                  onSetWatching={handleSetWatching}
+                  onStatusCycle={handleStatusCycle}
+                  onEpisodeUpdate={handleEpisodeUpdate}
+                  onToggleUpNext={handleToggleUpNext}
+                  isSelectable={selectMode}
+                  selectedIds={selectedIds}
+                  onSelect={toggleSelect}
+                />
+              ))}
+
+          {/* ── Recently Watched (always at bottom) ──────────────────────── */}
+          {completed.length > 0 && (
             <Rail
-              title={`Because you watched ${recommendationSeedTitle}`}
-              subtitle="More in your lane"
-              bookmarks={becauseYouWatched}
+              title=”Recently Watched”
+              bookmarks={completed}
+              emptyMessage={filteredEmptyMessage}
               onSchedule={handleSchedule}
               onMarkDone={handleMarkDone}
               onAddToPlan={handleAddToPlan}
@@ -852,51 +906,12 @@ const Dashboard = () => {
               onSetWatching={handleSetWatching}
               onStatusCycle={handleStatusCycle}
               onEpisodeUpdate={handleEpisodeUpdate}
+              onToggleUpNext={handleToggleUpNext}
               isSelectable={selectMode}
               selectedIds={selectedIds}
               onSelect={toggleSelect}
             />
           )}
-
-          {/* Mood Rails */}
-          {Object.entries(byMood)
-            .filter(([_, items]) => items.length >= 2)
-            .sort(([, a], [, b]) => b.length - a.length)
-            .slice(0, 3)
-            .map(([mood, items]) => (
-              <Rail
-                key={mood}
-                title={`${mood.charAt(0).toUpperCase()}${mood.slice(1)} Picks`}
-                bookmarks={items}
-                onSchedule={handleSchedule}
-                onMarkDone={handleMarkDone}
-                onAddToPlan={handleAddToPlan}
-                onDelete={handleDelete}
-                onUndoDone={handleUndoDone}
-                onSetWatching={handleSetWatching}
-                onStatusCycle={handleStatusCycle}
-                onEpisodeUpdate={handleEpisodeUpdate}
-                isSelectable={selectMode}
-                selectedIds={selectedIds}
-                onSelect={toggleSelect}
-              />
-            ))}
-
-          <Rail
-            title="Recently Watched"
-            bookmarks={completed}
-            onSchedule={handleSchedule}
-            onMarkDone={handleMarkDone}
-            onAddToPlan={handleAddToPlan}
-            onDelete={handleDelete}
-            onUndoDone={handleUndoDone}
-            onSetWatching={handleSetWatching}
-            onStatusCycle={handleStatusCycle}
-            onEpisodeUpdate={handleEpisodeUpdate}
-            isSelectable={selectMode}
-            selectedIds={selectedIds}
-            onSelect={toggleSelect}
-          />
 
           {/* Filtered empty state */}
           {hasActiveFilters && filteredBookmarks.length === 0 && (

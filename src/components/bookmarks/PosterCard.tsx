@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   Play, Plus, Check, CalendarPlus, MoreHorizontal, ExternalLink,
-  Trash2, Undo2, Eye, BookMarked, Minus, ThumbsUp, Info, Film,
+  Trash2, Undo2, Eye, BookMarked, Minus, ThumbsUp, Info, Film, Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -34,6 +34,7 @@ interface PosterCardProps {
   isSelectable?: boolean;
   isSelected?: boolean;
   onSelect?: () => void;
+  onToggleUpNext?: (bookmark: Bookmark) => void;
 }
 
 const PROVIDER_COLOR: Record<string, string> = {
@@ -183,6 +184,7 @@ export function PosterCard({
   isSelectable,
   isSelected,
   onSelect,
+  onToggleUpNext,
 }: PosterCardProps) {
   const isMobile = useIsMobile();
   const [isHovered, setIsHovered] = useState(false);
@@ -482,6 +484,26 @@ export function PosterCard({
               </div>
             )}
 
+            {/* Up Next badge */}
+            {bookmark.queue_status === "up_next" && !isSelectable && !isNew && (
+              <div className="absolute top-1.5 right-1.5">
+                <span className="flex items-center gap-0.5 text-[9px] font-bold bg-wm-gold text-background px-1.5 py-0.5 rounded-sm uppercase tracking-wide">
+                  <Star className="w-2 h-2 fill-current" />
+                  Up Next
+                </span>
+              </div>
+            )}
+
+            {/* Watch progress bar */}
+            {(bookmark.progress_percent ?? 0) > 0 && !isSelectable && (
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 z-20">
+                <div
+                  className="h-full bg-primary transition-all duration-300"
+                  style={{ width: `${Math.min(bookmark.progress_percent ?? 0, 100)}%` }}
+                />
+              </div>
+            )}
+
             {rank && (
               <div className="absolute top-1.5 left-1.5">
                 <span className="text-[9px] font-bold bg-primary text-white px-1.5 py-0.5 rounded-sm uppercase tracking-wide">
@@ -611,6 +633,15 @@ export function PosterCard({
                         <Check className="w-4 h-4 mr-2" />Mark as Watched
                       </DropdownMenuItem>
                     )}
+                    {onToggleUpNext && bookmark.status !== "done" && (
+                      <DropdownMenuItem
+                        onClick={() => onToggleUpNext(bookmark)}
+                        className={bookmark.queue_status === "up_next" ? "text-wm-gold" : "text-white/90"}
+                      >
+                        <Star className={cn("w-4 h-4 mr-2", bookmark.queue_status === "up_next" && "fill-current")} />
+                        {bookmark.queue_status === "up_next" ? "Remove from Up Next" : "Add to Up Next"}
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem onClick={onAddToPlan} className="text-white/90">
                       <Plus className="w-4 h-4 mr-2" />Add to Plan
                     </DropdownMenuItem>
@@ -663,6 +694,24 @@ export function PosterCard({
                   <Plus className="w-4 h-4" />
                 </button>
 
+                {/* Up Next toggle */}
+                {onToggleUpNext && bookmark.status !== "done" && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleUpNext(bookmark); }}
+                    className={cn(
+                      "w-8 h-8 rounded-full border flex items-center justify-center transition-colors shrink-0",
+                      bookmark.queue_status === "up_next"
+                        ? "border-wm-gold text-wm-gold bg-wm-gold/10"
+                        : "border-white/30 text-white hover:border-wm-gold hover:text-wm-gold"
+                    )}
+                    aria-label={bookmark.queue_status === "up_next" ? "Remove from Up Next" : "Add to Up Next"}
+                    title={bookmark.queue_status === "up_next" ? "Remove from Up Next" : "Add to Up Next"}
+                  >
+                    <Star className={cn("w-4 h-4", bookmark.queue_status === "up_next" && "fill-current")} />
+                  </button>
+                )}
+
                 {/* Mark done */}
                 <button
                   type="button"
@@ -694,6 +743,15 @@ export function PosterCard({
                     {bookmark.status !== "watching" && (
                       <DropdownMenuItem onClick={onSetWatching} className="text-white/90">
                         <Eye className="w-4 h-4 mr-2" />Set as Watching
+                      </DropdownMenuItem>
+                    )}
+                    {onToggleUpNext && bookmark.status !== "done" && (
+                      <DropdownMenuItem
+                        onClick={() => onToggleUpNext(bookmark)}
+                        className={bookmark.queue_status === "up_next" ? "text-wm-gold" : "text-white/90"}
+                      >
+                        <Star className={cn("w-4 h-4 mr-2", bookmark.queue_status === "up_next" && "fill-current")} />
+                        {bookmark.queue_status === "up_next" ? "Remove from Up Next" : "Add to Up Next"}
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuItem onClick={handleScheduleClick} className="text-white/90">
