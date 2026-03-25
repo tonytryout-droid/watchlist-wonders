@@ -38,6 +38,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { getSafeErrorMessage } from "@/lib/errorMessage";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { scheduleService } from "@/services/schedules";
@@ -155,9 +156,10 @@ export function ScheduleDialog({ bookmark, open, onOpenChange, onScheduled }: Sc
       });
     },
     onError: (error: any) => {
-      const msg = !error.code && error.message
-        ? error.message
-        : "Could not create the schedule. Please try again.";
+      const msg = getSafeErrorMessage(
+        error,
+        "Could not create the schedule. Please try again.",
+      );
       setFormError(msg);
     },
   });

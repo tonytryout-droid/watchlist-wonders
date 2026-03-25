@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { getSafeErrorMessage } from "@/lib/errorMessage";
 import { cn } from "@/lib/utils";
 import { scheduleService } from "@/services/schedules";
 import { toast } from "sonner";
@@ -106,7 +107,7 @@ export function QuickScheduleSheet({
       setShowCustom(false);
     },
     onError: (err: any) => {
-      toast.error((!err.code && err.message) ? err.message : "Could not create schedule.");
+      toast.error(getSafeErrorMessage(err, "Could not create schedule."));
     },
   });
 

@@ -13,6 +13,7 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn, extractYouTubeVideoId } from "@/lib/utils";
+import { fetchTrailerEmbedUrlViaProxy } from "@/services/tmdbProxy";
 import { QuickScheduleSheet } from "@/components/schedules/QuickScheduleSheet";
 import type { Bookmark } from "@/types/database";
 
@@ -141,23 +142,13 @@ function getBookmarkTrailerUrl(bookmark: Bookmark): string | null {
 }
 
 async function fetchTmdbTrailerUrl(bookmark: Bookmark): Promise<string | null> {
-  const tmdbApiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!tmdbApiKey) return null;
   const tmdbId = getMetadataNumber(bookmark.metadata || {}, ["tmdb_id", "tmdbId"]);
   if (!tmdbId) return null;
   const mediaType = bookmark.type === "series" ? "tv" : "movie";
   const cacheKey = `${mediaType}:${tmdbId}`;
   if (trailerUrlCache.has(cacheKey)) return trailerUrlCache.get(cacheKey) ?? null;
   try {
-    const res = await fetch(`https://api.themoviedb.org/3/${mediaType}/${tmdbId}/videos?api_key=${tmdbApiKey}`);
-    if (!res.ok) { trailerUrlCache.set(cacheKey, null); return null; }
-    const data = (await res.json()) as { results?: Array<{ site?: string; type?: string; official?: boolean; key?: string }> };
-    const videos = data.results || [];
-    const selected =
-      videos.find((v) => v.site === "YouTube" && v.type === "Trailer" && v.official && v.key) ||
-      videos.find((v) => v.site === "YouTube" && v.type === "Trailer" && v.key) ||
-      videos.find((v) => v.site === "YouTube" && (v.type === "Teaser" || v.type === "Clip") && v.key);
-    const trailerUrl = selected?.key ? toYouTubeEmbedUrl(selected.key) : null;
+    const trailerUrl = await fetchTrailerEmbedUrlViaProxy(tmdbId, mediaType);
     trailerUrlCache.set(cacheKey, trailerUrl);
     return trailerUrl;
   } catch {

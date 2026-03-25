@@ -30,6 +30,7 @@ import { httpsCallable } from "firebase/functions";
 import { bookmarkService } from "@/services/bookmarks";
 import { ConfirmMetadataDialog, type ConfirmMetadataPayload } from "@/components/bookmarks/ConfirmMetadataDialog";
 import { buildSmartFillData, type SmartFillData } from "@/lib/enrichmentSmartFill";
+import { getSafeErrorMessage } from "@/lib/errorMessage";
 import { toast } from "sonner";
 import type { Bookmark } from "@/types/database";
 
@@ -82,7 +83,7 @@ export function QuickAddBar({ className }: QuickAddBarProps) {
       toast.success(`"${bookmark.title}" saved to your watchlist!`);
     },
     onError: (err: any) => {
-      toast.error((!err.code && err.message) ? err.message : "Could not save bookmark.");
+      toast.error(getSafeErrorMessage(err, "Could not save bookmark."));
     },
   });
 
@@ -146,7 +147,9 @@ export function QuickAddBar({ className }: QuickAddBarProps) {
         runtimeMinutes: data.runtimeMinutes ?? null,
         type: dp === "youtube" ? "video" : "movie",
         blocked: data.blocked,
-        debugMessage: data.error?.message ?? ambiguityHint,
+        debugMessage:
+          ambiguityHint ??
+          (data.error ? "Could not fetch details for this link." : undefined),
       });
       setConfirmOpen(true);
     } catch (err) {
@@ -157,7 +160,7 @@ export function QuickAddBar({ className }: QuickAddBarProps) {
         provider: dp,
         type: dp === "youtube" ? "video" : "movie",
         blocked: false,
-        debugMessage: "Could not fetch details automatically.",
+        debugMessage: getSafeErrorMessage(err, "Could not fetch details automatically."),
       });
       setConfirmOpen(true);
     } finally {

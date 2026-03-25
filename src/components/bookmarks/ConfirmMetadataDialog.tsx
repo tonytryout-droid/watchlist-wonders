@@ -47,6 +47,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { auth, storage } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { getSafeErrorMessage } from "@/lib/errorMessage";
 import type { Bookmark } from "@/types/database";
 
 export type ConfirmMetadataPayload = {
@@ -157,7 +158,7 @@ export function ConfirmMetadataDialog({ open, onOpenChange, initial, onConfirm }
       console.error("Upload error:", error);
       toast({
         title: "Upload failed",
-        description: (!error.code && error.message) ? error.message : "Failed to upload image.",
+        description: getSafeErrorMessage(error, "Failed to upload image."),
         variant: "destructive",
       });
     } finally {

@@ -23,6 +23,7 @@ import { httpsCallable } from "firebase/functions";
 import { bookmarkService } from "@/services/bookmarks";
 import { attachmentService } from "@/services/attachments";
 import { buildSmartFillData, mapGenresToMoodTags, type EnrichmentMatchCandidate, type MatchConfidence } from "@/lib/enrichmentSmartFill";
+import { getSafeErrorMessage } from "@/lib/errorMessage";
 import { ConfirmMetadataDialog, type ConfirmMetadataPayload } from "@/components/bookmarks/ConfirmMetadataDialog";
 import { QuickScheduleSheet } from "@/components/schedules/QuickScheduleSheet";
 import type { Bookmark } from "@/types/database";
@@ -166,7 +167,7 @@ const NewBookmark = () => {
       setUploadProgress(0);
       toast({
         title: "Error saving",
-        description: (!error.code && error.message) ? error.message : "Something went wrong.",
+        description: getSafeErrorMessage(error, "Something went wrong."),
         variant: "destructive",
       });
     },
@@ -255,7 +256,7 @@ const NewBookmark = () => {
           posterUrl: data.posterUrl,
           runtimeMinutes: data.runtimeMinutes,
           type: dp === "youtube" ? "video" : "movie",
-          debugMessage: data.error?.message ?? "Could not fetch details for this link.",
+          debugMessage: data.error ? "Could not fetch details for this link." : undefined,
         });
         setConfirmOpen(true);
         return;
@@ -299,7 +300,12 @@ const NewBookmark = () => {
       setMatchConfidence("unknown");
       setSelectedCandidateId(null);
       const dp2 = detectProvider(trimmed);
-      setConfirmInitial({ url: trimmed, provider: dp2, type: dp2 === "youtube" ? "video" : "movie", debugMessage: error?.message });
+      setConfirmInitial({
+        url: trimmed,
+        provider: dp2,
+        type: dp2 === "youtube" ? "video" : "movie",
+        debugMessage: getSafeErrorMessage(error, "Could not fetch details for this link."),
+      });
       setConfirmOpen(true);
     } finally {
       setIsEnriching(false);

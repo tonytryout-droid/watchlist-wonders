@@ -24,6 +24,7 @@ import { scheduleService } from "@/services/schedules";
 import { ScheduleDialog } from "@/components/schedules/ScheduleDialog";
 import { watchPlanService } from "@/services/watchPlans";
 import { useToast } from "@/hooks/use-toast";
+import { getSafeErrorMessage } from "@/lib/errorMessage";
 import { cn } from "@/lib/utils";
 import type { Bookmark } from "@/types/database";
 import {
@@ -270,7 +271,7 @@ const Dashboard = () => {
     }).catch((error: any) => {
       toast({
         title: "Error restoring bookmark",
-        description: (!error.code && error.message) ? error.message : "Failed to restore the bookmark. Please try again.",
+        description: getSafeErrorMessage(error, "Failed to restore the bookmark. Please try again."),
         variant: "destructive",
       });
     });
@@ -291,7 +292,7 @@ const Dashboard = () => {
       queryClient.setQueryData(['bookmarks'], ctx?.prev);
       toast({
         title: "Error deleting",
-        description: (!error.code && error.message) ? error.message : "Something went wrong.",
+        description: getSafeErrorMessage(error, "Something went wrong."),
         variant: "destructive",
       });
     },
@@ -328,7 +329,7 @@ const Dashboard = () => {
     onError: (error: any) => {
       toast({
         title: "Error adding to plan",
-        description: (!error.code && error.message) ? error.message : "Something went wrong.",
+        description: getSafeErrorMessage(error, "Something went wrong."),
         variant: "destructive",
       });
     },

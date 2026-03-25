@@ -8,6 +8,7 @@ import { cn, getMoodEmoji } from "@/lib/utils";
 import { watchPlanService } from "@/services/watchPlans";
 import { bookmarkService } from "@/services/bookmarks";
 import { useToast } from "@/hooks/use-toast";
+import { getSafeErrorMessage } from "@/lib/errorMessage";
 import {
   Dialog,
   DialogContent,
@@ -75,7 +76,7 @@ const Plans = () => {
     onError: (error: any) => {
       toast({
         title: "Error creating plan",
-        description: (!error.code && error.message) ? error.message : "Something went wrong.",
+        description: getSafeErrorMessage(error, "Something went wrong."),
         variant: "destructive",
       });
     },
