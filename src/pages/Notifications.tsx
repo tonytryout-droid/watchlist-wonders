@@ -43,7 +43,7 @@ const Notifications = () => {
       queryClient.invalidateQueries({ queryKey: ["notifications-count"] });
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: error?.message ?? "Could not mark as read.", variant: "destructive" });
+      toast({ title: "Error", description: (!error?.code && error?.message) ? error.message : "Could not mark as read.", variant: "destructive" });
     },
   });
 
@@ -55,7 +55,7 @@ const Notifications = () => {
       toast({ title: "All caught up!", description: "All notifications marked as read." });
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: error?.message ?? "Could not mark all as read.", variant: "destructive" });
+      toast({ title: "Error", description: (!error?.code && error?.message) ? error.message : "Could not mark all as read.", variant: "destructive" });
     },
   });
 
@@ -66,7 +66,7 @@ const Notifications = () => {
       queryClient.invalidateQueries({ queryKey: ["notifications-count"] });
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: error?.message ?? "Could not delete notification.", variant: "destructive" });
+      toast({ title: "Error", description: (!error?.code && error?.message) ? error.message : "Could not delete notification.", variant: "destructive" });
     },
   });
 

@@ -75,7 +75,7 @@ const Plans = () => {
     onError: (error: any) => {
       toast({
         title: "Error creating plan",
-        description: error.message || "Something went wrong.",
+        description: (!error.code && error.message) ? error.message : "Something went wrong.",
         variant: "destructive",
       });
     },
@@ -88,6 +88,13 @@ const Plans = () => {
       toast({
         title: "Plan deleted",
         description: "Watch plan has been removed.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error deleting plan",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive",
       });
     },
   });

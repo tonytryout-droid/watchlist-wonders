@@ -75,7 +75,7 @@ const PublicProfile = () => {
     onError: (error: any) => {
       toast({
         title: "Failed to follow",
-        description: error.message || "Something went wrong.",
+        description: (!error.code && error.message) ? error.message : "Something went wrong.",
         variant: "destructive",
       });
     },
@@ -91,7 +91,7 @@ const PublicProfile = () => {
     onError: (error: any) => {
       toast({
         title: "Failed to unfollow",
-        description: error.message || "Something went wrong.",
+        description: (!error.code && error.message) ? error.message : "Something went wrong.",
         variant: "destructive",
       });
     },

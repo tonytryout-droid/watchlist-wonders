@@ -157,7 +157,7 @@ export function ConfirmMetadataDialog({ open, onOpenChange, initial, onConfirm }
       console.error("Upload error:", error);
       toast({
         title: "Upload failed",
-        description: error.message || "Failed to upload image.",
+        description: (!error.code && error.message) ? error.message : "Failed to upload image.",
         variant: "destructive",
       });
     } finally {
