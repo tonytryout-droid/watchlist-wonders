@@ -26,6 +26,7 @@ import { socialService } from "@/services/social";
 import { sharingService } from "@/services/sharing";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { getSafeErrorMessage } from "@/lib/errorMessage";
 import { formatRuntime } from "@/lib/utils";
 
 const PublicProfile = () => {
@@ -75,7 +76,7 @@ const PublicProfile = () => {
     onError: (error: any) => {
       toast({
         title: "Failed to follow",
-        description: (!error.code && error.message) ? error.message : "Something went wrong.",
+        description: getSafeErrorMessage(error, "Something went wrong."),
         variant: "destructive",
       });
     },
@@ -91,7 +92,7 @@ const PublicProfile = () => {
     onError: (error: any) => {
       toast({
         title: "Failed to unfollow",
-        description: (!error.code && error.message) ? error.message : "Something went wrong.",
+        description: getSafeErrorMessage(error, "Something went wrong."),
         variant: "destructive",
       });
     },

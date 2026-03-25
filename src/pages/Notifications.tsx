@@ -9,6 +9,7 @@ import { cn, formatRelativeDate } from "@/lib/utils";
 import { notificationService } from "@/services/notifications";
 import { bookmarkService } from "@/services/bookmarks";
 import { useToast } from "@/hooks/use-toast";
+import { getSafeErrorMessage } from "@/lib/errorMessage";
 
 type GroupKey = "Today" | "Yesterday" | "This Week" | "Older";
 
@@ -43,7 +44,7 @@ const Notifications = () => {
       queryClient.invalidateQueries({ queryKey: ["notifications-count"] });
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: (!error?.code && error?.message) ? error.message : "Could not mark as read.", variant: "destructive" });
+      toast({ title: "Error", description: getSafeErrorMessage(error, "Could not mark as read."), variant: "destructive" });
     },
   });
 
@@ -55,7 +56,7 @@ const Notifications = () => {
       toast({ title: "All caught up!", description: "All notifications marked as read." });
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: (!error?.code && error?.message) ? error.message : "Could not mark all as read.", variant: "destructive" });
+      toast({ title: "Error", description: getSafeErrorMessage(error, "Could not mark all as read."), variant: "destructive" });
     },
   });
 
@@ -66,7 +67,7 @@ const Notifications = () => {
       queryClient.invalidateQueries({ queryKey: ["notifications-count"] });
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: (!error?.code && error?.message) ? error.message : "Could not delete notification.", variant: "destructive" });
+      toast({ title: "Error", description: getSafeErrorMessage(error, "Could not delete notification."), variant: "destructive" });
     },
   });
 
