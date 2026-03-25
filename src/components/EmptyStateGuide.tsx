@@ -18,8 +18,10 @@
  * - Aesthetic-Usability Effect: Animated poster + layered glow feels polished → perceived easier to use
  */
 
-import { Bookmark, Link2, Bell } from "lucide-react";
+import { Bookmark, Link2, Bell, Sparkles } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { QuickAddBar } from "@/components/QuickAddBar";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface EmptyStateGuideProps {
@@ -90,26 +92,37 @@ function PosterStackPreview() {
 }
 
 export function EmptyStateGuide({ className }: EmptyStateGuideProps) {
+  const navigate = useNavigate();
+
   return (
     <div className={cn("flex flex-col items-center text-center py-16 px-4", className)}>
       <PosterStackPreview />
 
       <h2 className="text-2xl font-bold text-foreground mb-2">
-        Your next binge starts here
+        Save your first movie
       </h2>
-      <p className="text-muted-foreground max-w-sm mx-auto mb-8 leading-relaxed text-sm">
-        Paste any link below — YouTube, Instagram, X, or Netflix — and we'll
-        save it to your personal watchlist in seconds.
+      <p className="text-muted-foreground max-w-sm mx-auto mb-2 leading-relaxed text-sm">
+        Paste any link — YouTube, TikTok, Instagram, IMDb — and we find the movie automatically. Takes 5 seconds.
       </p>
+
+      {/* Try an example — guided first success */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="text-xs text-primary hover:text-primary/80 mb-6 gap-1.5 h-7"
+        onClick={() => navigate("/new?demo=1")}
+      >
+        <Sparkles className="w-3 h-3" />
+        Try with an example link
+      </Button>
 
       {/* QuickAddBar — visually dominant, the ONE primary action */}
       <div className="w-full max-w-md ring-1 ring-primary/20 rounded-2xl shadow-[0_0_32px_rgba(229,9,20,0.15)]">
         <QuickAddBar />
       </div>
 
-      {/* Social proof hint — primes user with the idea others are using it */}
       <p className="text-xs text-muted-foreground mt-3">
-        Track films, series, and videos all in one place
+        Then we'll suggest what to watch tonight
       </p>
 
       {/* Feature hints with consistent icon sizing */}

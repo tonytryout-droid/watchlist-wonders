@@ -25,8 +25,8 @@ const STEPS = [
     iconColor: "text-wm-gold",
     iconBg: "bg-wm-gold/10",
     tag: null,
-    title: "Welcome to Watchlist Wonders",
-    body: "Your personal library for everything worth watching — films, series, YouTube videos, docs, and social clips. All in one place.",
+    title: "You're in. Here's how this works.",
+    body: "WatchMarks is a list of movies and shows you want to watch. You save them here, and we help you actually watch them — instead of spending 20 minutes deciding.",
     illustration: <WelcomeIllustration />,
   },
   {
@@ -35,8 +35,8 @@ const STEPS = [
     iconColor: "text-primary",
     iconBg: "bg-primary/10",
     tag: "Step 1",
-    title: "Paste any link, save any video",
-    body: "Copy a URL from YouTube, Instagram, X, or Netflix. Paste it in the bar at the top of your dashboard — we'll automatically pull the title, poster, and runtime.",
+    title: "Save anything with a link",
+    body: "See something on TikTok, YouTube, or anywhere? Copy the link and paste it in the bar at the top. We find the title, poster, and runtime automatically. You don't type anything.",
     illustration: <AddIllustration />,
   },
   {
@@ -45,8 +45,8 @@ const STEPS = [
     iconColor: "text-emerald-400",
     iconBg: "bg-emerald-400/10",
     tag: "Step 2",
-    title: "Your library, organized for you",
-    body: "Saves appear in rows — Continue Watching, Saved for Later, and grouped by mood. Filter by type (movie, series, doc) or status in one tap.",
+    title: "Everything is organized for you",
+    body: "Your saves show up in rows — things you're watching, things you haven't started, and picks grouped by mood. Tap the filters to find what you want in one second.",
     illustration: <LibraryIllustration />,
   },
   {
@@ -55,8 +55,8 @@ const STEPS = [
     iconColor: "text-sky-400",
     iconBg: "bg-sky-400/10",
     tag: "Step 3",
-    title: "Schedule it. Never forget it.",
-    body: "Pick any saved title, set a date and time, and it'll appear in your Up Next rail. Your calendar stays in sync — no more lost recommendations.",
+    title: "Set a reminder so you don't forget",
+    body: "Pick a saved title, choose a date and time, and we'll remind you when it's time to watch. Great for \"I want to watch this on Saturday\" moments.",
     illustration: <ScheduleIllustration />,
   },
   {
@@ -65,8 +65,8 @@ const STEPS = [
     iconColor: "text-violet-400",
     iconBg: "bg-violet-400/10",
     tag: "Step 4",
-    title: "Can't decide? Let us pick.",
-    body: "Hit Surprise Me in the toolbar and we'll randomly surface something from your backlog. One tap to watch, mark done, or reroll.",
+    title: "We'll pick for you if you're stuck",
+    body: "Can't decide? Hit \"Pick for me\" in the toolbar. We'll show you one thing from your list and ask: watch it or try another. No more endless scrolling.",
     illustration: <SurpriseIllustration />,
   },
 ] as const;
@@ -427,7 +427,7 @@ function SurpriseIllustration() {
 
       {/* Action pills */}
       <div className="flex gap-2">
-        {["Watch Now", "Mark Done", "Reroll"].map((label, i) => (
+        {["Watch Now", "Mark Done", "Try Another"].map((label, i) => (
           <div
             key={label}
             className={cn(

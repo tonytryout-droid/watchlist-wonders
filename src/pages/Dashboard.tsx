@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
-import { CalendarClock, Shuffle, ArrowUpDown, Play, Check } from "lucide-react";
+import { CalendarClock, Shuffle, ArrowUpDown, Play, Check, Sparkles } from "lucide-react";
 import { generateRails } from "@/lib/railGenerator";
 import { HeroBanner } from "@/components/layout/HeroBanner";
 import { Rail } from "@/components/bookmarks/Rail";
@@ -11,6 +11,8 @@ import { FilterPanel, type AdvancedFilters } from "@/components/dashboard/Filter
 import { BulkActionBar } from "@/components/dashboard/BulkActionBar";
 import { StatsBar } from "@/components/dashboard/StatsBar";
 import { MoodPicker } from "@/components/dashboard/MoodPicker";
+import { IntentBar, type IntentType } from "@/components/dashboard/IntentBar";
+import { DecisionMode } from "@/components/bookmarks/DecisionMode";
 import { SkeletonRail } from "@/components/ui/skeleton-card";
 import { EmptyStateGuide } from "@/components/EmptyStateGuide";
 import { DashboardTour } from "@/components/onboarding/DashboardTour";
@@ -41,7 +43,7 @@ import { ToastAction } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { formatRuntime } from "@/lib/utils";
+import { formatRuntime, shuffleArray } from "@/lib/utils";
 
 type FilterType = "all" | "movie" | "series" | "video" | "doc";
 type FilterStatus = "all" | "backlog" | "watching" | "done";
@@ -69,6 +71,11 @@ const Dashboard = () => {
   // Sort + Surprise Me state
   const [sortBy, setSortBy] = useState<SortOption>("newest");
   const [surpriseBookmark, setSurpriseBookmark] = useState<Bookmark | null>(null);
+
+  // Decision Mode + Intent
+  const [decisionModeOpen, setDecisionModeOpen] = useState(false);
+  const [activeIntent, setActiveIntent] = useState<IntentType | null>(null);
+  const [shuffledForRandom, setShuffledForRandom] = useState<Bookmark[]>([]);
 
   // Bulk select state
   const [selectMode, setSelectMode] = useState(false);
@@ -236,7 +243,7 @@ const Dashboard = () => {
     },
   });
 
-  // Undo delete â€” recreate the bookmark with its original data
+  // Undo delete â€" recreate the bookmark with its original data
   const handleUndoDelete = (bookmark: Bookmark) => {
     bookmarkService.createBookmark({
       title: bookmark.title,
@@ -565,7 +572,45 @@ const Dashboard = () => {
     completed.flatMap((b) => b.mood_tags || []).map((m) => m.toLowerCase())
   );
 
-  const topTenForYou = [...displayBookmarks]
+  // Keep shuffledForRandom fresh when displayBookmarks changes while random intent is active
+  useEffect(() => {
+    if (activeIntent === "random") {
+      setShuffledForRandom(shuffleArray(displayBookmarks.filter((b) => b.status !== "done")));
+    }
+  }, [displayBookmarks, activeIntent]);
+
+  // Handle intent change: shuffle once on random selection
+  const handleIntentChange = (intent: IntentType | null) => {
+    if (intent === "random") {
+      setShuffledForRandom(shuffleArray(displayBookmarks.filter((b) => b.status !== "done")));
+    }
+    setActiveIntent(intent);
+  };
+
+  // Apply intent filter on top of displayBookmarks for rails
+  const intentFilteredBookmarks = useMemo(() => {
+    if (!activeIntent) return displayBookmarks;
+    switch (activeIntent) {
+      case "quick":
+        return displayBookmarks.filter(
+          (b) => b.status !== "done" && b.runtime_minutes != null && b.runtime_minutes <= 30
+        );
+      case "deep":
+        return displayBookmarks.filter(
+          (b) => b.status !== "done" && (b.type === "movie" || (b.runtime_minutes != null && b.runtime_minutes > 60))
+        );
+      case "random":
+        return shuffledForRandom;
+      case "continue":
+        return displayBookmarks.filter((b) => b.status === "watching");
+    }
+  }, [displayBookmarks, activeIntent, shuffledForRandom]);
+
+  const intentContinueWatching = intentFilteredBookmarks.filter((b) => b.status === "watching");
+  const intentBacklog = intentFilteredBookmarks.filter((b) => b.status === "backlog");
+  const intentCompleted = intentFilteredBookmarks.filter((b) => b.status === "done");
+
+  const topTenForYou = [...intentFilteredBookmarks]
     .filter((item) => item.status !== "done")
     .sort((a, b) => {
       const aMoodScore = (a.mood_tags || []).reduce(
@@ -595,8 +640,8 @@ const Dashboard = () => {
 
   // Generate cinematic rails from current display bookmarks
   const generatedRails = useMemo(
-    () => generateRails(displayBookmarks),
-    [displayBookmarks],
+    () => generateRails(intentFilteredBookmarks),
+    [intentFilteredBookmarks],
   );
 
   const handleSurpriseMe = () => {
@@ -626,7 +671,7 @@ const Dashboard = () => {
   return (
     <div className="min-h-full bg-background pb-20 md:pb-0">
 
-      {/* Hero Banner â€” sits behind the transparent fixed navbar */}
+      {/* Hero Banner â€" sits behind the transparent fixed navbar */}
       {heroBookmark && (
         <HeroBanner
           bookmark={heroBookmark}
@@ -639,7 +684,7 @@ const Dashboard = () => {
         <div className="relative z-10 -mt-24 md:-mt-28 lg:-mt-32 h-24 md:h-28 lg:h-32 bg-gradient-to-b from-transparent via-background/70 to-background pointer-events-none" />
       )}
 
-      {/* Page body â€” offset from top only when no hero banner */}
+      {/* Page body â€" offset from top only when no hero banner */}
       <div
         className={cn(
           "flex gap-0 relative",
@@ -683,6 +728,16 @@ const Dashboard = () => {
                 />
                 {/* Right controls */}
                 <div className="flex items-center gap-1.5 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setDecisionModeOpen(true)}
+                    className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                    title="Pick for me"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Pick for me
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -744,30 +799,31 @@ const Dashboard = () => {
               <div className="px-4 sm:px-6 lg:px-8 mt-3">
                 <MoodPicker activeMood={activeMood} onMoodSelect={setActiveMood} />
               </div>
+              <IntentBar activeIntent={activeIntent} onChange={handleIntentChange} />
             </div>
           )}
 
           {/* Rails */}
-          <div className=”space-y-3 animate-fade-in”>
+          <div className="space-y-3 animate-fade-in">
 
           {/* ── Scheduled / Up Next calendar strip ───────────────────────── */}
           {upcomingSchedules.length > 0 && (
-            <section className=”py-3”>
-              <div className=”px-4 sm:px-6 lg:px-8 mb-4”>
-                <div className=”flex items-center justify-between”>
+            <section className="py-3">
+              <div className="px-4 sm:px-6 lg:px-8 mb-4">
+                <div className="flex items-center justify-between">
                   <div>
-                    <h2 className=”text-xl font-semibold flex items-center gap-2”>
-                      <CalendarClock className=”w-5 h-5 text-wm-gold” />
+                    <h2 className="text-xl font-semibold flex items-center gap-2">
+                      <CalendarClock className="w-5 h-5 text-wm-gold" />
                       Scheduled
                     </h2>
-                    <p className=”text-sm text-muted-foreground mt-0.5”>Coming up on your calendar</p>
+                    <p className="text-sm text-muted-foreground mt-0.5">Coming up on your calendar</p>
                   </div>
-                  <Link to=”/calendar” className=”text-xs text-primary hover:underline”>
+                  <Link to="/calendar" className="text-xs text-primary hover:underline">
                     View calendar
                   </Link>
                 </div>
               </div>
-              <div className=”flex gap-3 overflow-x-auto px-4 sm:px-6 lg:px-8 pb-2” style={{ scrollbarWidth: “none” }}>
+              <div className="flex gap-3 overflow-x-auto px-4 sm:px-6 lg:px-8 pb-2" style={{ scrollbarWidth: "none" }}>
                 {upcomingSchedules.map((sched) => {
                   const bm = sched.bookmarks;
                   if (!bm) return null;
@@ -778,36 +834,36 @@ const Dashboard = () => {
                     <Link
                       key={sched.id}
                       to={`/b/${bm.id}`}
-                      className=”shrink-0 w-56 bg-wm-surface border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-all group”
+                      className="shrink-0 w-56 bg-wm-surface border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-all group"
                     >
-                      <div className=”relative h-28 bg-muted overflow-hidden”>
+                      <div className="relative h-28 bg-muted overflow-hidden">
                         {bm.backdrop_url || bm.poster_url ? (
                           <img
-                            src={bm.backdrop_url || bm.poster_url || “”}
+                            src={bm.backdrop_url || bm.poster_url || ""}
                             alt={bm.title}
-                            className=”w-full h-full object-cover group-hover:scale-105 transition-transform duration-300”
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                           />
                         ) : (
-                          <div className=”w-full h-full flex items-center justify-center”>
-                            <span className=”text-3xl font-bold text-muted-foreground”>{bm.title.charAt(0)}</span>
+                          <div className="w-full h-full flex items-center justify-center">
+                            <span className="text-3xl font-bold text-muted-foreground">{bm.title.charAt(0)}</span>
                           </div>
                         )}
-                        <div className=”absolute inset-0 bg-gradient-to-t from-background/80 to-transparent” />
+                        <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
                         {scheduledDate && (
                           <div className={cn(
-                            “absolute bottom-2 left-2 text-[10px] font-semibold px-2 py-0.5 rounded-full”,
-                            isToday ? “bg-primary text-primary-foreground” : “bg-wm-gold text-background”
+                            "absolute bottom-2 left-2 text-[10px] font-semibold px-2 py-0.5 rounded-full",
+                            isToday ? "bg-primary text-primary-foreground" : "bg-wm-gold text-background"
                           )}>
-                            {isToday ? `Today ${format(scheduledDate, “h:mm a”)}` : format(scheduledDate, “EEE, MMM d”)}
+                            {isToday ? `Today ${format(scheduledDate, "h:mm a")}` : format(scheduledDate, "EEE, MMM d")}
                           </div>
                         )}
                       </div>
-                      <div className=”p-3”>
-                        <p className=”text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors”>
+                      <div className="p-3">
+                        <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
                           {bm.title}
                         </p>
                         {bm.runtime_minutes && (
-                          <p className=”text-[11px] text-muted-foreground mt-0.5”>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
                             {bm.runtime_minutes < 60 ? `${bm.runtime_minutes}m` : `${Math.floor(bm.runtime_minutes / 60)}h ${bm.runtime_minutes % 60}m`}
                           </p>
                         )}
@@ -819,14 +875,14 @@ const Dashboard = () => {
             </section>
           )}
 
-          {/* ── Top 10 scoring rail (shown when no active filters) ────────── */}
-          {!hasActiveFilters && topTenForYou.length > 0 && (
+          {/* ── Top 10 scoring rail (shown when no active filters or intent) ── */}
+          {!hasActiveFilters && !activeIntent && topTenForYou.length > 0 && (
             <Rail
-              title=”Top 10 In Your Queue”
-              subtitle=”Ranked by momentum”
+              title="Top 10 In Your Queue"
+              subtitle="Ranked by momentum"
               bookmarks={topTenForYou}
               showRanks
-              cardSize=”featured”
+              cardSize="featured"
               onSchedule={handleSchedule}
               onMarkDone={handleMarkDone}
               onAddToPlan={handleAddToPlan}
@@ -867,7 +923,7 @@ const Dashboard = () => {
           ))}
 
           {/* ── Mood rails (up to 3, ≥ 2 items) ─────────────────────────── */}
-          {!hasActiveFilters &&
+          {!hasActiveFilters && !activeIntent &&
             Object.entries(byMood)
               .filter(([, items]) => items.length >= 2)
               .sort(([, a], [, b]) => b.length - a.length)
@@ -893,10 +949,10 @@ const Dashboard = () => {
               ))}
 
           {/* ── Recently Watched (always at bottom) ──────────────────────── */}
-          {completed.length > 0 && (
+          {intentCompleted.length > 0 && (
             <Rail
-              title=”Recently Watched”
-              bookmarks={completed}
+              title="Recently Watched"
+              bookmarks={intentCompleted}
               emptyMessage={filteredEmptyMessage}
               onSchedule={handleSchedule}
               onMarkDone={handleMarkDone}
@@ -913,10 +969,12 @@ const Dashboard = () => {
             />
           )}
 
-          {/* Filtered empty state */}
-          {hasActiveFilters && filteredBookmarks.length === 0 && (
+          {/* Filtered/intent empty state */}
+          {(hasActiveFilters || activeIntent) && intentFilteredBookmarks.length === 0 && (
             <div className="px-4 sm:px-6 lg:px-8 text-center py-16">
-              <p className="text-muted-foreground mb-4">No bookmarks match your filters</p>
+              <p className="text-muted-foreground mb-4">
+                {activeIntent ? "Nothing matches this vibe right now" : "No bookmarks match your filters"}
+              </p>
               <Button
                 variant="outline"
                 onClick={() => {
@@ -924,6 +982,7 @@ const Dashboard = () => {
                   setFilterStatus("all");
                   setActiveMood(null);
                   setAdvancedFilters({ providers: [], moods: [], runtimeMin: null, runtimeMax: null });
+                  setActiveIntent(null);
                 }}
               >
                 Clear Filters
@@ -1057,6 +1116,13 @@ const Dashboard = () => {
         )}
 
       </div>{/* end flex page body */}
+
+      {/* Decision Mode */}
+      <DecisionMode
+        open={decisionModeOpen}
+        onClose={() => setDecisionModeOpen(false)}
+        bookmarks={backlog}
+      />
 
       {/* Schedule Dialog */}
       <ScheduleDialog
