@@ -8,11 +8,12 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
 } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { auth, missingRequiredFirebaseEnv } from '@/lib/firebase';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  error: string | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -24,8 +25,21 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (missingRequiredFirebaseEnv.length > 0) {
+      setError(`Missing configuration: ${missingRequiredFirebaseEnv.join(', ')}`);
+      setLoading(false);
+      return;
+    }
+
+    if (!auth) {
+      setError("Firebase Auth failed to initialize.");
+      setLoading(false);
+      return;
+    }
+
     // Avoid permanent loading state if auth bootstrap errors or hangs.
     const authInitTimeout = window.setTimeout(() => {
       console.error('[Auth] Timed out waiting for Firebase auth initialization.');
@@ -42,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (error) => {
         window.clearTimeout(authInitTimeout);
         console.error('[Auth] Firebase auth initialization failed:', error);
+        setError(error.message);
         setUser(null);
         setLoading(false);
       },
@@ -54,24 +69,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
+    if (!auth) throw new Error("Auth not initialized");
     await signInWithEmailAndPassword(auth, email, password);
   };
 
   const signUp = async (email: string, password: string) => {
+    if (!auth) throw new Error("Auth not initialized");
     await createUserWithEmailAndPassword(auth, email, password);
   };
 
   const signOut = async () => {
+    if (!auth) throw new Error("Auth not initialized");
     await firebaseSignOut(auth);
   };
 
   const signInWithGoogle = async () => {
+    if (!auth) throw new Error("Auth not initialized");
     const provider = new GoogleAuthProvider();
     await signInWithPopup(auth, provider);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut, signInWithGoogle }}>
+    <AuthContext.Provider value={{ user, loading, error, signIn, signUp, signOut, signInWithGoogle }}>
       {children}
     </AuthContext.Provider>
   );
