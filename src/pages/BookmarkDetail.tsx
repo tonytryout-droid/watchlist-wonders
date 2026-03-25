@@ -101,7 +101,7 @@ const BookmarkDetail = () => {
     onSuccess: () => {
       setDeletingAttachmentId(null);
       refetchAttachments();
-      toast({ title: "Attachment deleted" });
+      toast({ title: "File deleted" });
     },
     onError: () => {
       setDeletingAttachmentId(null);
@@ -119,7 +119,7 @@ const BookmarkDetail = () => {
     try {
       await attachmentService.createAttachment(file, id);
       refetchAttachments();
-      toast({ title: "Attachment uploaded", description: file.name });
+      toast({ title: "File uploaded", description: file.name });
     } catch (err: any) {
       toast({ title: "Upload failed", description: "Could not upload the file. Please try again.", variant: "destructive" });
     }
@@ -436,7 +436,7 @@ const BookmarkDetail = () => {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-notes">Notes</Label>
+              <Label htmlFor="edit-notes">My Notes</Label>
               <Textarea
                 id="edit-notes"
                 value={editNotes}
@@ -837,7 +837,7 @@ const BookmarkDetail = () => {
                         moreInfoOpen ? 'rotate-180' : ''
                       }`}
                     />
-                    {moreInfoOpen ? 'Less' : 'Sharing & attachments'}
+                    {moreInfoOpen ? 'Less' : 'Sharing & files'}
                   </button>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
@@ -940,12 +940,12 @@ const BookmarkDetail = () => {
                     )}
                   </div>
 
-                  {/* Attachments */}
+                  {/* Files */}
                   <div className="mb-6">
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-1">
                         <Paperclip className="w-4 h-4" />
-                        Attachments {attachments.length > 0 && `(${attachments.length})`}
+                        Files {attachments.length > 0 && `(${attachments.length})`}
                       </h3>
                       <Button
                         variant="ghost"
@@ -970,7 +970,7 @@ const BookmarkDetail = () => {
                         onClick={() => attachFileRef.current?.click()}
                         className="w-full border border-dashed border-border rounded-lg p-4 text-center text-sm text-muted-foreground hover:border-primary/50 transition-colors"
                       >
-                        No attachments yet — click to upload
+                        No files yet — click to upload
                       </button>
                     ) : (
                       <div className="space-y-2">

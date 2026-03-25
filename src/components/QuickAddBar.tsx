@@ -29,6 +29,7 @@ import { fbFunctions } from "@/lib/firebase";
 import { httpsCallable } from "firebase/functions";
 import { bookmarkService } from "@/services/bookmarks";
 import { ConfirmMetadataDialog, type ConfirmMetadataPayload } from "@/components/bookmarks/ConfirmMetadataDialog";
+import { buildSmartFillData, type SmartFillData } from "@/lib/enrichmentSmartFill";
 import { toast } from "sonner";
 import type { Bookmark } from "@/types/database";
 
@@ -46,6 +47,17 @@ interface QuickAddBarProps {
   className?: string;
 }
 
+const EMPTY_SMART_FILL: SmartFillData = {
+  description: null,
+  tags: [],
+  moodTags: [],
+  releaseYear: null,
+  canonicalUrl: null,
+  metadata: {},
+  matchCandidates: [],
+  matchConfidence: "unknown",
+};
+
 export function QuickAddBar({ className }: QuickAddBarProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -55,6 +67,7 @@ export function QuickAddBar({ className }: QuickAddBarProps) {
   const [isEnriching, setIsEnriching] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmInitial, setConfirmInitial] = useState<ConfirmMetadataPayload>({ url: "" });
+  const [smartFill, setSmartFill] = useState<SmartFillData>(EMPTY_SMART_FILL);
 
   const detectedProvider = url.trim() ? detectProvider(url.trim()) : null;
   const providerInfo = detectedProvider ? PROVIDER_STYLES[detectedProvider] : null;
@@ -65,6 +78,7 @@ export function QuickAddBar({ className }: QuickAddBarProps) {
     onSuccess: (bookmark) => {
       queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
       setUrl("");
+      setSmartFill(EMPTY_SMART_FILL);
       toast.success(`"${bookmark.title}" saved to your watchlist!`);
     },
     onError: (err: any) => {
@@ -85,15 +99,15 @@ export function QuickAddBar({ className }: QuickAddBarProps) {
       type: data.type,
       provider: (data.provider as Bookmark["provider"]) || "generic",
       source_url: data.url || null,
-      canonical_url: null,
+      canonical_url: smartFill.canonicalUrl,
       runtime_minutes: data.runtimeMinutes,
-      release_year: null,
+      release_year: smartFill.releaseYear,
       poster_url: data.posterUrl || null,
       notes: null,
-      tags: [],
-      mood_tags: [],
+      tags: smartFill.tags,
+      mood_tags: smartFill.moodTags,
       status: "backlog",
-      metadata: {},
+      metadata: smartFill.metadata,
     });
   };
 
@@ -108,8 +122,21 @@ export function QuickAddBar({ className }: QuickAddBarProps) {
       const enrichCallable = httpsCallable(fbFunctions, 'enrich');
       const result = await enrichCallable({ url: trimmed });
       const data = result.data as any;
+      const fill = buildSmartFillData(data);
+      const { tmdb_id: _tmdbId, ...metadataWithoutTmdb } = fill.metadata;
+      const guardedFill = fill.matchConfidence === "low"
+        ? {
+            ...fill,
+            moodTags: [],
+            metadata: metadataWithoutTmdb,
+          }
+        : fill;
+      setSmartFill(guardedFill);
 
       const resolvedProvider = data.provider === "unknown" ? dp : data.provider;
+      const ambiguityHint = fill.matchConfidence === "low" && fill.matchCandidates.length > 1
+        ? "Multiple TMDB matches were found. Check title/type before saving, or use Add manually for exact matching."
+        : undefined;
 
       setConfirmInitial({
         url: trimmed,
@@ -119,11 +146,12 @@ export function QuickAddBar({ className }: QuickAddBarProps) {
         runtimeMinutes: data.runtimeMinutes ?? null,
         type: dp === "youtube" ? "video" : "movie",
         blocked: data.blocked,
-        debugMessage: data.error?.message,
+        debugMessage: data.error?.message ?? ambiguityHint,
       });
       setConfirmOpen(true);
     } catch (err) {
       console.warn("Enrichment failed:", err);
+      setSmartFill(EMPTY_SMART_FILL);
       setConfirmInitial({
         url: trimmed,
         provider: dp,

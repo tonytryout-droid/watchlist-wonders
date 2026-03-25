@@ -184,6 +184,19 @@ export function ConfirmMetadataDialog({ open, onOpenChange, initial, onConfirm }
           </DialogDescription>
         </DialogHeader>
 
+        {initial.debugMessage && (
+          <div
+            className={cn(
+              "rounded-md border px-3 py-2 text-xs",
+              initial.blocked
+                ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
+                : "border-border bg-muted/40 text-muted-foreground"
+            )}
+          >
+            {initial.debugMessage}
+          </div>
+        )}
+
         {/* Preview row — poster + URL + provider badge */}
         <div className="flex gap-4 items-center py-3 border-b border-border">
           {/* Poster preview with upload overlay */}

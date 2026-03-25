@@ -15,7 +15,37 @@ interface EnrichResponse {
   mediaType?: 'movie' | 'tv' | 'unknown';
   provider?: string;
   tmdbId?: number;
+  canonicalUrl?: string;
+  hashtags?: string[];
+  genres?: string[];
+  voteAverage?: number;
+  matchConfidence?: 'high' | 'medium' | 'low';
+  matchCandidates?: TmdbMatchCandidate[];
+  matchedBy?: 'tmdb' | 'metadata';
   error?: { message: string };
+}
+
+interface TmdbMatchCandidate {
+  tmdbId: number;
+  title: string;
+  mediaType: 'movie' | 'tv';
+  releaseYear?: number;
+  posterUrl?: string;
+  backdropUrl?: string;
+  description?: string;
+  voteAverage?: number;
+  runtimeMinutes?: number;
+  genres?: string[];
+  score?: number;
+  scoreBreakdown?: TmdbScoreBreakdown;
+}
+
+interface TmdbScoreBreakdown {
+  title: number;
+  year: number;
+  type: number;
+  overview: number;
+  total: number;
 }
 
 interface OEmbedResponse {
@@ -259,6 +289,144 @@ function cleanSocialText(raw: string): string {
     .trim();
 }
 
+function extractHashtags(...values: Array<string | undefined | null>): string[] {
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (typeof value !== 'string' || !value.trim()) continue;
+    const decoded = decodeHtmlEntities(value);
+    const matches = decoded.matchAll(/(?:^|\s)#([A-Za-z0-9_]{2,40})/g);
+    for (const match of matches) {
+      const tag = normalizeText(match[1] ?? '').toLowerCase();
+      if (!tag || seen.has(tag)) continue;
+      seen.add(tag);
+      if (seen.size >= 16) break;
+    }
+    if (seen.size >= 16) break;
+  }
+  return Array.from(seen);
+}
+
+const SCORING_STOP_WORDS = new Set([
+  'the', 'and', 'for', 'with', 'from', 'into', 'over', 'this', 'that', 'your', 'our',
+  'you', 'are', 'was', 'were', 'his', 'her', 'their', 'its', 'movie', 'show', 'series',
+  'season', 'episode', 'official', 'trailer', 'teaser', 'clip', 'video',
+]);
+
+function tokensForScore(value: string): string[] {
+  return normalizeText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s']/g, ' ')
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 1 && !SCORING_STOP_WORDS.has(token));
+}
+
+function tokenOverlapRatio(left: string, right: string): number {
+  const a = tokensForScore(left);
+  const b = tokensForScore(right);
+  if (!a.length || !b.length) return 0;
+
+  const setA = new Set(a);
+  let overlap = 0;
+  for (const token of b) {
+    if (setA.has(token)) overlap++;
+  }
+  return overlap / Math.max(setA.size, b.length);
+}
+
+function titleSimilarityScore(query: string, candidateTitle: string): number {
+  const q = cleanTitleForTMDB(query).toLowerCase();
+  const c = cleanTitleForTMDB(candidateTitle).toLowerCase();
+  if (!q || !c) return 0;
+  if (q === c) return 1;
+
+  const overlap = tokenOverlapRatio(q, c);
+  const qCompact = q.replace(/\s+/g, '');
+  const cCompact = c.replace(/\s+/g, '');
+  const startsWithBonus = c.startsWith(q) || q.startsWith(c) ? 0.2 : 0;
+  const containsBonus = c.includes(q) || q.includes(c) ? 0.1 : 0;
+  const lengthPenalty = Math.min(0.2, Math.abs(qCompact.length - cCompact.length) / 30);
+
+  return Math.max(0, Math.min(1, overlap * 0.85 + startsWithBonus + containsBonus - lengthPenalty));
+}
+
+function confidenceFromScores(bestScore: number, gapToSecond: number): 'high' | 'medium' | 'low' {
+  if (bestScore >= 0.82 && gapToSecond >= 0.12) return 'high';
+  if (bestScore >= 0.68 && gapToSecond >= 0.06) return 'medium';
+  return 'low';
+}
+
+function extractYearHint(...values: Array<string | undefined | null>): number | undefined {
+  for (const value of values) {
+    if (!value) continue;
+    const matches = value.match(/\b(19\d{2}|20\d{2}|2100)\b/g);
+    if (!matches?.length) continue;
+    for (const match of matches) {
+      const year = parseInt(match, 10);
+      if (year >= 1900 && year <= 2100) return year;
+    }
+  }
+  return undefined;
+}
+
+function yearMatchScore(sourceYear: number | undefined, candidateYear: number | undefined): number {
+  if (!sourceYear || !candidateYear) return 0.5;
+  const diff = Math.abs(sourceYear - candidateYear);
+  if (diff === 0) return 1;
+  if (diff === 1) return 0.7;
+  if (diff === 2) return 0.4;
+  return 0;
+}
+
+function typeMatchScore(
+  preferredMediaType: 'movie' | 'tv' | 'unknown' | undefined,
+  candidateType: 'movie' | 'tv'
+): number {
+  if (!preferredMediaType || preferredMediaType === 'unknown') return 0.5;
+  return preferredMediaType === candidateType ? 1 : 0;
+}
+
+function uniqueSearchQueries(primaryTitle: string, alternates: string[] = []): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (value: string | undefined) => {
+    if (!value) return;
+    const cleaned = cleanTitleForTMDB(value);
+    if (!cleaned) return;
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(cleaned);
+  };
+
+  add(primaryTitle);
+  for (const alt of alternates) add(alt);
+  return out;
+}
+
+function toFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function normalizeHashtagList(list: string[] | undefined): string[] | undefined {
+  if (!list || list.length === 0) return undefined;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const tag of list) {
+    const value = normalizeText(tag).replace(/^#+/, '').toLowerCase();
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+    if (out.length >= 16) break;
+  }
+  return out.length ? out : undefined;
+}
+
 function truncateAtWord(value: string, maxLength: number): string {
   if (value.length <= maxLength) return value;
   const slice = value.slice(0, maxLength + 1);
@@ -274,7 +442,9 @@ function firstSentence(value: string): string {
 function getSocialTitleAndDescription(rawTitle?: string, rawDescription?: string): {
   title?: string;
   description?: string;
+  hashtags?: string[];
 } {
+  const hashtags = extractHashtags(rawTitle, rawDescription);
   let title = cleanSocialText(rawTitle ?? '');
   let description = cleanSocialText(rawDescription ?? '');
 
@@ -309,6 +479,7 @@ function getSocialTitleAndDescription(rawTitle?: string, rawDescription?: string
   return {
     title: title || undefined,
     description: description || undefined,
+    hashtags: hashtags && hashtags.length ? hashtags : undefined,
   };
 }
 
@@ -324,22 +495,35 @@ function isLikelyMediaTitle(value: string): boolean {
 async function maybeMergeTMDB(base: EnrichResponse): Promise<EnrichResponse> {
   if (!base.title || !isLikelyMediaTitle(base.title)) return base;
 
-  const tmdb = await enrichTMDB(cleanTitleForTMDB(base.title));
+  const tmdb = await enrichTMDB(base.title, {
+    description: base.description,
+    preferredMediaType: base.mediaType,
+    alternateTitles: [cleanTitleForTMDB(base.title)],
+    sourceYear: base.releaseYear ?? extractYearHint(base.title, base.description),
+  });
   if (!tmdb.title) return base;
   return mergeWithTMDB(base, tmdb);
 }
 
 function mergeWithTMDB(base: EnrichResponse, tmdb: EnrichResponse): EnrichResponse {
+  const shouldAdoptTmdbPrimary = tmdb.matchConfidence !== 'low' || !base.title;
+
   return {
     ...base,
-    title: tmdb.title,
-    description: tmdb.description ?? base.description,
-    posterUrl: tmdb.posterUrl ?? base.posterUrl,
-    backdropUrl: tmdb.backdropUrl ?? base.backdropUrl,
+    title: shouldAdoptTmdbPrimary ? tmdb.title : (base.title ?? tmdb.title),
+    description: shouldAdoptTmdbPrimary ? (tmdb.description ?? base.description) : (base.description ?? tmdb.description),
+    posterUrl: shouldAdoptTmdbPrimary ? (tmdb.posterUrl ?? base.posterUrl) : (base.posterUrl ?? tmdb.posterUrl),
+    backdropUrl: shouldAdoptTmdbPrimary ? (tmdb.backdropUrl ?? base.backdropUrl) : (base.backdropUrl ?? tmdb.backdropUrl),
     runtimeMinutes: tmdb.runtimeMinutes ?? base.runtimeMinutes,
     releaseYear: tmdb.releaseYear ?? base.releaseYear,
     mediaType: tmdb.mediaType ?? base.mediaType,
     tmdbId: tmdb.tmdbId ?? base.tmdbId,
+    genres: tmdb.genres ?? base.genres,
+    voteAverage: tmdb.voteAverage ?? base.voteAverage,
+    matchConfidence: tmdb.matchConfidence ?? base.matchConfidence,
+    matchCandidates: tmdb.matchCandidates ?? base.matchCandidates,
+    matchedBy: tmdb.matchedBy ?? base.matchedBy,
+    hashtags: base.hashtags ?? tmdb.hashtags,
   };
 }
 
@@ -381,7 +565,14 @@ async function enrichYouTube(videoId: string): Promise<EnrichResponse> {
     }
 
     // Cross-enrich: use cleaned YouTube title to get TMDB metadata
-    const tmdbData = await enrichTMDB(cleanTitleForTMDB(snippet.title ?? ''));
+    const tmdbData = await enrichTMDB(snippet.title ?? '', {
+      description: snippet.description,
+      preferredMediaType: 'unknown',
+      alternateTitles: [cleanTitleForTMDB(snippet.title ?? '')],
+      sourceYear: extractYearHint(snippet.title, snippet.description),
+    });
+
+    const hashtags = extractHashtags(snippet.title, snippet.description);
 
     return {
       title: tmdbData.title ?? snippet.title,
@@ -392,6 +583,12 @@ async function enrichYouTube(videoId: string): Promise<EnrichResponse> {
       releaseYear: tmdbData.releaseYear,
       mediaType: tmdbData.mediaType,
       tmdbId: tmdbData.tmdbId,
+      genres: tmdbData.genres,
+      voteAverage: tmdbData.voteAverage,
+      matchConfidence: tmdbData.matchConfidence,
+      matchCandidates: tmdbData.matchCandidates,
+      matchedBy: tmdbData.matchedBy,
+      hashtags: tmdbData.hashtags ?? (hashtags.length ? hashtags : undefined),
       provider: 'youtube',
     };
   } catch (error) {
@@ -413,7 +610,7 @@ async function fetchOEmbed(oembedUrl: string): Promise<OEmbedResponse | null> {
 }
 
 async function fillMissingWithMicrolink(base: EnrichResponse, url: string): Promise<EnrichResponse> {
-  if (base.title && base.description && base.posterUrl) return base;
+  if (base.title && base.description && base.posterUrl && base.canonicalUrl) return base;
   const ml = await enrichWithMicrolink(url);
   return {
     ...base,
@@ -421,6 +618,7 @@ async function fillMissingWithMicrolink(base: EnrichResponse, url: string): Prom
     description: base.description ?? ml.description,
     posterUrl: base.posterUrl ?? ml.posterUrl,
     releaseYear: base.releaseYear ?? ml.releaseYear,
+    canonicalUrl: base.canonicalUrl ?? ml.canonicalUrl,
   };
 }
 
@@ -440,6 +638,8 @@ async function enrichTwitter(url: string): Promise<EnrichResponse> {
     title: social.title,
     description: social.description,
     posterUrl: resolveAbsoluteUrl(pickFirstNonEmpty(og.image, oembed?.thumbnail_url), url),
+    canonicalUrl: og.canonicalUrl,
+    hashtags: social.hashtags,
     provider: 'x',
   };
 
@@ -463,6 +663,8 @@ async function enrichTikTok(url: string): Promise<EnrichResponse> {
     title: social.title,
     description: social.description,
     posterUrl: resolveAbsoluteUrl(pickFirstNonEmpty(oembed?.thumbnail_url, og.image), url),
+    canonicalUrl: og.canonicalUrl,
+    hashtags: social.hashtags,
     provider: 'tiktok',
   };
 
@@ -683,11 +885,170 @@ async function enrichWithMicrolink(url: string): Promise<Partial<EnrichResponse>
       description: d.description ?? undefined,
       posterUrl: d.image?.url ?? undefined,
       releaseYear: year || undefined,
+      canonicalUrl: typeof d.url === 'string' ? d.url : undefined,
     };
   } catch (err) {
     logger.warn('[microlink] failed for', redactUrlForLog(url), err);
     return {};
   }
+}
+
+function extractLetterboxdSlug(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname.toLowerCase().includes('letterboxd.com')) return null;
+    const match = parsed.pathname.match(/^\/film\/([^/]+)/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractRottenTomatoesSlug(url: string): { title: string; preferredMediaType: 'movie' | 'tv' } | null {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname.toLowerCase().includes('rottentomatoes.com')) return null;
+    const match = parsed.pathname.match(/^\/(?:m|tv)\/([^/]+)/);
+    if (!match) return null;
+
+    return {
+      title: match[1],
+      preferredMediaType: parsed.pathname.startsWith('/tv/') ? 'tv' : 'movie',
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function resolveTmdbByImdbId(imdbId: string): Promise<EnrichResponse | null> {
+  const apiKey = tmdbApiKey.value();
+  if (!apiKey) return null;
+
+  try {
+    const res = await fetchWithTimeout(
+      `https://api.themoviedb.org/3/find/${imdbId}?external_source=imdb_id&api_key=${apiKey}`
+    );
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as Record<string, unknown>;
+    const tvResults = Array.isArray(data.tv_results) ? data.tv_results : [];
+    const movieResults = Array.isArray(data.movie_results) ? data.movie_results : [];
+    const isTV = tvResults.length > 0;
+    const matchResult = (isTV ? tvResults[0] : movieResults[0]) as Record<string, unknown> | undefined;
+    if (!matchResult) return null;
+
+    const tmdbId = toFiniteNumber(matchResult.id);
+    if (!tmdbId) return null;
+
+    const mediaType: 'movie' | 'tv' = isTV ? 'tv' : 'movie';
+    const rawDate = mediaType === 'tv'
+      ? (typeof matchResult.first_air_date === 'string' ? matchResult.first_air_date : undefined)
+      : (typeof matchResult.release_date === 'string' ? matchResult.release_date : undefined);
+
+    let runtimeMinutes: number | undefined;
+    let genres: string[] | undefined;
+    try {
+      const detailRes = await fetchWithTimeout(
+        `https://api.themoviedb.org/3/${mediaType}/${Math.trunc(tmdbId)}?api_key=${apiKey}`
+      );
+      if (detailRes.ok) {
+        const detail = (await detailRes.json()) as Record<string, unknown>;
+        if (mediaType === 'tv') {
+          const runTimes = Array.isArray(detail.episode_run_time) ? detail.episode_run_time : [];
+          runtimeMinutes = runTimes
+            .map((value) => toFiniteNumber(value))
+            .find((value): value is number => typeof value === 'number' && value > 0);
+        } else {
+          runtimeMinutes = toFiniteNumber(detail.runtime);
+        }
+
+        genres = Array.isArray(detail.genres)
+          ? detail.genres
+              .map((genre) => {
+                if (!genre || typeof genre !== 'object') return undefined;
+                const name = (genre as Record<string, unknown>).name;
+                return typeof name === 'string' ? normalizeText(name) : undefined;
+              })
+              .filter((name): name is string => !!name)
+          : undefined;
+      }
+    } catch {
+      // Detail fetch is optional for source-resolver matches.
+    }
+
+    const title = pickFirstNonEmpty(
+      typeof matchResult.title === 'string' ? matchResult.title : undefined,
+      typeof matchResult.name === 'string' ? matchResult.name : undefined
+    );
+    if (!title) return null;
+
+    const description = typeof matchResult.overview === 'string'
+      ? normalizeText(matchResult.overview)
+      : undefined;
+    const posterPath = typeof matchResult.poster_path === 'string' ? matchResult.poster_path : undefined;
+    const backdropPath = typeof matchResult.backdrop_path === 'string' ? matchResult.backdrop_path : undefined;
+    const voteAverage = toFiniteNumber(matchResult.vote_average);
+    const releaseYear = rawDate ? parseInt(rawDate.slice(0, 4), 10) || undefined : undefined;
+
+    return {
+      title,
+      description,
+      posterUrl: posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : undefined,
+      backdropUrl: backdropPath ? `https://image.tmdb.org/t/p/original${backdropPath}` : undefined,
+      releaseYear,
+      mediaType,
+      tmdbId: Math.trunc(tmdbId),
+      runtimeMinutes,
+      genres,
+      voteAverage,
+      matchConfidence: 'high',
+      matchedBy: 'tmdb',
+      provider: 'generic',
+    };
+  } catch (error) {
+    logger.warn('Known-source IMDb resolver failed:', error);
+    return null;
+  }
+}
+
+async function resolveKnownSourceToTmdb(candidates: Array<string | undefined>): Promise<EnrichResponse | null> {
+  const seen = new Set<string>();
+  for (const candidateUrl of candidates) {
+    if (!candidateUrl) continue;
+    const trimmed = candidateUrl.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+
+    const imdbId = extractImdbId(trimmed);
+    if (imdbId) {
+      const resolved = await resolveTmdbByImdbId(imdbId);
+      if (resolved?.title) return resolved;
+    }
+
+    const letterboxdSlug = extractLetterboxdSlug(trimmed);
+    if (letterboxdSlug) {
+      const letterboxdTitle = letterboxdSlug.replace(/-/g, ' ');
+      const resolved = await enrichTMDB(letterboxdTitle, {
+        preferredMediaType: 'movie',
+        alternateTitles: [cleanTitleForTMDB(letterboxdTitle)],
+        sourceYear: extractYearHint(letterboxdTitle),
+      });
+      if (resolved.title) return resolved;
+    }
+
+    const rotten = extractRottenTomatoesSlug(trimmed);
+    if (rotten) {
+      const rottenTitle = rotten.title.replace(/[_-]/g, ' ');
+      const resolved = await enrichTMDB(rottenTitle, {
+        preferredMediaType: rotten.preferredMediaType,
+        alternateTitles: [cleanTitleForTMDB(rottenTitle)],
+        sourceYear: extractYearHint(rottenTitle),
+      });
+      if (resolved.title) return resolved;
+    }
+  }
+
+  return null;
 }
 
 async function enrichViaOG(url: string, provider: string): Promise<EnrichResponse> {
@@ -696,22 +1057,38 @@ async function enrichViaOG(url: string, provider: string): Promise<EnrichRespons
   const isSocialProvider = provider === 'instagram' || provider === 'facebook';
   const social = isSocialProvider
     ? getSocialTitleAndDescription(og.title, og.description)
-    : { title: og.title, description: og.description };
+    : undefined;
+  const title = isSocialProvider ? social?.title : og.title;
+  const description = isSocialProvider ? social?.description : og.description;
+  const hashtags = isSocialProvider ? social?.hashtags : extractHashtags(og.title, og.description);
 
   let result: EnrichResponse = {
-    title: social.title,
-    description: social.description,
+    title,
+    description,
     posterUrl: og.image,
+    canonicalUrl: og.canonicalUrl,
+    hashtags: hashtags && hashtags.length ? hashtags : undefined,
+    matchedBy: 'metadata',
     provider,
   };
 
   if (provider === 'netflix' && result.title) {
-    const tmdb = await enrichTMDB(cleanTitleForTMDB(result.title));
+    const tmdb = await enrichTMDB(result.title, {
+      description: result.description,
+      preferredMediaType: 'movie',
+      alternateTitles: [og.title ?? '', cleanTitleForTMDB(result.title)],
+      sourceYear: extractYearHint(og.title, og.description, result.description),
+    });
     if (tmdb.title) {
       result = mergeWithTMDB(result, tmdb);
     }
   } else if (provider === 'generic' && result.title && isLikelyMediaTitle(result.title)) {
-    const tmdb = await enrichTMDB(cleanTitleForTMDB(result.title));
+    const tmdb = await enrichTMDB(result.title, {
+      description: result.description,
+      preferredMediaType: 'unknown',
+      alternateTitles: [og.title ?? '', cleanTitleForTMDB(result.title)],
+      sourceYear: extractYearHint(og.title, og.description, result.description),
+    });
     if (tmdb.title) {
       result = mergeWithTMDB(result, tmdb);
     }
@@ -751,6 +1128,7 @@ async function enrichIMDb(url: string): Promise<EnrichResponse> {
 
     const rawDate = isTV ? result.first_air_date : result.release_date;
     let runtimeMinutes: number | undefined;
+    let genres: string[] | undefined;
     try {
       const mediaType = isTV ? 'tv' : 'movie';
       const detailRes = await fetchWithTimeout(
@@ -759,6 +1137,11 @@ async function enrichIMDb(url: string): Promise<EnrichResponse> {
       if (detailRes.ok) {
         const detail = (await detailRes.json()) as any;
         runtimeMinutes = isTV ? detail.episode_run_time?.[0] : detail.runtime ?? undefined;
+        genres = Array.isArray(detail.genres)
+          ? detail.genres
+              .map((genre: any) => (typeof genre?.name === 'string' ? normalizeText(genre.name) : undefined))
+              .filter((name: string | undefined): name is string => !!name)
+          : undefined;
       }
     } catch {}
 
@@ -771,6 +1154,10 @@ async function enrichIMDb(url: string): Promise<EnrichResponse> {
       mediaType: isTV ? 'tv' : 'movie',
       tmdbId: result.id,
       runtimeMinutes,
+      genres,
+      voteAverage: typeof result.vote_average === 'number' ? result.vote_average : undefined,
+      matchConfidence: 'high',
+      matchedBy: 'tmdb',
       provider: 'imdb',
     };
   } catch (error) {
@@ -786,7 +1173,11 @@ async function enrichLetterboxd(url: string): Promise<EnrichResponse> {
     const match = new URL(url).pathname.match(/^\/film\/([^/]+)/);
     if (!match) return enrichViaOG(url, 'letterboxd');
     const title = match[1].replace(/-/g, ' ');
-    const tmdb = await enrichTMDB(title);
+    const tmdb = await enrichTMDB(title, {
+      preferredMediaType: 'movie',
+      alternateTitles: [cleanTitleForTMDB(title)],
+      sourceYear: extractYearHint(title),
+    });
     if (tmdb.title) return { ...tmdb, provider: 'letterboxd' };
   } catch {}
   return enrichViaOG(url, 'letterboxd');
@@ -800,7 +1191,12 @@ async function enrichRottenTomatoes(url: string): Promise<EnrichResponse> {
     const match = pathname.match(/^\/(?:m|tv)\/([^/]+)/);
     if (!match) return enrichViaOG(url, 'rottentomatoes');
     const title = match[1].replace(/[_-]/g, ' ');
-    const tmdb = await enrichTMDB(title);
+    const preferredMediaType: 'movie' | 'tv' = pathname.startsWith('/tv/') ? 'tv' : 'movie';
+    const tmdb = await enrichTMDB(title, {
+      preferredMediaType,
+      alternateTitles: [cleanTitleForTMDB(title)],
+      sourceYear: extractYearHint(title),
+    });
     if (tmdb.title) return { ...tmdb, provider: 'rottentomatoes' };
   } catch {}
   return enrichViaOG(url, 'rottentomatoes');
@@ -836,6 +1232,8 @@ async function enrichReddit(url: string): Promise<EnrichResponse> {
       title: social.title,
       description: social.description,
       posterUrl: resolveAbsoluteUrl(imageCandidate ? decodeHtmlEntities(imageCandidate) : undefined, url),
+      canonicalUrl: og.canonicalUrl,
+      hashtags: social.hashtags,
       provider: 'reddit',
     };
 
@@ -848,42 +1246,220 @@ async function enrichReddit(url: string): Promise<EnrichResponse> {
 
 // --- TMDB ---
 
-async function enrichTMDB(title: string): Promise<EnrichResponse> {
+interface TmdbSearchHint {
+  description?: string;
+  preferredMediaType?: 'movie' | 'tv' | 'unknown';
+  alternateTitles?: string[];
+  sourceYear?: number;
+}
+
+interface RankedTmdbResult {
+  tmdbId: number;
+  title: string;
+  description?: string;
+  mediaType: 'movie' | 'tv';
+  releaseYear?: number;
+  posterUrl?: string;
+  backdropUrl?: string;
+  voteAverage?: number;
+  score: number;
+  scoreBreakdown: TmdbScoreBreakdown;
+}
+
+function getTmdbReleaseYear(item: Record<string, unknown>, mediaType: 'movie' | 'tv'): number | undefined {
+  const rawDate = mediaType === 'tv'
+    ? (typeof item.first_air_date === 'string' ? item.first_air_date : undefined)
+    : (typeof item.release_date === 'string' ? item.release_date : undefined);
+  if (!rawDate) return undefined;
+  const parsed = parseInt(rawDate.slice(0, 4), 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function toRankedTmdbResult(
+  item: Record<string, unknown>,
+  queryTitles: string[],
+  hint?: TmdbSearchHint
+): RankedTmdbResult | null {
+  const mediaType = item.media_type === 'tv' ? 'tv' : item.media_type === 'movie' ? 'movie' : null;
+  if (!mediaType) return null;
+
+  const tmdbIdValue = toFiniteNumber(item.id);
+  const tmdbId = tmdbIdValue ? Math.trunc(tmdbIdValue) : undefined;
+  if (!tmdbId) return null;
+
+  const title = normalizeText(
+    typeof item.title === 'string'
+      ? item.title
+      : typeof item.name === 'string'
+        ? item.name
+        : ''
+  );
+  if (!title) return null;
+
+  const description = typeof item.overview === 'string' ? normalizeText(item.overview) : undefined;
+  const releaseYear = getTmdbReleaseYear(item, mediaType);
+  const voteAverage = toFiniteNumber(item.vote_average);
+  const sourceYear = hint?.sourceYear ?? extractYearHint(...queryTitles, hint?.description);
+  const titleScore = queryTitles.length
+    ? Math.max(...queryTitles.map((queryTitle) => titleSimilarityScore(queryTitle, title)))
+    : 0;
+  const yearScore = yearMatchScore(sourceYear, releaseYear);
+  const typeScore = typeMatchScore(hint?.preferredMediaType, mediaType);
+  const overviewScore = hint?.description
+    ? tokenOverlapRatio(hint.description, description ?? '')
+    : 0.5;
+  const score = Math.max(
+    0,
+    Math.min(1, titleScore * 0.55 + yearScore * 0.20 + typeScore * 0.15 + overviewScore * 0.10)
+  );
+  const scoreBreakdown: TmdbScoreBreakdown = {
+    title: titleScore,
+    year: yearScore,
+    type: typeScore,
+    overview: overviewScore,
+    total: score,
+  };
+
+  return {
+    tmdbId,
+    title,
+    description: description || undefined,
+    mediaType,
+    releaseYear,
+    posterUrl: typeof item.poster_path === 'string' ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : undefined,
+    backdropUrl: typeof item.backdrop_path === 'string' ? `https://image.tmdb.org/t/p/original${item.backdrop_path}` : undefined,
+    voteAverage,
+    score,
+    scoreBreakdown,
+  };
+}
+
+async function fetchTmdbSearchResults(
+  apiKey: string,
+  queries: string[]
+): Promise<Array<Record<string, unknown>>> {
+  const deduped = new Map<string, Record<string, unknown>>();
+
+  for (const query of queries.slice(0, 3)) {
+    try {
+      const params = new URLSearchParams({ api_key: apiKey, query, include_adult: 'false' });
+      const res = await fetchWithTimeout(`https://api.themoviedb.org/3/search/multi?${params}`);
+      if (!res.ok) continue;
+
+      const data = (await res.json()) as Record<string, unknown>;
+      const rawResults = Array.isArray(data.results) ? data.results : [];
+      for (const raw of rawResults) {
+        if (!raw || typeof raw !== 'object') continue;
+        const result = raw as Record<string, unknown>;
+        const mediaType = result.media_type;
+        const id = toFiniteNumber(result.id);
+        if (!id || (mediaType !== 'movie' && mediaType !== 'tv')) continue;
+        const key = `${mediaType}:${Math.trunc(id)}`;
+        if (!deduped.has(key)) deduped.set(key, result);
+      }
+    } catch {
+      // If one title-query fails, keep trying the rest.
+    }
+  }
+
+  return Array.from(deduped.values());
+}
+
+async function enrichTMDB(title: string, hint?: TmdbSearchHint): Promise<EnrichResponse> {
   const apiKey = tmdbApiKey.value();
   if (!apiKey || !title) return { provider: 'generic' };
 
   try {
-    const params = new URLSearchParams({ api_key: apiKey, query: title });
-    const res = await fetchWithTimeout(`https://api.themoviedb.org/3/search/multi?${params}`);
-    if (!res.ok) return { provider: 'generic' };
+    const queryTitles = uniqueSearchQueries(title, hint?.alternateTitles);
+    if (!queryTitles.length) return { provider: 'generic' };
 
-    const data = (await res.json()) as any;
-    const result = data.results?.find((r: any) => r.media_type === 'movie' || r.media_type === 'tv');
-    if (!result) return { provider: 'generic' };
+    const sourceYear = hint?.sourceYear ?? extractYearHint(...queryTitles, hint?.description);
+    const searchHint: TmdbSearchHint = { ...hint, sourceYear };
 
-    const isTV = result.media_type === 'tv';
-    const rawDate = isTV ? result.first_air_date : result.release_date;
+    const rawResults = await fetchTmdbSearchResults(apiKey, queryTitles);
+    const ranked = rawResults
+      .map((raw) => {
+        if (!raw || typeof raw !== 'object') return null;
+        return toRankedTmdbResult(raw as Record<string, unknown>, queryTitles, searchHint);
+      })
+      .filter((item): item is RankedTmdbResult => !!item)
+      .sort((left, right) => right.score - left.score);
+
+    const best = ranked[0];
+    if (!best) return { provider: 'generic' };
+
+    const secondBest = ranked[1];
+    const confidence = secondBest
+      ? confidenceFromScores(best.score, Math.max(0, best.score - secondBest.score))
+      : confidenceFromScores(best.score, 1);
 
     let runtimeMinutes: number | undefined;
+    let genres: string[] | undefined;
     try {
       const detailRes = await fetchWithTimeout(
-        `https://api.themoviedb.org/3/${result.media_type}/${result.id}?api_key=${apiKey}`
+        `https://api.themoviedb.org/3/${best.mediaType}/${best.tmdbId}?api_key=${apiKey}`
       );
       if (detailRes.ok) {
-        const detail = (await detailRes.json()) as any;
-        runtimeMinutes = isTV ? detail.episode_run_time?.[0] : detail.runtime ?? undefined;
+        const detail = (await detailRes.json()) as Record<string, unknown>;
+        if (best.mediaType === 'tv') {
+          const runTimes = Array.isArray(detail.episode_run_time) ? detail.episode_run_time : [];
+          const firstRuntime = runTimes
+            .map((value) => toFiniteNumber(value))
+            .find((value): value is number => typeof value === 'number' && value > 0);
+          runtimeMinutes = firstRuntime;
+        } else {
+          runtimeMinutes = toFiniteNumber(detail.runtime);
+        }
+
+        genres = Array.isArray(detail.genres)
+          ? detail.genres
+              .map((genre) => {
+                if (!genre || typeof genre !== 'object') return undefined;
+                const name = (genre as Record<string, unknown>).name;
+                return typeof name === 'string' ? normalizeText(name) : undefined;
+              })
+              .filter((name): name is string => !!name)
+          : undefined;
       }
     } catch {}
 
+    const candidates: TmdbMatchCandidate[] = ranked.slice(0, 5).map((item) => ({
+      tmdbId: item.tmdbId,
+      title: item.title,
+      mediaType: item.mediaType,
+      releaseYear: item.releaseYear,
+      posterUrl: item.posterUrl,
+      backdropUrl: item.backdropUrl,
+      description: item.description,
+      voteAverage: item.voteAverage,
+      ...(item.tmdbId === best.tmdbId ? {
+        runtimeMinutes,
+        genres,
+      } : {}),
+      score: Number(item.score.toFixed(3)),
+      scoreBreakdown: {
+        title: Number(item.scoreBreakdown.title.toFixed(3)),
+        year: Number(item.scoreBreakdown.year.toFixed(3)),
+        type: Number(item.scoreBreakdown.type.toFixed(3)),
+        overview: Number(item.scoreBreakdown.overview.toFixed(3)),
+        total: Number(item.scoreBreakdown.total.toFixed(3)),
+      },
+    }));
+
     return {
-      title: result.title ?? result.name,
-      description: result.overview,
-      posterUrl: result.poster_path ? `https://image.tmdb.org/t/p/w500${result.poster_path}` : undefined,
-      backdropUrl: result.backdrop_path ? `https://image.tmdb.org/t/p/original${result.backdrop_path}` : undefined,
-      releaseYear: rawDate ? parseInt(rawDate.slice(0, 4), 10) || undefined : undefined,
-      mediaType: isTV ? 'tv' : 'movie',
-      tmdbId: result.id,
+      title: best.title,
+      description: best.description,
+      posterUrl: best.posterUrl,
+      backdropUrl: best.backdropUrl,
+      releaseYear: best.releaseYear,
+      mediaType: best.mediaType,
+      tmdbId: best.tmdbId,
       runtimeMinutes,
+      genres,
+      voteAverage: best.voteAverage,
+      matchConfidence: confidence,
+      matchCandidates: candidates,
+      matchedBy: 'tmdb',
       provider: 'generic',
     };
   } catch (error) {
@@ -946,7 +1522,13 @@ export const enrich = onCall(
           break;
       }
 
-      return result;
+      const normalizedHashtags = normalizeHashtagList(result.hashtags);
+      return {
+        ...result,
+        provider: result.provider ?? provider,
+        canonicalUrl: result.canonicalUrl ?? normalizedUrl,
+        hashtags: normalizedHashtags,
+      };
     } catch (error) {
       logger.error('Enrichment error:', error);
       if (error instanceof HttpsError) {

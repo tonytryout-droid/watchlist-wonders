@@ -2,6 +2,7 @@ import { Outlet } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { TopNav } from "./TopNav";
 import { SearchOverlay } from "@/components/search/SearchOverlay";
+import { HowItWorksButton } from "@/components/HowItWorksButton";
 import { useSearchShortcut } from "@/hooks/useSearchShortcut";
 import { useAuth } from "@/contexts/AuthContext";
 import { bookmarkService } from "@/services/bookmarks";
@@ -40,6 +41,7 @@ export function AppLayout() {
         bookmarks={bookmarks}
       />
       <Outlet />
+      <HowItWorksButton />
     </div>
   );
 }

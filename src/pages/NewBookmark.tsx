@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Link as LinkIcon, Loader2, Upload, X, Plus, Clock,
@@ -18,11 +18,11 @@ import {
 } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import { detectProvider, getMoodEmoji, cn } from "@/lib/utils";
-import { auth } from "@/lib/firebase";
 import { fbFunctions } from "@/lib/firebase";
 import { httpsCallable } from "firebase/functions";
 import { bookmarkService } from "@/services/bookmarks";
 import { attachmentService } from "@/services/attachments";
+import { buildSmartFillData, mapGenresToMoodTags, type EnrichmentMatchCandidate, type MatchConfidence } from "@/lib/enrichmentSmartFill";
 import { ConfirmMetadataDialog, type ConfirmMetadataPayload } from "@/components/bookmarks/ConfirmMetadataDialog";
 import { QuickScheduleSheet } from "@/components/schedules/QuickScheduleSheet";
 import type { Bookmark } from "@/types/database";
@@ -67,16 +67,28 @@ const PROVIDER_COLORS: Record<string, string> = {
 
 type Step = "paste" | "confirm";
 
+function toNumericId(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+const DEMO_URL = "https://www.imdb.com/title/tt1375666/"; // Inception
+
 const NewBookmark = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   // Step control
   const [step, setStep] = useState<Step>("paste");
 
-  // URL enrichment state
-  const [url, setUrl] = useState("");
+  // URL enrichment state — pre-fill with demo URL if ?demo=1
+  const [url, setUrl] = useState(searchParams.get("demo") === "1" ? DEMO_URL : "");
   const [isEnriching, setIsEnriching] = useState(false);
   const [enrichError, setEnrichError] = useState<string | null>(null);
 
@@ -90,9 +102,13 @@ const NewBookmark = () => {
   const [runtimeMinutes, setRuntimeMinutes] = useState<number | null>(null);
   const [releaseYear, setReleaseYear] = useState<number | null>(null);
   const [posterUrl, setPosterUrl] = useState("");
+  const [description, setDescription] = useState("");
   const [notes, setNotes] = useState("");
   const [canonicalUrl, setCanonicalUrl] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<Record<string, unknown>>({});
+  const [matchCandidates, setMatchCandidates] = useState<EnrichmentMatchCandidate[]>([]);
+  const [matchConfidence, setMatchConfidence] = useState<MatchConfidence>("unknown");
+  const [selectedCandidateId, setSelectedCandidateId] = useState<number | null>(null);
   const [selectedMoods, setSelectedMoods] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
@@ -105,8 +121,9 @@ const NewBookmark = () => {
     queryFn: () => bookmarkService.getBookmarks(),
     staleTime: 60 * 1000,
   });
-  const duplicateBookmark = metadata.tmdb_id
-    ? allBookmarks.find((b) => (b.metadata?.tmdb_id ?? b.metadata?.tmdbId) === metadata.tmdb_id)
+  const selectedTmdbId = toNumericId(metadata.tmdb_id ?? metadata.tmdbId);
+  const duplicateBookmark = selectedTmdbId
+    ? allBookmarks.find((b) => toNumericId(b.metadata?.tmdb_id ?? b.metadata?.tmdbId) === selectedTmdbId)
     : null;
 
   // Attachment state
@@ -172,6 +189,45 @@ const NewBookmark = () => {
   }, [url, step, isEnriching]);
 
   // ── Step 1: Fetch enrichment ─────────────────────────────────────
+  const mergeUnique = (existing: string[], incoming: string[]) => {
+    if (incoming.length === 0) return existing;
+    const seen = new Set(existing.map((item) => item.toLowerCase()));
+    const merged = [...existing];
+    for (const value of incoming) {
+      const key = value.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(value);
+    }
+    return merged;
+  };
+
+  const applyMatchCandidate = (candidate: EnrichmentMatchCandidate) => {
+    setSelectedCandidateId(candidate.tmdbId);
+    setMatchConfidence("high");
+    setTitle(candidate.title);
+    if (candidate.posterUrl) setPosterUrl(candidate.posterUrl);
+    if (candidate.releaseYear) setReleaseYear(candidate.releaseYear);
+    if (candidate.runtimeMinutes) setRuntimeMinutes(candidate.runtimeMinutes);
+    if (candidate.description) setDescription(candidate.description);
+
+    const candidateMoods = candidate.genres ? mapGenresToMoodTags(candidate.genres) : [];
+    if (candidateMoods.length > 0) {
+      setSelectedMoods((prev) => prev.length === 0 ? candidateMoods : mergeUnique(prev, candidateMoods));
+    }
+
+    setType(candidate.mediaType === "tv" ? "series" : "movie");
+    setMetadata((prev) => ({
+      ...prev,
+      tmdb_id: candidate.tmdbId,
+      match_confidence: "high",
+      ...(candidate.backdropUrl ? { backdrop_url: candidate.backdropUrl } : {}),
+      ...(candidate.description ? { overview: candidate.description } : {}),
+      ...(candidate.voteAverage !== undefined ? { vote_average: candidate.voteAverage } : {}),
+      ...(candidate.genres && candidate.genres.length ? { genres: candidate.genres } : {}),
+    }));
+  };
+
   const handleFetch = async () => {
     const trimmed = url.trim();
     if (!trimmed) return;
@@ -186,6 +242,7 @@ const NewBookmark = () => {
       const enrichCallable = httpsCallable(fbFunctions, 'enrich');
       const result = await enrichCallable({ url: trimmed });
       const data = result.data as any;
+      const smartFill = buildSmartFillData(data);
 
       const resolvedProvider = (data.provider && data.provider !== "unknown") ? data.provider : dp;
       setProvider(resolvedProvider);
@@ -207,8 +264,21 @@ const NewBookmark = () => {
       setTitle(data.title);
       if (data.posterUrl) setPosterUrl(data.posterUrl);
       if (data.runtimeMinutes) setRuntimeMinutes(data.runtimeMinutes);
-      if (data.releaseYear) setReleaseYear(data.releaseYear);
-      if (data.description && !notes.trim()) setNotes(data.description);
+      if (smartFill.releaseYear) setReleaseYear(smartFill.releaseYear);
+      if (smartFill.description !== null) setDescription(smartFill.description);
+      if (smartFill.canonicalUrl) setCanonicalUrl(smartFill.canonicalUrl);
+      if (smartFill.tags.length > 0) {
+        setTags((prev) => mergeUnique(prev, smartFill.tags));
+      }
+      if (smartFill.moodTags.length > 0) {
+        setSelectedMoods((prev) => prev.length === 0 ? smartFill.moodTags : mergeUnique(prev, smartFill.moodTags));
+      }
+      setMatchCandidates(smartFill.matchCandidates);
+      setMatchConfidence(smartFill.matchConfidence);
+      const selectedTmdb = smartFill.matchConfidence === "low"
+        ? null
+        : toNumericId(smartFill.metadata.tmdb_id);
+      setSelectedCandidateId(selectedTmdb);
 
       // Detect type from Cloud Function mediaType
       if (data.mediaType === "movie") setType("movie");
@@ -216,14 +286,18 @@ const NewBookmark = () => {
       else if (dp === "youtube") setType("video");
 
       // Store TMDB metadata
-      setMetadata({
-        ...(data.tmdbId ? { tmdb_id: data.tmdbId } : {}),
-        ...(data.backdropUrl ? { backdrop_url: data.backdropUrl } : {}),
-      });
+      const metadataFromSmartFill = { ...smartFill.metadata };
+      if (smartFill.matchConfidence === "low") {
+        delete metadataFromSmartFill.tmdb_id;
+      }
+      setMetadata((prev) => ({ ...prev, ...metadataFromSmartFill }));
 
       // Advance to step 2
       setStep("confirm");
     } catch (error: any) {
+      setMatchCandidates([]);
+      setMatchConfidence("unknown");
+      setSelectedCandidateId(null);
       const dp2 = detectProvider(trimmed);
       setConfirmInitial({ url: trimmed, provider: dp2, type: dp2 === "youtube" ? "video" : "movie", debugMessage: error?.message });
       setConfirmOpen(true);
@@ -240,6 +314,9 @@ const NewBookmark = () => {
     if (data.posterUrl) setPosterUrl(data.posterUrl);
     if (data.runtimeMinutes) setRuntimeMinutes(data.runtimeMinutes);
     setType(data.type);
+    setMatchCandidates([]);
+    setMatchConfidence("unknown");
+    setSelectedCandidateId(null);
     setStep("confirm");
   };
 
@@ -260,6 +337,11 @@ const NewBookmark = () => {
       toast({ title: "Title required", description: "Please enter a title.", variant: "destructive" });
       return;
     }
+    const trimmedDescription = description.trim();
+    const metadataForSave = {
+      ...metadata,
+      ...(trimmedDescription ? { overview: trimmedDescription } : {}),
+    };
     createBookmarkMutation.mutate({
       title: title.trim(),
       type,
@@ -273,7 +355,7 @@ const NewBookmark = () => {
       tags,
       mood_tags: selectedMoods,
       status: "backlog",
-      metadata,
+      metadata: metadataForSave,
     });
   };
 
@@ -388,7 +470,15 @@ const NewBookmark = () => {
           {/* Manual add option */}
           <div className="mt-8 text-center">
             <p className="text-sm text-muted-foreground mb-2">Don't have a link?</p>
-            <Button variant="outline" onClick={() => setStep("confirm")}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setMatchCandidates([]);
+                setMatchConfidence("unknown");
+                setSelectedCandidateId(null);
+                setStep("confirm");
+              }}
+            >
               Add manually without a link
             </Button>
           </div>
@@ -435,6 +525,57 @@ const NewBookmark = () => {
             </div>
           </div>
         )}
+        {matchCandidates.length > 1 && (
+          <div className="mb-6 rounded-lg border border-border bg-wm-surface p-3">
+            <p className="text-sm font-medium text-foreground">
+              {matchConfidence === "low" ? "Multiple close TMDB matches found" : "Choose the best TMDB match"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Pick one to auto-fill synopsis, runtime, and mood hints.
+            </p>
+            <div className="grid sm:grid-cols-2 gap-2 mt-3">
+              {matchCandidates.slice(0, 4).map((candidate) => {
+                const isActive = selectedCandidateId === candidate.tmdbId;
+                return (
+                  <button
+                    key={`${candidate.tmdbId}-${candidate.mediaType}`}
+                    type="button"
+                    onClick={() => applyMatchCandidate(candidate)}
+                    className={cn(
+                      "flex items-center gap-3 rounded-md border p-2 text-left transition-colors",
+                      isActive
+                        ? "border-primary bg-primary/10"
+                        : "border-border hover:border-primary/40 hover:bg-muted/40"
+                    )}
+                  >
+                    <div className="w-10 h-14 rounded overflow-hidden bg-muted flex-shrink-0">
+                      {candidate.posterUrl ? (
+                        <img
+                          src={candidate.posterUrl}
+                          alt={candidate.title}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
+                          ?
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{candidate.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {candidate.mediaType === "tv" ? "Series" : "Movie"}
+                        {candidate.releaseYear ? ` • ${candidate.releaseYear}` : ""}
+                        {candidate.runtimeMinutes ? ` • ${candidate.runtimeMinutes}m` : ""}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <form id="bookmark-form" onSubmit={handleSubmit}>
           <div className="grid md:grid-cols-[200px_1fr] gap-8">
             {/* Left: Poster preview */}
@@ -561,14 +702,14 @@ const NewBookmark = () => {
                 )}
               </div>
 
-              {/* Notes */}
+              {/* Description (synopsis) */}
               <div className="space-y-1.5">
-                <Label htmlFor="notes" className="text-sm font-medium">Notes</Label>
+                <Label htmlFor="description" className="text-sm font-medium">Description</Label>
                 <Textarea
-                  id="notes"
-                  placeholder="Why do you want to watch this? Any thoughts…"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  id="description"
+                  placeholder="Synopsis from TMDB or source metadata…"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
                   rows={2}
                   className="resize-none"
                 />
@@ -583,6 +724,18 @@ const NewBookmark = () => {
                   </Button>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="space-y-4 mt-3">
+                  {/* Personal notes */}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="my-notes" className="text-sm">My Notes</Label>
+                    <Textarea
+                      id="my-notes"
+                      placeholder="Personal thoughts, reminders, who recommended this…"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      rows={2}
+                      className="resize-none"
+                    />
+                  </div>
                   {/* Poster URL (hidden from main view — power user option) */}
                   <div className="space-y-1.5">
                     <Label className="text-sm">Poster URL</Label>
@@ -628,9 +781,9 @@ const NewBookmark = () => {
                     )}
                   </div>
 
-                  {/* Attachments */}
+                  {/* Files */}
                   <div className="space-y-2">
-                    <Label className="text-sm">Attachments</Label>
+                    <Label className="text-sm">Files (optional)</Label>
                     <div className="border-2 border-dashed border-border rounded-lg p-4 text-center">
                       <input
                         type="file"
@@ -642,7 +795,7 @@ const NewBookmark = () => {
                       />
                       <label htmlFor="attachments" className="cursor-pointer">
                         <Upload className="w-6 h-6 mx-auto mb-1.5 text-muted-foreground" />
-                        <p className="text-xs text-muted-foreground">Click to upload images or PDFs</p>
+                        <p className="text-xs text-muted-foreground">Upload screenshots, PDFs, or related files</p>
                       </label>
                     </div>
                     {attachments.length > 0 && (
