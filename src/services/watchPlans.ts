@@ -237,7 +237,12 @@ export const watchPlanService = {
             await batch.commit();
           }
         } catch (rollbackErr) {
-          console.error('Rollback of pending inserts also failed:', rollbackErr);
+          const pendingIds = newRefs.map((r) => r.id);
+          console.error(
+            'Rollback of pending inserts also failed. Orphaned pending doc IDs:',
+            pendingIds,
+            rollbackErr,
+          );
         }
         throw err;
       }

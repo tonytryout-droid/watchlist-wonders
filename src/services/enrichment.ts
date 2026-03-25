@@ -1,7 +1,3 @@
-const TMDB_BASE = 'https://api.themoviedb.org/3';
-const TMDB_IMG = 'https://image.tmdb.org/t/p';
-const YT_BASE = 'https://www.googleapis.com/youtube/v3';
-
 // Retry configuration
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY_MS = 500;
@@ -206,124 +202,9 @@ async function fetchOpenGraphMetadata(url: string): Promise<SocialMediaResult | 
   }
 }
 
-/**
- * Enrich a movie or TV show with TMDB metadata.
- * Returns null if the API key is missing or the request fails.
- */
-export async function enrichWithTMDB(
-  title: string,
-  mediaType: 'movie' | 'tv',
-  year?: number | null,
-): Promise<TmdbResult | null> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey) {
-    console.error('[Enrichment] TMDB API key not configured');
-    return null;
-  }
-
-  return withRetry(
-    async () => {
-      const params = new URLSearchParams({ api_key: apiKey, query: title });
-      if (year && mediaType === 'movie') params.set('year', String(year));
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-
-      const res = await fetch(`${TMDB_BASE}/search/${mediaType}?${params}`, {
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-
-      if (!res.ok) {
-        throw new Error(`TMDB API returned status ${res.status}`);
-      }
-
-      const data = await res.json();
-      const result = data.results?.[0];
-
-      if (!result) {
-        console.warn('[Enrichment] No TMDB results found for:', title);
-        return null;
-      }
-
-      const posterPath = result.poster_path;
-      const backdropPath = result.backdrop_path;
-      const rawDate: string | undefined =
-        mediaType === 'movie' ? result.release_date : result.first_air_date;
-      const releaseYear = rawDate ? parseInt(rawDate.slice(0, 4), 10) || null : null;
-
-      return {
-        poster_url: posterPath ? `${TMDB_IMG}/w500${posterPath}` : null,
-        backdrop_url: backdropPath ? `${TMDB_IMG}/original${backdropPath}` : null,
-        tmdb_id: result.id,
-        vote_average: result.vote_average ?? null,
-        release_year: releaseYear,
-        overview: result.overview || null,
-      };
-    },
-    `TMDB enrichment for "${title}"`,
-  );
-}
-
-/**
- * Enrich a YouTube video with its snippet and duration.
- * Returns null if the API key is missing or the request fails.
- */
-export async function enrichWithYouTube(videoId: string): Promise<YoutubeResult | null> {
-  const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
-  if (!apiKey) {
-    console.error('[Enrichment] YouTube API key not configured');
-    return null;
-  }
-
-  return withRetry(
-    async () => {
-      const params = new URLSearchParams({
-        id: videoId,
-        part: 'snippet,contentDetails',
-        key: apiKey,
-      });
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-
-      const res = await fetch(`${YT_BASE}/videos?${params}`, {
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-
-      if (!res.ok) {
-        throw new Error(`YouTube API returned status ${res.status}`);
-      }
-
-      const data = await res.json();
-      const item = data.items?.[0];
-
-      if (!item) {
-        console.warn('[Enrichment] No YouTube results found for video:', videoId);
-        return null;
-      }
-
-      const snippet = item.snippet ?? {};
-      const thumbnails = snippet.thumbnails ?? {};
-      const thumbnail_url =
-        thumbnails.maxres?.url ??
-        thumbnails.high?.url ??
-        thumbnails.medium?.url ??
-        null;
-      const duration_minutes = parseDurationMinutes(item.contentDetails?.duration ?? '');
-
-      return {
-        title: snippet.title ?? '',
-        description: snippet.description || null,
-        thumbnail_url,
-        duration_minutes,
-        channel_name: snippet.channelTitle || null,
-      };
-    },
-    `YouTube enrichment for video "${videoId}"`,
-  );
-}
+// enrichWithTMDB and enrichWithYouTube have been removed.
+// All TMDB and YouTube enrichment is handled server-side by the Firebase Cloud Function
+// (functions/src/enrich.ts) to prevent API key exposure in the browser bundle.
 
 /**
  * Enrich Instagram posts with OpenGraph metadata.
@@ -385,32 +266,4 @@ export async function enrichWithRottenTomatoes(url: string): Promise<SocialMedia
   return fetchOpenGraphMetadata(url);
 }
 
-/**
- * Validate that required API keys are configured
- */
-export function validateApiConfiguration(): {
-  isValid: boolean;
-  warnings: string[];
-  errors: string[];
-} {
-  const warnings: string[] = [];
-  const errors: string[] = [];
-
-  if (!import.meta.env.VITE_TMDB_API_KEY) {
-    warnings.push('TMDB API key not configured - movie/TV show enrichment will not work');
-  }
-
-  if (!import.meta.env.VITE_YOUTUBE_API_KEY) {
-    warnings.push('YouTube API key not configured - YouTube enrichment will not work');
-  }
-
-  // These are optional (fallback to OpenGraph)
-  // But log that they're missing if someone configures partial support
-
-  return {
-    isValid: errors.length === 0,
-    warnings,
-    errors,
-  };
-}
 
