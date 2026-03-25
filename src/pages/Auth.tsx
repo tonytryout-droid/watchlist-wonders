@@ -72,8 +72,15 @@ const Auth = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const { user, loading, signIn, signUp, signInWithGoogle } = useAuth();
+  const { user, loading, error: initError, signIn, signUp, signInWithGoogle } = useAuth();
   const isMobile = useIsMobile();
+
+  // Handle initialization errors (e.g. missing API keys)
+  useEffect(() => {
+    if (initError) {
+      setErrors((prev) => ({ ...prev, form: initError }));
+    }
+  }, [initError]);
 
   // Redirect if already logged in
   useEffect(() => {

@@ -44,54 +44,53 @@ const env = {
   VITE_FIREBASE_MEASUREMENT_ID: normalizeEnvValue(import.meta.env.VITE_FIREBASE_MEASUREMENT_ID),
 };
 
-const missingRequiredFirebaseEnv = REQUIRED_FIREBASE_ENV_KEYS.filter((key) => !env[key]);
+export const missingRequiredFirebaseEnv = REQUIRED_FIREBASE_ENV_KEYS.filter((key) => !env[key]);
 
-if (missingRequiredFirebaseEnv.length > 0) {
-  throw new Error(
-    `[Firebase] Missing required environment variables: ${missingRequiredFirebaseEnv.join(', ')}. ` +
-      'Update your .env file in the project root and restart the Vite dev server.',
-  );
-}
-
+// We don't throw here anymore to allow the app to initialize and show a meaningful error UI
 const firebaseConfig: FirebaseOptions = {
-  apiKey: env.VITE_FIREBASE_API_KEY!,
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN!,
-  projectId: env.VITE_FIREBASE_PROJECT_ID!,
-  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET!,
-  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID!,
-  appId: env.VITE_FIREBASE_APP_ID!,
+  apiKey: env.VITE_FIREBASE_API_KEY || '',
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || '',
+  projectId: env.VITE_FIREBASE_PROJECT_ID || '',
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || '',
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+  appId: env.VITE_FIREBASE_APP_ID || '',
   ...(env.VITE_FIREBASE_MEASUREMENT_ID ? { measurementId: env.VITE_FIREBASE_MEASUREMENT_ID } : {}),
 };
 
-const app = initializeApp(firebaseConfig);
+// Only initialize if we have the minimum requirements
+const isConfigValid = missingRequiredFirebaseEnv.length === 0;
+const app = isConfigValid ? initializeApp(firebaseConfig) : undefined;
 
 export const auth = (() => {
+  if (!app) return undefined as any;
   try {
     return getAuth(app);
   } catch (error) {
     const firebaseAuthError = error as { code?: string; message?: string };
     if (firebaseAuthError?.code === 'auth/invalid-api-key') {
-      throw new Error(
-        '[Firebase] auth/invalid-api-key: VITE_FIREBASE_API_KEY is invalid for this Firebase project or origin. ' +
-          'Copy apiKey from Firebase Console > Project settings > Your apps (Web app), ensure API key restrictions allow this domain (for local dev: localhost/127.0.0.1), then restart Vite.',
+      console.error(
+        '[Firebase] auth/invalid-api-key: VITE_FIREBASE_API_KEY is invalid for this Firebase project or origin.',
       );
     }
     throw error;
   }
 })();
-export const db = getFirestore(app);
-export const storage = getStorage(app);
-export const fbFunctions = getFunctions(app);
+
+export const db = app ? getFirestore(app) : undefined as any;
+export const storage = app ? getStorage(app) : undefined as any;
+export const fbFunctions = app ? getFunctions(app) : undefined as any;
 
 // Enable offline persistence (IndexedDB) - non-fatal if already enabled or in a second tab
-enableIndexedDbPersistence(db).catch((err) => {
-  if (err.code === 'failed-precondition') {
-    // Multiple tabs open - persistence only works in one tab at a time
-    console.warn('[Firebase] Offline persistence unavailable: multiple tabs open');
-  } else if (err.code === 'unimplemented') {
-    // Browser doesn't support IndexedDB
-    console.warn('[Firebase] Offline persistence not supported in this browser');
-  } else {
-    console.error('[Firebase] Unexpected error enabling offline persistence:', err);
-  }
-});
+if (db) {
+  enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      // Multiple tabs open - persistence only works in one tab at a time
+      console.warn('[Firebase] Offline persistence unavailable: multiple tabs open');
+    } else if (err.code === 'unimplemented') {
+      // Browser doesn't support IndexedDB
+      console.warn('[Firebase] Offline persistence not supported in this browser');
+    } else {
+      console.error('[Firebase] Unexpected error enabling offline persistence:', err);
+    }
+  });
+}
