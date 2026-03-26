@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
@@ -495,42 +495,6 @@ const Dashboard = () => {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-background pt-[68px]">
-        <div className="px-4 sm:px-6 lg:px-8 pt-6 pb-8 space-y-4">
-          <div className="h-14 bg-wm-surface rounded-xl animate-pulse" />
-          <div className="h-10 bg-wm-surface rounded-lg animate-pulse w-2/3" />
-        </div>
-        <div className="space-y-2">
-          <SkeletonRail count={6} />
-          <SkeletonRail count={6} />
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-4">
-        <div className="max-w-sm w-full text-center space-y-5">
-          <div className="flex justify-center">
-            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
-              <ArrowUpDown className="w-8 h-8 text-muted-foreground" aria-hidden="true" />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <p className="font-semibold text-foreground">Couldn't load your watchlist</p>
-            <p className="text-sm text-muted-foreground">Check your connection and try again.</p>
-          </div>
-          <Button onClick={() => refetch()} className="w-full sm:w-auto">
-            Try again
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   // Check if filters are active (basic or advanced)
   const hasActiveFilters =
     filterType !== "all" ||
@@ -668,6 +632,42 @@ const Dashboard = () => {
 
   // When filters are active, rails use a contextual empty message instead of the default
   const filteredEmptyMessage = hasActiveFilters ? "No matches for your current filters" : undefined;
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background pt-[68px]">
+        <div className="px-4 sm:px-6 lg:px-8 pt-6 pb-8 space-y-4">
+          <div className="h-14 bg-wm-surface rounded-xl animate-pulse" />
+          <div className="h-10 bg-wm-surface rounded-lg animate-pulse w-2/3" />
+        </div>
+        <div className="space-y-2">
+          <SkeletonRail count={6} />
+          <SkeletonRail count={6} />
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="max-w-sm w-full text-center space-y-5">
+          <div className="flex justify-center">
+            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+              <ArrowUpDown className="w-8 h-8 text-muted-foreground" aria-hidden="true" />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <p className="font-semibold text-foreground">Couldn't load your watchlist</p>
+            <p className="text-sm text-muted-foreground">Check your connection and try again.</p>
+          </div>
+          <Button onClick={() => refetch()} className="w-full sm:w-auto">
+            Try again
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-full bg-background pb-20 md:pb-0">
