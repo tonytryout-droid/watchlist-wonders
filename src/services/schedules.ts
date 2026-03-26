@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { Schedule, Bookmark } from '@/types/database';
+import { normalizeBookmark } from '@/services/bookmarkNormalizer';
 
 type ScheduleWithBookmark = Schedule & { bookmarks: Bookmark };
 
@@ -38,7 +39,7 @@ async function batchAttachBookmarks(uid: string, schedules: Schedule[]): Promise
     try {
       const bSnap = await getDocs(bq);
       bSnap.docs.forEach((d) => {
-        bookmarkMap.set(d.id, { id: d.id, ...d.data() } as Bookmark);
+        bookmarkMap.set(d.id, normalizeBookmark(d.id, d.data()));
       });
     } catch (err) {
       console.error(`[schedules] Failed to fetch bookmark chunk starting at index ${i}:`, err);

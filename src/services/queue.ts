@@ -23,6 +23,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { Bookmark } from '@/types/database';
+import { normalizeBookmark } from '@/services/bookmarkNormalizer';
 
 const DEFAULT_PRIORITY = 100;
 
@@ -37,7 +38,7 @@ function bookmarksCol(uid: string) {
 }
 
 function docToBookmark(snap: { id: string; data: () => Record<string, unknown> }): Bookmark {
-  return { id: snap.id, ...snap.data() } as Bookmark;
+  return normalizeBookmark(snap.id, snap.data());
 }
 
 export const queueService = {

@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import type { Bookmark } from '@/types/database';
+import { normalizeBookmark } from '@/services/bookmarkNormalizer';
 
 function getUid(): string {
   const user = auth.currentUser;
@@ -57,7 +58,7 @@ export const sharingService = {
     // Path is users/{uid}/bookmarks/{id}
     const owner_uid = d.ref.parent.parent?.id;
     if (!owner_uid) throw new Error('malformed bookmark path: missing owner uid');
-    return { id: d.id, owner_uid, ...d.data() } as Bookmark & { owner_uid: string };
+    return { ...normalizeBookmark(d.id, d.data()), owner_uid };
   },
 
   /** Fetch all public bookmarks by a specific user. */
@@ -69,6 +70,6 @@ export const sharingService = {
       limit(lim),
     );
     const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Bookmark);
+    return snap.docs.map((d) => normalizeBookmark(d.id, d.data()));
   },
 };

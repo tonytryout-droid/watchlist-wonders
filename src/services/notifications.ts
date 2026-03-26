@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { Notification, Bookmark } from '@/types/database';
+import { normalizeBookmark } from '@/services/bookmarkNormalizer';
 
 type NotificationWithBookmark = Notification & { bookmarks?: Bookmark };
 
@@ -39,7 +40,7 @@ async function batchAttachBookmarks(uid: string, notifications: Notification[]):
       const bq = query(collection(db, 'users', uid, 'bookmarks'), where(documentId(), 'in', chunk));
       const bSnap = await getDocs(bq);
       bSnap.docs.forEach((d) => {
-        bookmarkMap.set(d.id, { id: d.id, ...d.data() } as Bookmark);
+        bookmarkMap.set(d.id, normalizeBookmark(d.id, d.data()));
       });
     } catch (error) {
       console.error(

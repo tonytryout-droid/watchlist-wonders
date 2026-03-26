@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { WatchPlan, Bookmark } from '@/types/database';
+import { normalizeBookmark } from '@/services/bookmarkNormalizer';
 
 type WatchPlanBookmarkRow = {
   plan_id: string;
@@ -134,7 +135,7 @@ export const watchPlanService = {
       );
       const bSnap = await getDocs(bq);
       bSnap.docs.forEach((d) => {
-        bookmarkMap.set(d.id, { id: d.id, ...d.data() } as Bookmark);
+        bookmarkMap.set(d.id, normalizeBookmark(d.id, d.data()));
       });
     }
 

@@ -13,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { Bookmark } from '@/types/database';
+import { normalizeBookmark } from '@/services/bookmarkNormalizer';
 
 function getUid(): string {
   const user = auth.currentUser;
@@ -25,7 +26,7 @@ function bookmarksCol(uid: string) {
 }
 
 function docToBookmark(snap: any): Bookmark {
-  return { id: snap.id, ...snap.data() } as Bookmark;
+  return normalizeBookmark(snap.id, snap.data());
 }
 
 export const bookmarkService = {
