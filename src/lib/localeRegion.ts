@@ -15,7 +15,7 @@ function extractRegionFromLocale(locale: string): string | null {
 }
 
 export function buildRegionFallbackList(preferredRegion?: string | null): string[] {
-  const candidates = [preferredRegion, "ZA", "US"];
+  const candidates = [preferredRegion, "BW", "ZA", "US"];
   const deduped = new Set<string>();
 
   for (const candidate of candidates) {
@@ -37,5 +37,5 @@ export function getPreferredRegionFromBrowser(): string | undefined {
     if (region) return region;
   }
 
-  return undefined;
+  return "US";
 }

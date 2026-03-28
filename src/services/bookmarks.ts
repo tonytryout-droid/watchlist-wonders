@@ -10,10 +10,22 @@ import {
   where,
   orderBy,
   increment,
+  runTransaction,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { Bookmark } from '@/types/database';
+import { buildLifecycleUpdate, deriveLifecycleState } from "@/engine/lifecycle";
 import { normalizeBookmark } from '@/services/bookmarkNormalizer';
+import {
+  DEFAULT_WATCH_REGION,
+  resolveAndFetchAvailability,
+  toAvailabilityMetadataUpdate,
+} from "@/services/watchAvailability";
+import { getPreferredRegionFromBrowser } from "@/lib/localeRegion";
+import {
+  validateBookmarkCreateVisibility,
+  validateBookmarkUpdateVisibility,
+} from "@/services/bookmarkVisibility";
 
 function getUid(): string {
   const user = auth.currentUser;
@@ -29,15 +41,74 @@ function docToBookmark(snap: any): Bookmark {
   return normalizeBookmark(snap.id, snap.data());
 }
 
+async function prefetchAvailabilityForBookmark(params: {
+  uid: string;
+  bookmarkId: string;
+  title: string;
+  type: Bookmark["type"];
+  provider: Bookmark["provider"];
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  const { uid, bookmarkId, title, type, provider, metadata } = params;
+  if (!title.trim()) return;
+
+  try {
+    const preferredRegion = getPreferredRegionFromBrowser() ?? DEFAULT_WATCH_REGION;
+    const { availability, tmdbId } = await resolveAndFetchAvailability(
+      { title, type, provider, metadata },
+      preferredRegion,
+    );
+    const ref = doc(db, 'users', uid, 'bookmarks', bookmarkId);
+    const metadataUpdate = toAvailabilityMetadataUpdate(metadata, availability, tmdbId);
+    const fetchedAt = new Date().toISOString();
+
+    await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists()) return;
+
+      const currentMetadataRaw = snapshot.data().metadata;
+      const currentMetadata =
+        currentMetadataRaw && typeof currentMetadataRaw === "object" && !Array.isArray(currentMetadataRaw)
+          ? (currentMetadataRaw as Record<string, unknown>)
+          : {};
+
+      const payload: Record<string, unknown> = {
+        availability,
+        "metadata.availability": metadataUpdate.availability,
+        availability_fetched_at: fetchedAt,
+      };
+
+      if (
+        metadataUpdate.tmdb_id &&
+        !metadata?.tmdb_id &&
+        !metadata?.tmdbId &&
+        !currentMetadata.tmdb_id &&
+        !currentMetadata.tmdbId
+      ) {
+        payload["metadata.tmdb_id"] = metadataUpdate.tmdb_id;
+      }
+
+      transaction.update(ref, payload);
+    });
+  } catch (error) {
+    console.warn("[bookmarkService] availability prefetch failed", error);
+  }
+}
+
 export const bookmarkService = {
   /**
    * Get all bookmarks for the current user
    */
   async getBookmarks(): Promise<Bookmark[]> {
     const uid = getUid();
-    const q = query(bookmarksCol(uid), orderBy('created_at', 'desc'));
-    const snap = await getDocs(q);
-    return snap.docs.map(docToBookmark);
+    try {
+      const q = query(bookmarksCol(uid), orderBy('created_at', 'desc'));
+      const snap = await getDocs(q);
+      return snap.docs.map(docToBookmark);
+    } catch (error) {
+      console.error('[bookmarkService] getBookmarks failed', error);
+      throw error;
+    }
   },
 
   /**
@@ -45,13 +116,18 @@ export const bookmarkService = {
    */
   async getBookmarksByStatus(status: Bookmark['status']): Promise<Bookmark[]> {
     const uid = getUid();
-    const q = query(
-      bookmarksCol(uid),
-      where('status', '==', status),
-      orderBy('created_at', 'desc'),
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map(docToBookmark);
+    try {
+      const q = query(
+        bookmarksCol(uid),
+        where('status', '==', status),
+        orderBy('created_at', 'desc'),
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map(docToBookmark);
+    } catch (error) {
+      console.error('[bookmarkService] getBookmarksByStatus failed', { status, error });
+      throw error;
+    }
   },
 
   /**
@@ -70,6 +146,41 @@ export const bookmarkService = {
   async createBookmark(bookmark: Partial<Bookmark> & { title: string }): Promise<Bookmark> {
     const uid = getUid();
     const now = new Date().toISOString();
+    const baseMetadata = bookmark.metadata || {};
+    const initialStatus = bookmark.status || "backlog";
+    const initialQueueStatus = bookmark.queue_status ?? "queued";
+    validateBookmarkCreateVisibility({
+      is_vaulted: bookmark.is_vaulted,
+      is_public: bookmark.is_public,
+    });
+    const lifecycleSeed = deriveLifecycleState({
+      id: bookmark.id ?? "pending-create",
+      user_id: uid,
+      title: bookmark.title,
+      type: bookmark.type || "movie",
+      provider: bookmark.provider || "generic",
+      source_url: bookmark.source_url ?? null,
+      canonical_url: bookmark.canonical_url ?? null,
+      platform_label: bookmark.platform_label ?? null,
+      status: initialStatus,
+      runtime_minutes: bookmark.runtime_minutes ?? null,
+      release_year: bookmark.release_year ?? null,
+      poster_url: bookmark.poster_url ?? null,
+      backdrop_url: bookmark.backdrop_url ?? null,
+      tags: bookmark.tags || [],
+      mood_tags: bookmark.mood_tags || [],
+      notes: bookmark.notes ?? null,
+      metadata: baseMetadata,
+      last_shown_at: null,
+      shown_count: 0,
+      created_at: now,
+      updated_at: now,
+      is_public: bookmark.is_public ?? false,
+      is_vaulted: bookmark.is_vaulted ?? false,
+      priority: bookmark.priority ?? 100,
+      queue_status: initialQueueStatus,
+      progress_percent: bookmark.progress_percent ?? 0,
+    });
     const data = {
       title: bookmark.title,
       type: bookmark.type || 'movie',
@@ -85,18 +196,33 @@ export const bookmarkService = {
       tags: bookmark.tags || [],
       mood_tags: bookmark.mood_tags || [],
       notes: bookmark.notes ?? null,
-      metadata: bookmark.metadata || {},
+      metadata: {
+        ...baseMetadata,
+        lifecycle_state: lifecycleSeed,
+        lifecycle_updated_at: now,
+      },
       user_id: uid,
+      is_public: bookmark.is_public ?? false,
       last_shown_at: null,
       shown_count: 0,
+      is_vaulted: bookmark.is_vaulted ?? false,
       // Queue engine defaults
       priority: bookmark.priority ?? 100,
-      queue_status: bookmark.queue_status ?? 'queued',
+      queue_status: initialQueueStatus,
       progress_percent: bookmark.progress_percent ?? 0,
+      availability: bookmark.availability ?? null,
       created_at: now,
       updated_at: now,
     };
     const ref = await addDoc(bookmarksCol(uid), data);
+    void prefetchAvailabilityForBookmark({
+      uid,
+      bookmarkId: ref.id,
+      title: data.title,
+      type: data.type,
+      provider: data.provider,
+      metadata: data.metadata,
+    });
     return { id: ref.id, ...data } as Bookmark;
   },
 
@@ -106,7 +232,54 @@ export const bookmarkService = {
   async updateBookmark(id: string, updates: Partial<Bookmark>): Promise<Bookmark> {
     const uid = getUid();
     const ref = doc(db, 'users', uid, 'bookmarks', id);
-    await updateDoc(ref, { ...updates, updated_at: new Date().toISOString() });
+    if (updates.is_vaulted !== undefined || updates.is_public !== undefined) {
+      const currentSnap = await getDoc(ref);
+      if (!currentSnap.exists()) throw new Error('Bookmark not found');
+      const currentData = currentSnap.data() as Partial<Bookmark>;
+      validateBookmarkUpdateVisibility(
+        {
+          is_vaulted: currentData.is_vaulted,
+          is_public: currentData.is_public,
+        },
+        {
+          is_vaulted: updates.is_vaulted,
+          is_public: updates.is_public,
+        },
+      );
+    }
+    const { metadata, availability, ...restUpdates } = updates;
+    
+    // Define the set of fields that are safe to update (allow-list)
+    // Exclude immutable fields: id, user_id, created_at, share_token
+    const allowedUpdateFields = new Set<string>([
+      'title', 'type', 'provider', 'source_url', 'canonical_url',
+      'platform_label', 'status', 'runtime_minutes', 'release_year',
+      'poster_url', 'backdrop_url', 'tags', 'mood_tags', 'notes',
+      'last_shown_at', 'shown_count', 'user_rating', 'user_review',
+      'watched_at', 'is_public', 'is_vaulted', 'priority',
+      'queue_status', 'progress_percent'
+    ]);
+    
+    // Filter restUpdates to only include allowed mutable fields
+    const filteredUpdates = Object.entries(restUpdates)
+      .filter(([key]) => allowedUpdateFields.has(key))
+      .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
+    
+    const nextUpdates: Record<string, unknown> = {
+      ...filteredUpdates,
+      updated_at: new Date().toISOString(),
+    };
+    if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
+      for (const [key, value] of Object.entries(metadata)) {
+        nextUpdates[`metadata.${key}`] = value;
+      }
+    }
+    if (availability !== undefined) {
+      nextUpdates.availability = availability;
+      nextUpdates["metadata.availability"] = availability;
+    }
+
+    await updateDoc(ref, nextUpdates);
     const snap = await getDoc(ref);
     if (!snap.exists()) throw new Error('Bookmark not found after update');
     return docToBookmark(snap);
@@ -124,13 +297,8 @@ export const bookmarkService = {
    * Update bookmark status, setting watched_at when first marked done
    */
   async updateStatus(id: string, status: Bookmark['status']): Promise<Bookmark> {
-    const updates: Partial<Bookmark> = { status };
-    if (status === 'done') {
-      const current = await this.getBookmark(id);
-      if (!current.watched_at) {
-        updates.watched_at = new Date().toISOString();
-      }
-    }
+    const current = await this.getBookmark(id);
+    const updates = buildLifecycleUpdate(current, status, new Date());
     return this.updateBookmark(id, updates);
   },
 

@@ -63,7 +63,7 @@ function normalizeTmdbId(value: unknown): number {
 }
 
 function buildRegionFallbackList(preferredRegion?: string): string[] {
-  const candidates = [preferredRegion, 'ZA', 'US'];
+  const candidates = [preferredRegion, 'BW', 'ZA', 'US'];
   const deduped = new Set<string>();
 
   for (const candidate of candidates) {

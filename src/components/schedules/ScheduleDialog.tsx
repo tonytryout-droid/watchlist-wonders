@@ -26,7 +26,7 @@
 import { useState } from "react";
 import { addDays, addWeeks, addMonths, format, isValid } from "date-fns";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Calendar, Clock, Bell, RefreshCw } from "lucide-react";
+import { Loader2, Calendar, Clock, Bell, RefreshCw, CalendarPlus } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -42,7 +42,9 @@ import { getSafeErrorMessage } from "@/lib/errorMessage";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { scheduleService } from "@/services/schedules";
-import type { Bookmark } from "@/types/database";
+import { bookmarkService } from "@/services/bookmarks";
+import { downloadICS } from "@/utils/createICS";
+import type { Bookmark, Schedule } from "@/types/database";
 
 interface ScheduleDialogProps {
   bookmark: Bookmark | null;
@@ -82,6 +84,16 @@ export function ScheduleDialog({ bookmark, open, onOpenChange, onScheduled }: Sc
   const [reminderOffset, setReminderOffset] = useState("60");
   const [recurrence, setRecurrence] = useState<Recurrence>("none");
   const [formError, setFormError] = useState<string | null>(null);
+  const [createdSchedule, setCreatedSchedule] = useState<Schedule | null>(null);
+
+  const resetFormState = () => {
+    setScheduleDate(getLocalDateInputValue());
+    setScheduleTime("20:00");
+    setReminderOffset("60");
+    setRecurrence("none");
+    setFormError(null);
+    setCreatedSchedule(null);
+  };
 
   // Compute the parsed date for live preview
   const parsedDate =
@@ -139,11 +151,23 @@ export function ScheduleDialog({ bookmark, open, onOpenChange, onScheduled }: Sc
           throw new Error(`Failed to create ${rejected.length} recurring schedule(s). Changes rolled back.`);
         }
       }
+      if (bookmark.status !== "done") {
+        try {
+          await bookmarkService.updateStatus(bookmark.id, "scheduled");
+        } catch (error) {
+          console.warn("Schedule created but failed to update bookmark status:", error);
+        }
+      }
+      return primary;
     },
-    onSuccess: () => {
+    onSuccess: (primary) => {
+      setCreatedSchedule(primary);
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
       queryClient.invalidateQueries({ queryKey: ["schedules", "upcoming"] });
-      onOpenChange(false);
+      queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
+      if (bookmark?.id) {
+        queryClient.invalidateQueries({ queryKey: ["bookmark", bookmark.id] });
+      }
       onScheduled?.();
       const recurrenceLabel = recurrence !== "none"
         ? ` · repeats ${recurrence === "daily" ? "daily (4×)" : recurrence === "weekly" ? "weekly (4×)" : "monthly (4×)"}`
@@ -164,8 +188,13 @@ export function ScheduleDialog({ bookmark, open, onOpenChange, onScheduled }: Sc
     },
   });
 
+  const handleOpenChange = (isOpen: boolean) => {
+    if (!isOpen) resetFormState();
+    onOpenChange(isOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle className="truncate">Schedule "{bookmark?.title ?? "Untitled"}"</DialogTitle>
@@ -271,24 +300,50 @@ export function ScheduleDialog({ bookmark, open, onOpenChange, onScheduled }: Sc
           )}
 
           {/* Actions */}
-          <div className="flex gap-2 pt-1">
-            <Button variant="ghost" className="flex-1" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button
-              className="flex-1"
-              onClick={() => mutation.mutate()}
-              disabled={mutation.isPending || !scheduleDate || !scheduleTime || isPast}
-            >
-              {mutation.isPending ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Scheduling…</>
-              ) : parsedDate && !isPast ? (
-                `Schedule for ${format(parsedDate, "EEE, MMM d")}`
-              ) : (
-                "Schedule"
-              )}
-            </Button>
-          </div>
+          {!createdSchedule && (
+            <div className="flex gap-2 pt-1">
+              <Button variant="ghost" className="flex-1" onClick={() => handleOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={() => mutation.mutate()}
+                disabled={mutation.isPending || !scheduleDate || !scheduleTime || isPast}
+              >
+                {mutation.isPending ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Scheduling…</>
+                ) : parsedDate && !isPast ? (
+                  `Schedule for ${format(parsedDate, "EEE, MMM d")}`
+                ) : (
+                  "Schedule"
+                )}
+              </Button>
+            </div>
+          )}
+
+          {/* Add to Calendar — shown after scheduling */}
+          {createdSchedule && bookmark && (
+            <div className="pt-2 space-y-2">
+              <Button
+                variant="outline"
+                className="w-full gap-2"
+                onClick={() => downloadICS(bookmark, createdSchedule)}
+              >
+                <CalendarPlus className="w-4 h-4" />
+                Add to Calendar (.ics)
+              </Button>
+              <p className="text-xs text-muted-foreground text-center">
+                Works with Apple Calendar, Google Calendar &amp; Outlook
+              </p>
+              <Button
+                variant="ghost"
+                className="w-full text-muted-foreground"
+                onClick={() => handleOpenChange(false)}
+              >
+                Done
+              </Button>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

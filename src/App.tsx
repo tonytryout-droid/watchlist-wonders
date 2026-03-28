@@ -27,6 +27,7 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const PublicProfile = lazy(() => import("./pages/PublicProfile"));
 const ShareView = lazy(() => import("./pages/ShareView"));
 const Stats = lazy(() => import("./pages/Stats"));
+const Vault = lazy(() => import("./pages/Vault"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -64,6 +65,7 @@ const App = () => (
                   <Route element={<ProtectedRoute />}>
                     <Route element={<AppLayout />}>
                       <Route path="/dashboard" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+                      <Route path="/vault" element={<ErrorBoundary><Vault /></ErrorBoundary>} />
                       <Route path="/new" element={<ErrorBoundary><NewBookmark /></ErrorBoundary>} />
                       <Route path="/tonight" element={<ErrorBoundary><TonightPick /></ErrorBoundary>} />
                       <Route path="/plans" element={<ErrorBoundary><Plans /></ErrorBoundary>} />

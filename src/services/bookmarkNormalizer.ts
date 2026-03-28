@@ -22,6 +22,13 @@ function asRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
+function asOptionalRecord(value: unknown): Record<string, unknown> | undefined {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return undefined;
+}
+
 function asTrimmedString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -117,6 +124,12 @@ export function normalizeBookmark(id: string, raw: unknown): Bookmark {
   const createdAt = asIsoString(data.created_at, now) ?? now;
   const updatedAt = asIsoString(data.updated_at, createdAt) ?? createdAt;
 
+  const metadata = asRecord(data.metadata);
+  const availability =
+    (asOptionalRecord(data.availability) ?? asOptionalRecord(metadata.availability)) as
+      | Bookmark["availability"]
+      | undefined;
+
   return {
     id,
     user_id: asTrimmedString(data.user_id) ?? "",
@@ -134,7 +147,7 @@ export function normalizeBookmark(id: string, raw: unknown): Bookmark {
     tags: asStringArray(data.tags),
     mood_tags: asStringArray(data.mood_tags),
     notes: asTrimmedString(data.notes),
-    metadata: asRecord(data.metadata),
+    metadata,
     last_shown_at: asIsoString(data.last_shown_at),
     shown_count: asNonNegativeInteger(data.shown_count, 0),
     created_at: createdAt,
@@ -144,8 +157,10 @@ export function normalizeBookmark(id: string, raw: unknown): Bookmark {
     watched_at: asIsoString(data.watched_at),
     is_public: asBoolean(data.is_public),
     share_token: asTrimmedString(data.share_token) ?? undefined,
+    is_vaulted: asBoolean(data.is_vaulted),
     priority: asFiniteNumber(data.priority) ?? 100,
     queue_status: normalizeQueueStatus(data.queue_status, status),
     progress_percent: clampPercent(data.progress_percent),
+    availability: availability ?? null,
   };
 }

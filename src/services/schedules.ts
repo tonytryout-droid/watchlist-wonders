@@ -153,6 +153,7 @@ export const scheduleService = {
    * Snooze a schedule
    */
   async snoozeSchedule(id: string, snoozeMinutes: number): Promise<Schedule> {
+    if (snoozeMinutes <= 0) throw new Error('snoozeMinutes must be a positive number');
     const uid = getUid();
     const snap = await getDoc(doc(db, 'users', uid, 'schedules', id));
     if (!snap.exists()) throw new Error('Schedule not found');
@@ -181,6 +182,24 @@ export const scheduleService = {
       where('scheduled_for', '>=', today.toISOString()),
       where('scheduled_for', '<', tomorrow.toISOString()),
       orderBy('scheduled_for', 'asc'),
+    );
+    const snap = await getDocs(q);
+    return batchAttachBookmarks(uid, snap.docs.map(docToSchedule));
+  },
+
+  /**
+   * Get schedules that were missed (scheduled_for < today, still in 'scheduled' state)
+   */
+  async getMissedSchedules(): Promise<ScheduleWithBookmark[]> {
+    const uid = getUid();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const q = query(
+      schedulesCol(uid),
+      where('state', '==', 'scheduled'),
+      where('scheduled_for', '<', today.toISOString()),
+      orderBy('scheduled_for', 'desc'),
+      limit(10),
     );
     const snap = await getDocs(q);
     return batchAttachBookmarks(uid, snap.docs.map(docToSchedule));

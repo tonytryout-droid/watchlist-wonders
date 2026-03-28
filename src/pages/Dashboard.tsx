@@ -1,32 +1,32 @@
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
-import { format } from "date-fns";
-import { CalendarClock, Shuffle, ArrowUpDown, Play, Check, Sparkles } from "lucide-react";
-import { generateRails } from "@/lib/railGenerator";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { ArrowUpDown } from "lucide-react";
 import { HeroBanner } from "@/components/layout/HeroBanner";
 import { Rail } from "@/components/bookmarks/Rail";
-import { FilterChips } from "@/components/dashboard/FilterChips";
-import { FilterPanel, type AdvancedFilters } from "@/components/dashboard/FilterPanel";
-import { BulkActionBar } from "@/components/dashboard/BulkActionBar";
-import { StatsBar } from "@/components/dashboard/StatsBar";
-import { MoodPicker } from "@/components/dashboard/MoodPicker";
-import { IntentBar, type IntentType } from "@/components/dashboard/IntentBar";
 import { DecisionMode } from "@/components/bookmarks/DecisionMode";
 import { SkeletonRail } from "@/components/ui/skeleton-card";
 import { EmptyStateGuide } from "@/components/EmptyStateGuide";
 import { DashboardTour } from "@/components/onboarding/DashboardTour";
+import { WelcomeFlow, type OnboardingSuggestion } from "@/components/onboarding/WelcomeFlow";
 import { useDashboardTour } from "@/hooks/useDashboardTour";
 import { CompletionSheet } from "@/components/bookmarks/CompletionSheet";
 import { bookmarkService } from "@/services/bookmarks";
 import { queueService } from "@/services/queue";
 import { scheduleService } from "@/services/schedules";
 import { ScheduleDialog } from "@/components/schedules/ScheduleDialog";
+import { MissedSchedulesBanner } from "@/components/schedules/MissedSchedulesBanner";
 import { watchPlanService } from "@/services/watchPlans";
+import { sharingService } from "@/services/sharing";
+import { socialService } from "@/services/social";
 import { useToast } from "@/hooks/use-toast";
 import { getSafeErrorMessage } from "@/lib/errorMessage";
+import { buildDecisionSnapshot } from "@/engine/decisionEngine";
+import { buildDemoDataset } from "@/engine/demoData";
+import { useWatchStreak } from "@/hooks/useWatchStreak";
+import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
-import type { Bookmark } from "@/types/database";
+import type { Bookmark, Schedule } from "@/types/database";
 import {
   Dialog,
   DialogContent,
@@ -34,24 +34,72 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { ToastAction } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { formatRuntime, shuffleArray } from "@/lib/utils";
 
-type FilterType = "all" | "movie" | "series" | "video" | "doc";
-type FilterStatus = "all" | "backlog" | "watching" | "done";
-type SortOption = "newest" | "oldest" | "az" | "runtime" | "rating";
+type DecisionIntentSeed = "quick" | "deep" | "random" | "continue";
+type ScheduleWithBookmark = {
+  id: string;
+  bookmark_id: string;
+  scheduled_for: string;
+  bookmarks: Bookmark | null;
+};
+
+const DEMO_URL = "https://tiktok.com/@user/video/demo";
+const WELCOME_FLOW_KEY_PREFIX = "ww_welcome_flow_v1_";
+const NEW_ACCOUNT_WINDOW_MS = 5 * 60 * 1000;
+const MAX_SUPPORTING_RAILS = 4;
+const INTENT_VALUES: DecisionIntentSeed[] = ["quick", "deep", "random", "continue"];
+
+function parseIntentParam(intentParam: string | null): DecisionIntentSeed | null {
+  if (!intentParam) return null;
+  return INTENT_VALUES.includes(intentParam as DecisionIntentSeed) ? (intentParam as DecisionIntentSeed) : null;
+}
+
+function buildDemoBookmark(): Bookmark {
+  const now = new Date().toISOString();
+  return {
+    id: "demo-1",
+    user_id: "demo",
+    title: "Inception",
+    type: "movie",
+    provider: "tiktok",
+    source_url: DEMO_URL,
+    canonical_url: DEMO_URL,
+    platform_label: "TikTok",
+    status: "backlog",
+    runtime_minutes: 148,
+    release_year: 2010,
+    poster_url: null,
+    backdrop_url: null,
+    tags: ["demo"],
+    mood_tags: ["mind-bending", "thriller"],
+    notes: "Saved from a short clip.",
+    metadata: { isDemo: true },
+    last_shown_at: null,
+    shown_count: 0,
+    created_at: now,
+    updated_at: now,
+    priority: 200,
+    queue_status: "up_next",
+    progress_percent: 0,
+  };
+}
+
+function DemoTooltip({ message }: { message: string }) {
+  return (
+    <div className="fixed bottom-24 left-1/2 z-[60] -translate-x-1/2 rounded-lg bg-black px-4 py-2 text-sm text-white shadow-2xl">
+      {message}
+    </div>
+  );
+}
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { user } = useAuth();
   const { showTour, dismissTour } = useDashboardTour();
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
@@ -59,43 +107,57 @@ const Dashboard = () => {
   const [completionBookmark, setCompletionBookmark] = useState<Bookmark | null>(null);
   const [completionSheetOpen, setCompletionSheetOpen] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState("");
-  
-  // Filter state
-  const [filterType, setFilterType] = useState<FilterType>("all");
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
-  const [activeMood, setActiveMood] = useState<string | null>(null);
-  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
-  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>({
-    providers: [], moods: [], runtimeMin: null, runtimeMax: null,
-  });
-
-  // Sort + Surprise Me state
-  const [sortBy, setSortBy] = useState<SortOption>("newest");
-  const [surpriseBookmark, setSurpriseBookmark] = useState<Bookmark | null>(null);
 
   // Decision Mode + Intent
   const [decisionModeOpen, setDecisionModeOpen] = useState(false);
-  const [activeIntent, setActiveIntent] = useState<IntentType | null>(null);
-  const [shuffledForRandom, setShuffledForRandom] = useState<Bookmark[]>([]);
+  const [decisionSeedIntent, setDecisionSeedIntent] = useState<DecisionIntentSeed | null>(null);
 
-  // Bulk select state
-  const [selectMode, setSelectMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  
+  // Missed banner state
+  const [dismissedMissedBanner, setDismissedMissedBanner] = useState(false);
+
+  // Local demo flow state
+  const [demoActive, setDemoActive] = useState(false);
+  const [demoStep, setDemoStep] = useState(0);
+  const [demoItem, setDemoItem] = useState<Bookmark | null>(null);
+  const [demoLoading, setDemoLoading] = useState(false);
+  const [demoInputValue, setDemoInputValue] = useState("");
+  const [now, setNow] = useState(() => new Date());
+  const [highlightBookmarkId, setHighlightBookmarkId] = useState<string | null>(null);
+  const [welcomeFlowDismissed, setWelcomeFlowDismissed] = useState(true);
+  const [welcomeFlowActive, setWelcomeFlowActive] = useState(false);
+  const accountCreationTime = user?.metadata?.creationTime
+    ? new Date(user.metadata.creationTime).getTime()
+    : null;
+  const isNewAccount =
+    accountCreationTime !== null && Date.now() - accountCreationTime <= NEW_ACCOUNT_WINDOW_MS;
+
   const { toast } = useToast();
+  const { streak } = useWatchStreak();
   const queryClient = useQueryClient();
+  const demoRunIdRef = useRef(0);
+  const demoTimeoutsRef = useRef<number[]>([]);
+  const upNextHighlightRef = useRef<HTMLDivElement | null>(null);
+  const watchNextRailRef = useRef<HTMLDivElement | null>(null);
+  const hasAutoFocusedWatchNextRef = useRef(false);
 
   // Fetch bookmarks
-  const { data: bookmarks = [], isLoading, error, refetch } = useQuery({
+  const { data: bookmarksData = [], isLoading, error, refetch } = useQuery({
     queryKey: ['bookmarks'],
     queryFn: () => bookmarkService.getBookmarks(),
   });
 
-  // Fetch upcoming schedules for "Up Next" rail
+  // Fetch upcoming schedules for "Planned" rail + schedule badges
   const { data: upcomingSchedules = [] } = useQuery({
     queryKey: ['schedules', 'upcoming'],
     queryFn: () => scheduleService.getUpcomingSchedules(8),
     staleTime: 2 * 60 * 1000,
+  });
+
+  // Fetch missed schedules for the recovery banner
+  const { data: missedSchedules = [] } = useQuery<ScheduleWithBookmark[]>({
+    queryKey: ['schedules', 'missed'],
+    queryFn: () => scheduleService.getMissedSchedules(),
+    staleTime: 5 * 60 * 1000,
   });
 
   // Fetch watch plans for the "Add to Plan" dialog
@@ -104,52 +166,106 @@ const Dashboard = () => {
     queryFn: () => watchPlanService.getWatchPlans(),
   });
 
-  // Calculate filter counts
-  const filterCounts = useMemo(() => ({
-    movie: bookmarks.filter((b) => b.type === "movie").length,
-    series: bookmarks.filter((b) => b.type === "series").length,
-    video: bookmarks.filter((b) => b.type === "video").length,
-    doc: bookmarks.filter((b) => b.type === "doc").length,
-    backlog: bookmarks.filter((b) => b.status === "backlog").length,
-    watching: bookmarks.filter((b) => b.status === "watching").length,
-    done: bookmarks.filter((b) => b.status === "done").length,
-  }), [bookmarks]);
+  const demoDataset = useMemo(() => buildDemoDataset(now), [now]);
+  const demoScheduleCards: ScheduleWithBookmark[] = useMemo(
+    () =>
+      demoDataset.schedules.map((schedule) => ({
+        id: `demo-schedule-${schedule.bookmarkId}`,
+        bookmark_id: schedule.bookmarkId,
+        scheduled_for: schedule.scheduledFor,
+        bookmarks: demoDataset.bookmarks.find((bookmark) => bookmark.id === schedule.bookmarkId) ?? null,
+      })),
+    [demoDataset.bookmarks, demoDataset.schedules],
+  );
+  const upcomingSchedulesForDisplay: ScheduleWithBookmark[] = demoActive
+    ? demoScheduleCards
+    : (upcomingSchedules as ScheduleWithBookmark[]);
 
-  // Apply filters + sort
-  const filteredBookmarks = useMemo(() => {
-    const hasAdvanced =
-      activeMood !== null ||
-      advancedFilters.providers.length > 0 ||
-      advancedFilters.moods.length > 0 ||
-      advancedFilters.runtimeMin !== null ||
-      advancedFilters.runtimeMax !== null;
+  // Map of bookmarkId -> schedule for card badges
+  const allScheduleMap = useMemo((): Record<string, Schedule> => {
+    const map: Record<string, Schedule> = {};
+    for (const s of upcomingSchedulesForDisplay) {
+      if (!map[s.bookmark_id]) map[s.bookmark_id] = s as Schedule;
+    }
+    return map;
+  }, [upcomingSchedulesForDisplay]);
 
-    const filtered = bookmarks.filter((b) => {
-      const typeMatch = filterType === "all" || b.type === filterType;
-      const statusMatch = filterStatus === "all" || b.status === filterStatus;
-      if (!typeMatch || !statusMatch) return false;
-      if (!hasAdvanced) return true;
-      const providerMatch = advancedFilters.providers.length === 0 || advancedFilters.providers.includes(b.provider);
-      const moodMatch = advancedFilters.moods.length === 0 || (b.mood_tags || []).some((m) => advancedFilters.moods.includes(m));
-      const quickMoodMatch = activeMood === null || (b.mood_tags || []).includes(activeMood);
-      const rtMin = advancedFilters.runtimeMin;
-      const rtMax = advancedFilters.runtimeMax;
-      const runtimeMatch =
-        (rtMin === null || (b.runtime_minutes !== null && b.runtime_minutes >= rtMin)) &&
-        (rtMax === null || (b.runtime_minutes !== null && b.runtime_minutes <= rtMax));
-      return providerMatch && moodMatch && quickMoodMatch && runtimeMatch;
-    });
+  const allBookmarks = useMemo(() => {
+    if (demoActive) {
+      const base = demoDataset.bookmarks;
+      if (!demoItem) return base;
+      return [demoItem, ...base.filter((bookmark) => bookmark.id !== demoItem.id)];
+    }
+    return bookmarksData;
+  }, [demoActive, demoDataset.bookmarks, demoItem, bookmarksData]);
+  const vaultedBookmarks = useMemo(
+    () => allBookmarks.filter((bookmark) => bookmark.is_vaulted),
+    [allBookmarks],
+  );
+  const bookmarks = useMemo(
+    () => allBookmarks.filter((bookmark) => !bookmark.is_vaulted),
+    [allBookmarks],
+  );
 
-    return [...filtered].sort((a, b) => {
-      switch (sortBy) {
-        case "oldest": return a.created_at.localeCompare(b.created_at);
-        case "az": return a.title.localeCompare(b.title);
-        case "runtime": return (b.runtime_minutes || 0) - (a.runtime_minutes || 0);
-        case "rating": return (b.user_rating || 0) - (a.user_rating || 0);
-        default: return b.created_at.localeCompare(a.created_at); // newest
-      }
-    });
-  }, [bookmarks, filterType, filterStatus, activeMood, advancedFilters, sortBy]);
+  const clearDemoTimers = useCallback(() => {
+    demoTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    demoTimeoutsRef.current = [];
+  }, []);
+
+  const delay = useCallback((ms: number) => new Promise<void>((resolve) => {
+    const timeoutId = window.setTimeout(() => {
+      demoTimeoutsRef.current = demoTimeoutsRef.current.filter((activeId) => activeId !== timeoutId);
+      resolve();
+    }, ms);
+    demoTimeoutsRef.current.push(timeoutId);
+  }), []);
+
+  const endDemo = useCallback(() => {
+    window.localStorage.setItem("seen_demo", "true");
+    demoRunIdRef.current += 1;
+    clearDemoTimers();
+    setDemoActive(false);
+    setDemoStep(0);
+    setDemoItem(null);
+    setDemoLoading(false);
+    setDemoInputValue("");
+  }, [clearDemoTimers]);
+
+  const startDemo = useCallback(async () => {
+    window.localStorage.setItem("seen_demo", "true");
+    const runId = demoRunIdRef.current + 1;
+    demoRunIdRef.current = runId;
+    clearDemoTimers();
+
+    setDecisionModeOpen(false);
+    setDecisionSeedIntent(null);
+    setScheduleOpen(false);
+    setPlanOpen(false);
+    setSelectedBookmark(null);
+    setDemoActive(true);
+    setDemoStep(1);
+    setDemoItem(null);
+    setDemoLoading(false);
+    setDemoInputValue(DEMO_URL);
+
+    await delay(800);
+    if (demoRunIdRef.current !== runId) return;
+
+    setDemoStep(2);
+    setDemoLoading(true);
+
+    await delay(1200);
+    if (demoRunIdRef.current !== runId) return;
+
+    setDemoLoading(false);
+    setDemoItem(buildDemoBookmark());
+    setDemoStep(3);
+
+    await delay(1200);
+    if (demoRunIdRef.current !== runId) return;
+
+    setDemoStep(4);
+  }, [clearDemoTimers, delay]);
 
   // Mark as done mutation
   const markDoneMutation = useMutation({
@@ -382,6 +498,79 @@ const Dashboard = () => {
     updateEpisodesMutation.mutate({ id: bookmark.id, count, existing: bookmark.metadata ?? {} });
   };
 
+  const getSkippedPriority = (bookmark: Bookmark): number => {
+    const base = bookmark.priority ?? 100;
+    return Math.max(base - 20, 40);
+  };
+
+  const skipMutation = useMutation({
+    mutationFn: async (bookmark: Bookmark) => {
+      await bookmarkService.markAsShown(bookmark.id);
+      if (bookmark.queue_status === "up_next") {
+        await queueService.toggleUpNext(bookmark.id, false);
+      } else {
+        await queueService.setPriority(bookmark.id, getSkippedPriority(bookmark));
+      }
+    },
+    onMutate: async (bookmark) => {
+      await queryClient.cancelQueries({ queryKey: ["bookmarks"] });
+      const prev = queryClient.getQueryData<Bookmark[]>(["bookmarks"]);
+      const skippedAt = new Date().toISOString();
+      queryClient.setQueryData<Bookmark[]>(["bookmarks"], (old = []) =>
+        old.map((b) =>
+          b.id !== bookmark.id
+            ? b
+            : {
+                ...b,
+                last_shown_at: skippedAt,
+                shown_count: (b.shown_count ?? 0) + 1,
+                queue_status: b.queue_status === "up_next" ? "queued" : b.queue_status,
+                priority: b.queue_status === "up_next" ? 100 : getSkippedPriority(b),
+              },
+        ),
+      );
+      return { prev };
+    },
+    onError: (_, __, ctx) => {
+      queryClient.setQueryData(["bookmarks"], ctx?.prev);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
+    },
+    onSuccess: (_, bookmark) => {
+      toast({
+        title: "Skipped for now",
+        description: `"${bookmark.title}" moved down. We will suggest a different pick next.`,
+      });
+    },
+  });
+
+  const handleSkip = (bookmark: Bookmark) => {
+    skipMutation.mutate(bookmark);
+  };
+
+  const handleMissedScheduleSkip = useCallback((schedId: string) => {
+    scheduleService.cancelSchedule(schedId)
+      .then(async () => {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['schedules'] }),
+          queryClient.invalidateQueries({ queryKey: ['schedules', 'missed'] }),
+        ]);
+        toast({
+          title: "Schedule skipped",
+          description: "Removed from your missed schedules.",
+        });
+      })
+      .catch((error) => {
+        console.error("Failed to skip missed schedule", error);
+        toast({
+          title: "Could not skip schedule",
+          description: getSafeErrorMessage(error, "Please try again."),
+          variant: "destructive",
+        });
+      });
+  }, [queryClient, toast]);
+
   // Toggle Up Next mutation
   const toggleUpNextMutation = useMutation({
     mutationFn: ({ id, promote }: { id: string; promote: boolean }) =>
@@ -419,6 +608,84 @@ const Dashboard = () => {
     });
   };
 
+  const handleSharePublic = async (bookmark: Bookmark) => {
+    try {
+      const token = await sharingService.makeBookmarkPublic(bookmark.id);
+      await queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
+      const shareUrl = `${window.location.origin}/share/${token}`;
+      let copied = false;
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(shareUrl);
+          copied = true;
+        } catch {
+          copied = false;
+        }
+      }
+      toast({
+        title: copied ? "Public link copied" : "Public link ready",
+        description: copied ? "Anyone with the link can view this bookmark." : shareUrl,
+      });
+    } catch (error) {
+      toast({
+        title: "Couldn't create public link",
+        description: getSafeErrorMessage(error, "Please try again."),
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSharePrivate = async (bookmark: Bookmark) => {
+    try {
+      await sharingService.makeBookmarkPrivate(bookmark.id);
+      await queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
+      toast({
+        title: "Sharing turned off",
+        description: `"${bookmark.title}" is now private.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Couldn't update sharing",
+        description: getSafeErrorMessage(error, "Please try again."),
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleVault = async (bookmark: Bookmark) => {
+    try {
+      await bookmarkService.updateBookmark(bookmark.id, { is_vaulted: true });
+      await queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
+      toast({
+        title: "Moved to Vault",
+        description: `"${bookmark.title}" is hidden from your dashboard.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Couldn't move item to Vault",
+        description: getSafeErrorMessage(error, "Please try again."),
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleUnvault = async (bookmark: Bookmark) => {
+    try {
+      await bookmarkService.updateBookmark(bookmark.id, { is_vaulted: false });
+      await queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
+      toast({
+        title: "Removed from Vault",
+        description: `"${bookmark.title}" is visible on your dashboard again.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Couldn't remove from Vault",
+        description: getSafeErrorMessage(error, "Please try again."),
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleAddToPlan = (bookmark: Bookmark) => {
     setSelectedBookmark(bookmark);
     setSelectedPlanId("");
@@ -433,191 +700,136 @@ const Dashboard = () => {
     });
   };
 
-  const toggleSelect = (bookmarkId: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(bookmarkId)) next.delete(bookmarkId);
-      else next.add(bookmarkId);
-      return next;
-    });
-  };
-
-  const handleBulkDelete = async () => {
-    const ids = Array.from(selectedIds);
-    const results = await Promise.allSettled(ids.map((id) => bookmarkService.deleteBookmark(id)));
-    const succeeded = ids.filter((_, i) => results[i].status === 'fulfilled');
-    const failedIds = ids.filter((_, i) => results[i].status === 'rejected');
-    if (succeeded.length > 0) queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
-    setSelectedIds(new Set(failedIds));
-    if (failedIds.length === 0) {
-      toast({ title: `Deleted ${succeeded.length} bookmark${succeeded.length !== 1 ? "s" : ""}` });
-    } else {
-      toast({
-        title: `Deleted ${succeeded.length} of ${ids.length}`,
-        description: `${failedIds.length} could not be deleted`,
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleBulkMarkDone = async () => {
-    const ids = Array.from(selectedIds);
-    const results = await Promise.allSettled(ids.map((id) => bookmarkService.updateStatus(id, 'done')));
-    const succeeded = ids.filter((_, i) => results[i].status === 'fulfilled');
-    const failedIds = ids.filter((_, i) => results[i].status === 'rejected');
-    if (succeeded.length > 0) queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
-    setSelectedIds(new Set(failedIds));
-    if (failedIds.length === 0) {
-      toast({ title: `Marked ${succeeded.length} as done` });
-    } else {
-      toast({
-        title: `Marked ${succeeded.length} of ${ids.length} as done`,
-        description: `${failedIds.length} could not be updated`,
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleBulkAddToPlan = async (planId: string) => {
-    const ids = Array.from(selectedIds);
-    const results = await Promise.allSettled(ids.map((id) => watchPlanService.addBookmarkToPlan(planId, id)));
-    const succeeded = ids.filter((_, i) => results[i].status === 'fulfilled');
-    const failedIds = ids.filter((_, i) => results[i].status === 'rejected');
-    setSelectedIds(new Set(failedIds));
-    if (failedIds.length === 0) {
-      toast({ title: `Added ${succeeded.length} to plan` });
-    } else {
-      toast({
-        title: `Added ${succeeded.length} of ${ids.length} to plan`,
-        description: `${failedIds.length} could not be added`,
-        variant: "destructive",
-      });
-    }
-  };
-
-  // Check if filters are active (basic or advanced)
-  const hasActiveFilters =
-    filterType !== "all" ||
-    filterStatus !== "all" ||
-    activeMood !== null ||
-    advancedFilters.providers.length > 0 ||
-    advancedFilters.moods.length > 0 ||
-    advancedFilters.runtimeMin !== null ||
-    advancedFilters.runtimeMax !== null;
-
-  const totalActiveFilterCount =
-    (filterType !== "all" ? 1 : 0) +
-    (filterStatus !== "all" ? 1 : 0) +
-    (activeMood !== null ? 1 : 0) +
-    advancedFilters.providers.length +
-    advancedFilters.moods.length +
-    (advancedFilters.runtimeMin !== null ? 1 : 0) +
-    (advancedFilters.runtimeMax !== null ? 1 : 0);
-
-  // Group bookmarks (use filtered if filters active, otherwise use all)
-  const displayBookmarks = hasActiveFilters ? filteredBookmarks : bookmarks;
+  const displayBookmarks = bookmarks;
   const continueWatching = displayBookmarks.filter((b) => b.status === "watching");
-  const backlog = displayBookmarks.filter((b) => b.status === "backlog");
-  const completed = displayBookmarks.filter((b) => b.status === "done");
-  const totalWatchMinutes = completed.reduce((sum, b) => sum + (b.runtime_minutes || 0), 0);
 
-  // Hero bookmark: only show when actively watching something
-  const heroBookmark = continueWatching[0] || null;
+  const closeDecisionMode = useCallback(() => {
+    setDecisionModeOpen(false);
+    setDecisionSeedIntent(null);
+    const next = new URLSearchParams(searchParams);
+    next.delete("decision");
+    next.delete("intent");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
-  // Group by mood
-  const byMood: Record<string, Bookmark[]> = {};
-  displayBookmarks.forEach((b) => {
-    (b.mood_tags || []).forEach((mood) => {
-      if (!byMood[mood]) byMood[mood] = [];
-      byMood[mood].push(b);
-    });
-  });
-
-  const watchedMoods = new Set(
-    completed.flatMap((b) => b.mood_tags || []).map((m) => m.toLowerCase())
+  const decisionSnapshot = useMemo(
+    () =>
+      buildDecisionSnapshot(displayBookmarks, {
+        now,
+        maxRails: MAX_SUPPORTING_RAILS,
+        upcomingSchedules: (demoActive ? demoDataset.schedules : upcomingSchedules.map((schedule) => ({
+          bookmarkId: schedule.bookmark_id,
+          scheduledFor: schedule.scheduled_for,
+        }))),
+      }),
+    [displayBookmarks, now, upcomingSchedules, demoActive, demoDataset.schedules],
   );
 
-  // Keep shuffledForRandom fresh when displayBookmarks changes while random intent is active
+  const recommendationInsights = decisionSnapshot.insights;
+  const bestNextItem = decisionSnapshot.bestNext;
+  const generatedRails = decisionSnapshot.rails;
+  const heroBookmark = bestNextItem ?? continueWatching[0] ?? null;
+  const nextReason = bestNextItem ? recommendationInsights.reasons[bestNextItem.id] : undefined;
+  const supportingRails = useMemo(() => {
+    if (!bestNextItem) return generatedRails;
+    return generatedRails
+      .map((rail) => ({
+        ...rail,
+        bookmarks: rail.bookmarks.filter((bookmark) => bookmark.id !== bestNextItem.id),
+      }))
+      .filter((rail) => {
+        const minSize = rail.id === "continue-watching" || rail.id === "planned" ? 1 : 2;
+        return rail.bookmarks.length >= minSize;
+      });
+  }, [generatedRails, bestNextItem]);
+
+  const demoTooltipMessage =
+    demoStep === 1
+      ? "Paste a link from TikTok, YouTube or anywhere"
+      : demoStep === 2
+        ? "We find the movie automatically"
+        : demoStep === 3
+          ? "This is your saved movie"
+          : demoStep === 4
+            ? "We suggest what to watch next"
+            : null;
+
   useEffect(() => {
-    if (activeIntent === "random") {
-      setShuffledForRandom(shuffleArray(displayBookmarks.filter((b) => b.status !== "done")));
+    const timer = window.setInterval(() => {
+      setNow(new Date());
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      demoRunIdRef.current += 1;
+      clearDemoTimers();
+    };
+  }, [clearDemoTimers]);
+
+  useEffect(() => {
+    if (demoStep === 4) {
+      upNextHighlightRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     }
-  }, [displayBookmarks, activeIntent]);
+  }, [demoStep]);
 
-  // Handle intent change: shuffle once on random selection
-  const handleIntentChange = (intent: IntentType | null) => {
-    if (intent === "random") {
-      setShuffledForRandom(shuffleArray(displayBookmarks.filter((b) => b.status !== "done")));
-    }
-    setActiveIntent(intent);
-  };
+  useEffect(() => {
+    if (searchParams.get("decision") !== "1" || decisionModeOpen) return;
+    setDecisionSeedIntent(parseIntentParam(searchParams.get("intent")));
+    setDecisionModeOpen(true);
+  }, [searchParams, decisionModeOpen]);
 
-  // Apply intent filter on top of displayBookmarks for rails
-  const intentFilteredBookmarks = useMemo(() => {
-    if (!activeIntent) return displayBookmarks;
-    switch (activeIntent) {
-      case "quick":
-        return displayBookmarks.filter(
-          (b) => b.status !== "done" && b.runtime_minutes != null && b.runtime_minutes <= 30
-        );
-      case "deep":
-        return displayBookmarks.filter(
-          (b) => b.status !== "done" && (b.type === "movie" || (b.runtime_minutes != null && b.runtime_minutes > 60))
-        );
-      case "random":
-        return shuffledForRandom;
-      case "continue":
-        return displayBookmarks.filter((b) => b.status === "watching");
-    }
-  }, [displayBookmarks, activeIntent, shuffledForRandom]);
+  useEffect(() => {
+    if (isLoading || demoActive || bookmarksData.length > 0 || isNewAccount) return;
 
-  const intentContinueWatching = intentFilteredBookmarks.filter((b) => b.status === "watching");
-  const intentBacklog = intentFilteredBookmarks.filter((b) => b.status === "backlog");
-  const intentCompleted = intentFilteredBookmarks.filter((b) => b.status === "done");
+    const hasSeenDemo = window.localStorage.getItem("seen_demo");
+    if (hasSeenDemo) return;
 
-  const topTenForYou = [...intentFilteredBookmarks]
-    .filter((item) => item.status !== "done")
-    .sort((a, b) => {
-      const aMoodScore = (a.mood_tags || []).reduce(
-        (sum, mood) => (watchedMoods.has(mood.toLowerCase()) ? sum + 6 : sum),
-        0
-      );
-      const bMoodScore = (b.mood_tags || []).reduce(
-        (sum, mood) => (watchedMoods.has(mood.toLowerCase()) ? sum + 6 : sum),
-        0
-      );
-      const aFreshness = Math.max(0, 14 - Math.floor((Date.now() - new Date(a.created_at).getTime()) / 86400000));
-      const bFreshness = Math.max(0, 14 - Math.floor((Date.now() - new Date(b.created_at).getTime()) / 86400000));
-      const aScore =
-        (a.status === "watching" ? 40 : 20) +
-        aMoodScore +
-        aFreshness +
-        (a.runtime_minutes && a.runtime_minutes >= 80 && a.runtime_minutes <= 160 ? 4 : 0);
-      const bScore =
-        (b.status === "watching" ? 40 : 20) +
-        bMoodScore +
-        bFreshness +
-        (b.runtime_minutes && b.runtime_minutes >= 80 && b.runtime_minutes <= 160 ? 4 : 0);
-      if (bScore !== aScore) return bScore - aScore;
-      return b.created_at.localeCompare(a.created_at);
-    })
-    .slice(0, 10);
+    void startDemo();
+  }, [bookmarksData.length, demoActive, isLoading, isNewAccount, startDemo]);
 
-  // Generate cinematic rails from current display bookmarks
-  const generatedRails = useMemo(
-    () => generateRails(intentFilteredBookmarks),
-    [intentFilteredBookmarks],
-  );
+  useEffect(() => {
+    if (isLoading || demoActive) return;
+    if (hasAutoFocusedWatchNextRef.current) return;
+    if (!bestNextItem) return;
 
-  const handleSurpriseMe = () => {
-    const pool = backlog.length > 0 ? backlog : displayBookmarks;
-    if (pool.length === 0) return;
-    setSurpriseBookmark(pool[Math.floor(Math.random() * pool.length)]);
+    hasAutoFocusedWatchNextRef.current = true;
+    const watchNextId = bestNextItem.id;
+    setHighlightBookmarkId(watchNextId);
+
+    const focusTimeout = window.setTimeout(() => {
+      watchNextRailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const firstCardLink =
+        watchNextRailRef.current?.querySelector<HTMLElement>("[data-rail-card-link='true']");
+      firstCardLink?.focus();
+    }, 140);
+
+    const clearHighlightTimeout = window.setTimeout(() => {
+      setHighlightBookmarkId((current) => (current === watchNextId ? null : current));
+    }, 4200);
+
+    return () => {
+      window.clearTimeout(focusTimeout);
+      window.clearTimeout(clearHighlightTimeout);
+    };
+  }, [isLoading, demoActive, bestNextItem]);
+
+  const handleKeepStreak = () => {
+    if (!bestNextItem) return;
+    watchNextRailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setHighlightBookmarkId(bestNextItem.id);
   };
 
   const handlePlay = () => {
     if (heroBookmark?.source_url) {
       window.open(heroBookmark.source_url, "_blank");
+    }
+  };
+
+  const handlePlayNext = () => {
+    if (bestNextItem?.source_url) {
+      window.open(bestNextItem.source_url, "_blank");
     }
   };
 
@@ -627,11 +839,114 @@ const Dashboard = () => {
     }
   };
 
+  const handleHeroSchedule = () => {
+    if (!heroBookmark) return;
+    handleSchedule(heroBookmark);
+  };
+
+  const handleHeroSkip = () => {
+    if (!heroBookmark) return;
+    handleSkip(heroBookmark);
+  };
+
   // Empty state check
   const isEmpty = bookmarks.length === 0;
+  const hasOnlyVaultedItems = bookmarks.length === 0 && vaultedBookmarks.length > 0;
+  const welcomeStorageKey = user?.uid ? `${WELCOME_FLOW_KEY_PREFIX}${user.uid}` : null;
+  const shouldShowWelcomeFlow =
+    welcomeFlowActive;
 
-  // When filters are active, rails use a contextual empty message instead of the default
-  const filteredEmptyMessage = hasActiveFilters ? "No matches for your current filters" : undefined;
+  const dismissWelcomeFlow = () => {
+    if (welcomeStorageKey) {
+      window.localStorage.setItem(welcomeStorageKey, "done");
+    }
+    setWelcomeFlowActive(false);
+    setWelcomeFlowDismissed(true);
+  };
+
+  const handleWelcomeSuggestionAdd = async (suggestion: OnboardingSuggestion) => {
+    try {
+      await bookmarkService.createBookmark({
+        title: suggestion.title,
+        type: suggestion.type,
+        provider: suggestion.provider,
+        source_url: null,
+        canonical_url: null,
+        runtime_minutes: null,
+        release_year: suggestion.release_year,
+        poster_url: suggestion.poster_url,
+        mood_tags: suggestion.genres.map((genre) => genre.toLowerCase()),
+        tags: ["onboarding", ...suggestion.genres.map((genre) => genre.toLowerCase())],
+        status: "backlog",
+        metadata: {
+          onboarding_seed: true,
+          onboarding_suggestion_id: suggestion.id,
+          onboarding_genres: suggestion.genres,
+        },
+      });
+      await queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
+      toast({
+        title: "Added to watchlist",
+        description: suggestion.title,
+      });
+    } catch (error) {
+      toast({
+        title: "Couldn't add title",
+        description: getSafeErrorMessage(error, "Please try again."),
+        variant: "destructive",
+      });
+      throw error;
+    }
+  };
+
+  const handleWelcomeComplete = async (payload: {
+    genres: string[];
+    providers: string[];
+    addedSuggestionIds: string[];
+  }) => {
+    try {
+      await socialService.savePrivatePreferences({
+        favorite_genres: payload.genres,
+        preferred_providers: payload.providers,
+        onboarding_added_ids: payload.addedSuggestionIds,
+        onboarding_completed_at: new Date().toISOString(),
+      });
+      dismissWelcomeFlow();
+      toast({
+        title: "Setup complete",
+        description: "We'll use these picks for future recommendations.",
+      });
+    } catch (error) {
+      toast({
+        title: "Couldn't save onboarding preferences",
+        description: getSafeErrorMessage(error, "Please try again."),
+        variant: "destructive",
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (!welcomeStorageKey) {
+      setWelcomeFlowActive(false);
+      setWelcomeFlowDismissed(true);
+      return;
+    }
+    setWelcomeFlowDismissed(window.localStorage.getItem(welcomeStorageKey) === "done");
+  }, [welcomeStorageKey]);
+
+  useEffect(() => {
+    const shouldActivate =
+      !welcomeFlowDismissed &&
+      !welcomeFlowActive &&
+      !demoActive &&
+      !showTour &&
+      !isLoading &&
+      isNewAccount &&
+      allBookmarks.length === 0;
+    if (shouldActivate) {
+      setWelcomeFlowActive(true);
+    }
+  }, [welcomeFlowDismissed, welcomeFlowActive, demoActive, showTour, isLoading, isNewAccount, allBookmarks.length]);
 
   if (isLoading) {
     return (
@@ -671,13 +986,32 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-full bg-background pb-20 md:pb-0">
+      {demoActive && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/40 pointer-events-none" />
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={endDemo}
+            className="fixed right-4 top-20 z-[60]"
+          >
+            Skip Demo
+          </Button>
+          {demoTooltipMessage && <DemoTooltip message={demoTooltipMessage} />}
+        </>
+      )}
 
       {/* Hero Banner â€" sits behind the transparent fixed navbar */}
       {heroBookmark && (
         <HeroBanner
           bookmark={heroBookmark}
           onPlay={handlePlay}
+          onSchedule={handleHeroSchedule}
+          onSkip={handleHeroSkip}
           onMoreInfo={handleMoreInfo}
+          reason={bestNextItem ? nextReason : undefined}
+          streakCount={streak}
+          onKeepStreak={handleKeepStreak}
         />
       )}
 
@@ -696,245 +1030,71 @@ const Dashboard = () => {
         {/* Main content column */}
         <div className="flex-1 min-w-0 relative z-10 pb-16 space-y-3">
 
-          {/* Filter status bar + advanced controls */}
-          {bookmarks.length > 0 && (
-            <div
-              id="filter-toolbar"
-              className={cn(
-                "animate-fade-in pt-3 pb-2",
-                heroBookmark
-                  ? "sticky top-[68px] z-30 border-y border-white/5 bg-background/75 supports-[backdrop-filter]:bg-background/55 backdrop-blur-md"
-                  : ""
-              )}
-            >
-              <StatsBar
-                total={displayBookmarks.length}
-                backlog={backlog.length}
-                watching={continueWatching.length}
-                done={completed.length}
-                totalMinutes={totalWatchMinutes}
-                onFilter={setFilterStatus}
-                className="mb-3"
-              />
-              <div className="px-4 sm:px-6 lg:px-8 flex items-center gap-3">
-                {/* Status filter chips */}
-                <FilterChips
-                  activeType="all"
-                  activeStatus={filterStatus}
-                  onTypeChange={() => {}}
-                  onStatusChange={setFilterStatus}
-                  counts={filterCounts}
-                  className="flex-1 min-w-0"
-                  statusOnly
-                />
-                {/* Right controls */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setDecisionModeOpen(true)}
-                    className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-                    title="Pick for me"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    Pick for me
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleSurpriseMe}
-                    disabled={!!surpriseBookmark}
-                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                    title="Surprise me - pick a random title"
-                    aria-label="Surprise me, pick a random title"
-                  >
-                    <Shuffle className="w-4 h-4" />
-                  </Button>
-                  <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-                    <SelectTrigger className="h-8 text-xs w-[100px] gap-1 border-0 bg-transparent text-muted-foreground hover:text-foreground">
-                      <ArrowUpDown className="w-3 h-3 shrink-0" />
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="newest">Newest</SelectItem>
-                      <SelectItem value="oldest">Oldest</SelectItem>
-                      <SelectItem value="az">A-Z</SelectItem>
-                      <SelectItem value="runtime">Runtime</SelectItem>
-                      <SelectItem value="rating">My Rating</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    variant={filterPanelOpen ? "secondary" : "ghost"}
-                    size="sm"
-                    onClick={() => setFilterPanelOpen((v) => !v)}
-                    className="h-8 gap-1 text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    Filters
-                    {totalActiveFilterCount > 0 && (
-                      <span className="bg-primary text-primary-foreground rounded-full w-4 h-4 text-[10px] flex items-center justify-center">
-                        {totalActiveFilterCount}
-                      </span>
-                    )}
-                  </Button>
-                  <Button
-                    variant={selectMode ? "secondary" : "ghost"}
-                    size="sm"
-                    onClick={() => { setSelectMode((v) => !v); setSelectedIds(new Set()); }}
-                    className="h-8 text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    {selectMode ? "Cancel" : "Select"}
-                  </Button>
-                </div>
-              </div>
-              {filterPanelOpen && (
-                <div className="mt-2">
-                  <FilterPanel
-                    onApply={(f) => { setAdvancedFilters(f); }}
-                    onReset={() => {
-                      setAdvancedFilters({ providers: [], moods: [], runtimeMin: null, runtimeMax: null });
-                      setActiveMood(null);
-                    }}
-                  />
-                </div>
-              )}
-              <div className="px-4 sm:px-6 lg:px-8 mt-3">
-                <MoodPicker activeMood={activeMood} onMoodSelect={setActiveMood} />
-              </div>
-              <IntentBar activeIntent={activeIntent} onChange={handleIntentChange} />
-            </div>
-          )}
-
           {/* Rails */}
           <div className="space-y-3 animate-fade-in">
 
-          {/* ── Scheduled / Up Next calendar strip ───────────────────────── */}
-          {upcomingSchedules.length > 0 && (
-            <section className="py-3">
-              <div className="px-4 sm:px-6 lg:px-8 mb-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-xl font-semibold flex items-center gap-2">
-                      <CalendarClock className="w-5 h-5 text-wm-gold" />
-                      Scheduled
-                    </h2>
-                    <p className="text-sm text-muted-foreground mt-0.5">Coming up on your calendar</p>
-                  </div>
-                  <Link to="/calendar" className="text-xs text-primary hover:underline">
-                    View calendar
-                  </Link>
-                </div>
-              </div>
-              <div className="flex gap-3 overflow-x-auto px-4 sm:px-6 lg:px-8 pb-2" style={{ scrollbarWidth: "none" }}>
-                {upcomingSchedules.map((sched) => {
-                  const bm = sched.bookmarks;
-                  if (!bm) return null;
-                  const rawDate = sched.scheduled_for ? new Date(sched.scheduled_for) : null;
-                  const scheduledDate = rawDate && isFinite(rawDate.getTime()) ? rawDate : null;
-                  const isToday = scheduledDate ? scheduledDate.toDateString() === new Date().toDateString() : false;
-                  return (
-                    <Link
-                      key={sched.id}
-                      to={`/b/${bm.id}`}
-                      className="shrink-0 w-56 bg-wm-surface border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-all group"
-                    >
-                      <div className="relative h-28 bg-muted overflow-hidden">
-                        {bm.backdrop_url || bm.poster_url ? (
-                          <img
-                            src={bm.backdrop_url || bm.poster_url || ""}
-                            alt={bm.title}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <span className="text-3xl font-bold text-muted-foreground">{bm.title.charAt(0)}</span>
-                          </div>
-                        )}
-                        <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
-                        {scheduledDate && (
-                          <div className={cn(
-                            "absolute bottom-2 left-2 text-[10px] font-semibold px-2 py-0.5 rounded-full",
-                            isToday ? "bg-primary text-primary-foreground" : "bg-wm-gold text-background"
-                          )}>
-                            {isToday ? `Today ${format(scheduledDate, "h:mm a")}` : format(scheduledDate, "EEE, MMM d")}
-                          </div>
-                        )}
-                      </div>
-                      <div className="p-3">
-                        <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
-                          {bm.title}
-                        </p>
-                        {bm.runtime_minutes && (
-                          <p className="text-[11px] text-muted-foreground mt-0.5">
-                            {bm.runtime_minutes < 60 ? `${bm.runtime_minutes}m` : `${Math.floor(bm.runtime_minutes / 60)}h ${bm.runtime_minutes % 60}m`}
-                          </p>
-                        )}
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            </section>
+          {/* ── Missed schedules recovery banner ─────────────────────────── */}
+          {missedSchedules.length > 0 && !dismissedMissedBanner && !demoActive && (
+            <div className="px-4 sm:px-6 lg:px-8">
+              <MissedSchedulesBanner
+                missed={missedSchedules}
+                onWatch={(bm) => navigate(`/b/${bm.id}`)}
+                onReschedule={(bm) => handleSchedule(bm)}
+                onSkip={handleMissedScheduleSkip}
+                onDismiss={() => setDismissedMissedBanner(true)}
+              />
+            </div>
           )}
 
-          {/* ── Top 10 scoring rail (shown when no active filters or intent) ── */}
-          {!hasActiveFilters && !activeIntent && topTenForYou.length > 0 && (
-            <Rail
-              title="Top 10 In Your Queue"
-              subtitle="Ranked by momentum"
-              bookmarks={topTenForYou}
-              showRanks
-              cardSize="featured"
-              onSchedule={handleSchedule}
-              onMarkDone={handleMarkDone}
-              onAddToPlan={handleAddToPlan}
-              onDelete={handleDelete}
-              onUndoDone={handleUndoDone}
-              onSetWatching={handleSetWatching}
-              onStatusCycle={handleStatusCycle}
-              onEpisodeUpdate={handleEpisodeUpdate}
-              onToggleUpNext={handleToggleUpNext}
-              isSelectable={selectMode}
-              selectedIds={selectedIds}
-              onSelect={toggleSelect}
-            />
+
+          {bestNextItem && (
+            <div ref={watchNextRailRef}>
+              <Rail
+                title="Watch This Next"
+                subtitle={recommendationInsights.timeSubtitle}
+                bookmarks={[bestNextItem]}
+                itemReasons={recommendationInsights.reasons}
+                itemSchedules={allScheduleMap}
+                highlightBookmarkId={highlightBookmarkId ?? undefined}
+                cardSize="featured"
+                onSchedule={handleSchedule}
+                onSkip={handleSkip}
+                onMarkDone={handleMarkDone}
+                onAddToPlan={handleAddToPlan}
+                onDelete={handleDelete}
+                onUndoDone={handleUndoDone}
+                onSetWatching={handleSetWatching}
+                onStatusCycle={handleStatusCycle}
+                onEpisodeUpdate={handleEpisodeUpdate}
+                onToggleUpNext={handleToggleUpNext}
+                onSharePublic={handleSharePublic}
+                onSharePrivate={handleSharePrivate}
+                onVault={handleVault}
+                onUnvault={handleUnvault}
+              />
+            </div>
           )}
 
-          {/* ── Cinematic generated rails ─────────────────────────────────── */}
-          {generatedRails.map((rail) => (
-            <Rail
-              key={rail.id}
-              title={rail.title}
-              subtitle={rail.subtitle ?? rail.reason}
-              bookmarks={rail.bookmarks}
-              variant={rail.variant}
-              emptyMessage={filteredEmptyMessage}
-              onSchedule={handleSchedule}
-              onMarkDone={handleMarkDone}
-              onAddToPlan={handleAddToPlan}
-              onDelete={handleDelete}
-              onUndoDone={handleUndoDone}
-              onSetWatching={handleSetWatching}
-              onStatusCycle={handleStatusCycle}
-              onEpisodeUpdate={handleEpisodeUpdate}
-              onToggleUpNext={handleToggleUpNext}
-              isSelectable={selectMode}
-              selectedIds={selectedIds}
-              onSelect={toggleSelect}
-            />
-          ))}
+          {supportingRails.map((rail, index) => {
+            const shouldHighlight = demoStep === 4 && index === 0;
 
-          {/* ── Mood rails (up to 3, ≥ 2 items) ─────────────────────────── */}
-          {!hasActiveFilters && !activeIntent &&
-            Object.entries(byMood)
-              .filter(([, items]) => items.length >= 2)
-              .sort(([, a], [, b]) => b.length - a.length)
-              .slice(0, 3)
-              .map(([mood, items]) => (
+            return (
+              <div
+                key={rail.id}
+                ref={shouldHighlight ? upNextHighlightRef : undefined}
+                className={cn(
+                  shouldHighlight && "relative z-50 scale-[1.01] rounded-2xl ring-2 ring-white/90 shadow-[0_0_0_1px_rgba(255,255,255,0.15),0_0_40px_rgba(255,255,255,0.18)] transition-all"
+                )}
+              >
                 <Rail
-                  key={mood}
-                  title={`${mood.charAt(0).toUpperCase()}${mood.slice(1)} Picks`}
-                  bookmarks={items}
+                  title={rail.title}
+                  subtitle={rail.subtitle ?? rail.reason}
+                  bookmarks={rail.bookmarks}
+                  itemReasons={recommendationInsights.reasons}
+                  itemSchedules={allScheduleMap}
+                  variant={rail.variant}
                   onSchedule={handleSchedule}
+                  onSkip={handleSkip}
                   onMarkDone={handleMarkDone}
                   onAddToPlan={handleAddToPlan}
                   onDelete={handleDelete}
@@ -943,186 +1103,50 @@ const Dashboard = () => {
                   onStatusCycle={handleStatusCycle}
                   onEpisodeUpdate={handleEpisodeUpdate}
                   onToggleUpNext={handleToggleUpNext}
-                  isSelectable={selectMode}
-                  selectedIds={selectedIds}
-                  onSelect={toggleSelect}
+                  onSharePublic={handleSharePublic}
+                  onSharePrivate={handleSharePrivate}
+                  onVault={handleVault}
+                  onUnvault={handleUnvault}
                 />
-              ))}
-
-          {/* ── Recently Watched (always at bottom) ──────────────────────── */}
-          {intentCompleted.length > 0 && (
-            <Rail
-              title="Recently Watched"
-              bookmarks={intentCompleted}
-              emptyMessage={filteredEmptyMessage}
-              onSchedule={handleSchedule}
-              onMarkDone={handleMarkDone}
-              onAddToPlan={handleAddToPlan}
-              onDelete={handleDelete}
-              onUndoDone={handleUndoDone}
-              onSetWatching={handleSetWatching}
-              onStatusCycle={handleStatusCycle}
-              onEpisodeUpdate={handleEpisodeUpdate}
-              onToggleUpNext={handleToggleUpNext}
-              isSelectable={selectMode}
-              selectedIds={selectedIds}
-              onSelect={toggleSelect}
-            />
-          )}
-
-          {/* Filtered/intent empty state */}
-          {(hasActiveFilters || activeIntent) && intentFilteredBookmarks.length === 0 && (
-            <div className="px-4 sm:px-6 lg:px-8 text-center py-16">
-              <p className="text-muted-foreground mb-4">
-                {activeIntent ? "Nothing matches this vibe right now" : "No bookmarks match your filters"}
-              </p>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setFilterType("all");
-                  setFilterStatus("all");
-                  setActiveMood(null);
-                  setAdvancedFilters({ providers: [], moods: [], runtimeMin: null, runtimeMax: null });
-                  setActiveIntent(null);
-                }}
-              >
-                Clear Filters
-              </Button>
+              </div>
+            );
+          })}
+          {/* Empty state - new user */}
+          {isEmpty && !hasOnlyVaultedItems && (
+            <div className="px-4 sm:px-6 lg:px-8">
+              <EmptyStateGuide
+                demoActive={demoActive}
+                demoLoading={demoLoading}
+                demoInputValue={demoInputValue}
+                onDemoInputChange={setDemoInputValue}
+                onStartDemo={() => { void startDemo(); }}
+              />
             </div>
           )}
-
-          {/* Empty state - new user */}
-          {isEmpty && (
-            <div className="px-4 sm:px-6 lg:px-8">
-              <EmptyStateGuide />
+          {hasOnlyVaultedItems && (
+            <div className="px-4 sm:px-6 lg:px-8 py-12">
+              <div className="mx-auto max-w-lg rounded-xl border border-border bg-card p-6 text-center">
+                <p className="text-lg font-semibold text-foreground mb-1">Your dashboard is hidden by Vault</p>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {`You have 🔒 ${vaultedBookmarks.length} item${vaultedBookmarks.length === 1 ? "" : "s"} tucked away.`}
+                </p>
+                <Button asChild>
+                  <Link to="/vault">Open Vault</Link>
+                </Button>
+              </div>
             </div>
           )}
           </div>{/* end rails wrapper */}
         </div>{/* end main content column */}
-
-        {/* Right panel (xl screens) - Popular and favorites */}
-        {!isEmpty && (
-          <aside className="hidden xl:flex flex-col w-72 shrink-0 border-l border-border px-4 pt-5 pb-16 gap-6 sticky top-0 max-h-screen overflow-y-auto">
-            {/* Saved for Later -> Popular */}
-            {backlog.length > 0 && (
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-base font-bold text-foreground">Saved for Later</h3>
-                  <button
-                    type="button"
-                    onClick={() => setFilterStatus("backlog")}
-                    className="text-xs text-primary hover:underline flex items-center gap-1"
-                  >
-                    View more
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {backlog.slice(0, 4).map((bm) => (
-                    <Link
-                      key={bm.id}
-                      to={`/b/${bm.id}`}
-                      className="flex items-center gap-3 group"
-                    >
-                      <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-wm-surface">
-                        {(bm.poster_url || bm.backdrop_url) ? (
-                          <img
-                            src={bm.poster_url || bm.backdrop_url!}
-                            alt={bm.title}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-lg font-bold text-muted-foreground">
-                            {bm.title.charAt(0)}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
-                          {bm.title}
-                        </p>
-                        <p className="text-xs text-muted-foreground capitalize mt-0.5">
-                          {bm.type}{bm.release_year ? `, ${bm.release_year}` : ""}
-                        </p>
-                        {bm.user_rating && (
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <span className="text-[10px] font-bold bg-wm-gold text-background px-1.5 py-0.5 rounded">
-                              * {bm.user_rating.toFixed(1)}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Recently Watched -> Favorites */}
-            {completed.length > 0 && (
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-base font-bold text-foreground">Favorites</h3>
-                  <button
-                    type="button"
-                    onClick={() => setFilterStatus("done")}
-                    className="text-xs text-primary hover:underline flex items-center gap-1"
-                  >
-                    View more
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {[...completed]
-                    .sort((a, b) => (b.user_rating || 0) - (a.user_rating || 0))
-                    .slice(0, 4)
-                    .map((bm) => (
-                      <Link
-                        key={bm.id}
-                        to={`/b/${bm.id}`}
-                        className="flex items-center gap-3 group"
-                      >
-                        <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-wm-surface">
-                          {(bm.poster_url || bm.backdrop_url) ? (
-                            <img
-                              src={bm.poster_url || bm.backdrop_url!}
-                              alt={bm.title}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-lg font-bold text-muted-foreground">
-                              {bm.title.charAt(0)}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
-                            {bm.title}
-                          </p>
-                          <p className="text-xs text-muted-foreground capitalize mt-0.5">
-                            {bm.type}{bm.release_year ? `, ${bm.release_year}` : ""}
-                          </p>
-                          {bm.user_rating && (
-                            <div className="flex items-center gap-1 mt-0.5">
-                              <span className="text-[10px] font-bold bg-wm-gold text-background px-1.5 py-0.5 rounded">
-                                * {bm.user_rating.toFixed(1)}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </Link>
-                    ))}
-                </div>
-              </div>
-            )}
-          </aside>
-        )}
 
       </div>{/* end flex page body */}
 
       {/* Decision Mode */}
       <DecisionMode
         open={decisionModeOpen}
-        onClose={() => setDecisionModeOpen(false)}
-        bookmarks={backlog}
+        onClose={closeDecisionMode}
+        bookmarks={bookmarks}
+        initialIntent={decisionSeedIntent}
       />
 
       {/* Schedule Dialog */}
@@ -1186,16 +1210,6 @@ const Dashboard = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Bulk Action Bar */}
-      <BulkActionBar
-        selectedCount={selectedIds.size}
-        plans={plans}
-        onDeleteAll={handleBulkDelete}
-        onMarkDone={handleBulkMarkDone}
-        onAddToPlan={handleBulkAddToPlan}
-        onClear={() => { setSelectedIds(new Set()); setSelectMode(false); }}
-      />
-
       {/* Completion Rating Sheet */}
       <CompletionSheet
         bookmark={completionBookmark}
@@ -1203,78 +1217,29 @@ const Dashboard = () => {
         onOpenChange={setCompletionSheetOpen}
         onRate={(id, rating, review, watchedWith) => rateMutation.mutate({ id, rating, review, watchedWith })}
         onSkip={() => setCompletionSheetOpen(false)}
+        nextSuggestion={bestNextItem}
+        nextReason={nextReason}
+        streakCount={streak}
+        onPlayNext={bestNextItem?.source_url ? handlePlayNext : undefined}
+        onScheduleNext={bestNextItem ? () => handleSchedule(bestNextItem) : undefined}
+      />
+
+      <WelcomeFlow
+        open={shouldShowWelcomeFlow}
+        onDismiss={dismissWelcomeFlow}
+        onAddSuggestion={handleWelcomeSuggestionAdd}
+        onComplete={handleWelcomeComplete}
       />
 
       {/* Onboarding Tour */}
       <DashboardTour
-        open={showTour}
+        open={!demoActive && !shouldShowWelcomeFlow && showTour}
         onDismiss={dismissTour}
         onFinish={dismissTour}
       />
-
-      {/* Surprise Me Sheet */}
-      <Sheet open={!!surpriseBookmark} onOpenChange={(o) => { if (!o) setSurpriseBookmark(null); }}>
-        <SheetContent side="bottom" className="rounded-t-2xl pb-8">
-          {surpriseBookmark && (
-            <>
-              <SheetHeader className="mb-4">
-                <SheetTitle className="flex items-center gap-2">
-                  <Shuffle className="w-4 h-4 text-primary" />
-                  Watch Tonight
-                </SheetTitle>
-              </SheetHeader>
-              <div className="flex gap-4">
-                {(surpriseBookmark.poster_url || surpriseBookmark.backdrop_url) && (
-                  <img
-                    src={surpriseBookmark.poster_url || surpriseBookmark.backdrop_url!}
-                    alt={surpriseBookmark.title}
-                    className="w-20 h-28 object-cover rounded-lg shrink-0"
-                  />
-                )}
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-lg truncate">{surpriseBookmark.title}</h3>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-                    {surpriseBookmark.release_year && <span>{surpriseBookmark.release_year}</span>}
-                    {surpriseBookmark.runtime_minutes && (
-                      <span>| {formatRuntime(surpriseBookmark.runtime_minutes)}</span>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2 mt-4">
-                    {surpriseBookmark.source_url && (
-                      <Button size="sm" onClick={() => window.open(surpriseBookmark.source_url!, "_blank")}>
-                        <Play className="w-3 h-3 mr-1 fill-current" />
-                        Watch Now
-                      </Button>
-                    )}
-                    <Button size="sm" variant="secondary" onClick={() => {
-                      const id = surpriseBookmark.id;
-                      markDoneMutation.mutate(id);
-                      setSurpriseBookmark(null);
-                    }}>
-                      <Check className="w-3 h-3 mr-1" />
-                      Mark Done
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => {
-                      navigate(`/b/${surpriseBookmark.id}`);
-                      setSurpriseBookmark(null);
-                    }}>
-                      Details
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={handleSurpriseMe}>
-                      <Shuffle className="w-3 h-3 mr-1" />
-                      Reroll
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
 
     </div>
   );
 };
 
 export default Dashboard;
-

@@ -23,6 +23,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { Bookmark } from '@/types/database';
+import { buildLifecycleMetadataUpdate } from "@/engine/lifecycle";
 import { normalizeBookmark } from '@/services/bookmarkNormalizer';
 
 const DEFAULT_PRIORITY = 100;
@@ -110,9 +111,11 @@ export const queueService = {
    */
   async toggleUpNext(id: string, promote: boolean): Promise<void> {
     const uid = getUid();
+    const lifecycleState = promote ? "up_next" : "queued";
     await updateDoc(doc(db, 'users', uid, 'bookmarks', id), {
       queue_status: promote ? 'up_next' : 'queued',
       priority: promote ? 200 : DEFAULT_PRIORITY,
+      ...buildLifecycleMetadataUpdate(lifecycleState),
       updated_at: new Date().toISOString(),
     });
   },
@@ -153,9 +156,14 @@ export const queueService = {
   async updateProgress(id: string, percent: number): Promise<void> {
     const uid = getUid();
     const clamped = Math.max(0, Math.min(100, percent));
+    const statusUpdate = clamped > 0 ? "watching" : undefined;
+    const queueStatus = clamped > 0 ? "in_progress" : "queued";
+    const lifecycleState = clamped > 0 ? "in_progress" : "queued";
     await updateDoc(doc(db, 'users', uid, 'bookmarks', id), {
       progress_percent: clamped,
-      queue_status: clamped > 0 ? 'in_progress' : 'queued',
+      queue_status: queueStatus,
+      ...(statusUpdate ? { status: statusUpdate } : {}),
+      ...buildLifecycleMetadataUpdate(lifecycleState),
       updated_at: new Date().toISOString(),
     });
   },

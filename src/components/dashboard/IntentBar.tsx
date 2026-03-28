@@ -6,6 +6,7 @@ export type IntentType = "quick" | "deep" | "random" | "continue";
 interface IntentBarProps {
   activeIntent: IntentType | null;
   onChange: (intent: IntentType | null) => void;
+  label?: string;
 }
 
 const INTENTS: { id: IntentType; icon: string; label: string }[] = [
@@ -15,10 +16,10 @@ const INTENTS: { id: IntentType; icon: string; label: string }[] = [
   { id: "continue", icon: "▶",  label: "Continue" },
 ];
 
-export function IntentBar({ activeIntent, onChange }: IntentBarProps) {
+export function IntentBar({ activeIntent, onChange, label = "What do you feel like?" }: IntentBarProps) {
   return (
     <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide px-4 sm:px-6 lg:px-8 py-2">
-      <span className="text-xs text-muted-foreground shrink-0">Feel like:</span>
+      <span className="text-xs text-muted-foreground shrink-0">{label}</span>
       {INTENTS.map((intent) => (
         <button
           key={intent.id}

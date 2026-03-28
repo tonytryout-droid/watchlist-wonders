@@ -1,11 +1,11 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Play, Check, Trash2, Edit2,
   Clock, Tag, ExternalLink, Save, X,
-  Paperclip, FileText, Download, Upload, Loader2, Star,
-  Share2, Globe, Lock, Copy, Plus, Shuffle, ChevronDown,
+  FileText, Download, Upload, Loader2, Star,
+  Globe, Lock, Unlock, Copy, Plus, Shuffle,
   CalendarCheck,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -19,7 +19,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { sharingService } from "@/services/sharing";
 import {
   AlertDialog,
@@ -38,6 +44,15 @@ import { attachmentService } from "@/services/attachments";
 import { useToast } from "@/hooks/use-toast";
 import { getPreferredRegionFromBrowser } from "@/lib/localeRegion";
 import { formatRuntime, getMoodEmoji } from "@/lib/utils";
+import {
+  buildAvailabilityFromWatchProviders,
+  buildFallbackSearchUrls,
+  DEFAULT_WATCH_REGION,
+  getAvailabilityFromBookmark,
+  isAvailabilityFresh,
+  resolveAndFetchAvailability,
+  type BookmarkAvailability,
+} from "@/services/watchAvailability";
 import type { Bookmark } from "@/types/database";
 
 function isSafeUrl(url: string): boolean {
@@ -74,9 +89,10 @@ const BookmarkDetail = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
-  const [moreInfoOpen, setMoreInfoOpen] = useState(false);
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
   const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
+  const [watchDialogOpen, setWatchDialogOpen] = useState(false);
+  const [isOpeningWatch, setIsOpeningWatch] = useState(false);
   const attachFileRef = useRef<HTMLInputElement>(null);
 
   // Edit form state
@@ -191,6 +207,28 @@ const BookmarkDetail = () => {
     },
   });
 
+  const vaultMutation = useMutation({
+    mutationFn: (vaulted: boolean) =>
+      bookmarkService.updateBookmark(id!, { is_vaulted: vaulted }),
+    onSuccess: (_, vaulted) => {
+      queryClient.invalidateQueries({ queryKey: ['bookmark', id] });
+      queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
+      toast({
+        title: vaulted ? "Moved to Vault" : "Removed from Vault",
+        description: vaulted
+          ? "Hidden from dashboard by default."
+          : "This title is visible on your dashboard again.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Couldn't update vault",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const rateMutation = useMutation({
     mutationFn: ({ rating, review }: { rating: number | null; review?: string | null }) =>
       bookmarkService.rateBookmark(id!, rating, review),
@@ -244,21 +282,50 @@ const BookmarkDetail = () => {
   };
 
   // Handle both camelCase (tmdbId) and snake_case (tmdb_id) — legacy data may differ
-  const tmdbId = (bookmark?.metadata?.tmdb_id ?? bookmark?.metadata?.tmdbId) as number | string | undefined;
-  // When the bookmark has no TMDB ID (e.g. manually added), search by title + type.
-  // The stored overview is used to disambiguate when multiple results match the same title.
+  const rawTmdbId = bookmark?.metadata?.tmdb_id ?? bookmark?.metadata?.tmdbId;
+  const tmdbId = (typeof rawTmdbId === "string" || typeof rawTmdbId === "number")
+    ? rawTmdbId
+    : undefined;
   const storedOverview = bookmark?.metadata?.overview as string | undefined;
   const { data: resolvedTmdbId } = useTmdbSearch(
     !tmdbId ? bookmark?.title : null,
-    bookmark?.type || 'movie',
+    bookmark?.type || "movie",
     storedOverview,
   );
   const effectiveTmdbId = tmdbId ?? resolvedTmdbId ?? undefined;
 
-  const preferredRegion = getPreferredRegionFromBrowser();
-  const { data: watchProviders } = useWatchProviders(effectiveTmdbId, bookmark?.type || 'movie', preferredRegion);
-  const { data: similarTitles = [] } = useSimilarTitles(effectiveTmdbId, bookmark?.type || 'movie');
-  const { data: tmdbDetails } = useTmdbDetails(effectiveTmdbId, bookmark?.type || 'movie');
+  const preferredRegion = getPreferredRegionFromBrowser() ?? DEFAULT_WATCH_REGION;
+  const cachedAvailability = getAvailabilityFromBookmark(bookmark);
+  const hasFreshCache = isAvailabilityFresh(cachedAvailability, preferredRegion);
+  const shouldRefreshProviders = Boolean(effectiveTmdbId) && !hasFreshCache;
+  const { data: watchProviders } = useWatchProviders(
+    shouldRefreshProviders ? effectiveTmdbId : undefined,
+    bookmark?.type || "movie",
+    preferredRegion,
+  );
+  const [watchSessionAvailability, setWatchSessionAvailability] = useState<BookmarkAvailability | null>(null);
+  useEffect(() => {
+    setWatchSessionAvailability(null);
+  }, [bookmark?.id]);
+
+  const currentAvailability = watchSessionAvailability
+    ?? (watchProviders && bookmark
+      ? buildAvailabilityFromWatchProviders(
+          {
+            title: bookmark.title,
+            type: bookmark.type,
+            provider: bookmark.provider,
+            metadata: bookmark.metadata,
+          },
+          watchProviders,
+          preferredRegion,
+          typeof effectiveTmdbId === "number" ? effectiveTmdbId : null,
+        )
+      : null)
+    ?? cachedAvailability;
+
+  const { data: similarTitles = [] } = useSimilarTitles(effectiveTmdbId, bookmark?.type || "movie");
+  const { data: tmdbDetails } = useTmdbDetails(effectiveTmdbId, bookmark?.type || "movie");
 
   const { data: allBookmarks = [] } = useQuery({
     queryKey: ['bookmarks'],
@@ -309,28 +376,70 @@ const BookmarkDetail = () => {
   const voteAverage = bookmark.metadata?.vote_average as number | undefined;
   const overview = bookmark.metadata?.overview as string | undefined;
 
-  const hasProviders = watchProviders &&
-    (watchProviders.flatrate.length > 0 || watchProviders.rent.length > 0 || watchProviders.buy.length > 0);
+  const availableNowProviders = currentAvailability?.providers.filter((p) => p.type === "subscription") ?? [];
+  const rentOrBuyProviders = currentAvailability?.providers.filter((p) => p.type !== "subscription") ?? [];
+  const fallbackSearch = buildFallbackSearchUrls(bookmark.title);
+  const noTmdbMatch = currentAvailability?.status === "no_tmdb_match" || (!effectiveTmdbId && resolvedTmdbId === null);
 
-  const allProviderPills = watchProviders
-    ? [
-        ...watchProviders.flatrate.map((p) => ({ ...p, kind: 'flatrate' as const })),
-        ...watchProviders.rent.map((p) => ({ ...p, kind: 'rent' as const })),
-        ...watchProviders.buy.map((p) => ({ ...p, kind: 'buy' as const })),
-      ]
-    : [];
+  const openSafeLink = (url: string) => {
+    if (!isSafeUrl(url)) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
 
-  const openProvider = (providerName: string) => {
-    if (watchProviders?.link && isSafeUrl(watchProviders.link)) {
-      window.open(watchProviders.link, "_blank", "noopener,noreferrer");
-      return;
+  const persistAvailability = async (availability: BookmarkAvailability, resolvedId?: number | null) => {
+    const nextMetadata = {
+      ...(bookmark.metadata || {}),
+      availability,
+      ...(resolvedId && !bookmark.metadata?.tmdb_id && !bookmark.metadata?.tmdbId
+        ? { tmdb_id: resolvedId }
+        : {}),
+    };
+    try {
+      await bookmarkService.updateBookmark(bookmark.id, {
+        metadata: nextMetadata,
+        availability,
+      });
+      queryClient.invalidateQueries({ queryKey: ["bookmark", id] });
+    } catch {
+      // Non-blocking cache persistence.
     }
+  };
 
-    window.open(
-      `https://www.google.com/search?q=${encodeURIComponent(`${providerName} ${bookmark.title}`)}`,
-      "_blank",
-      "noopener,noreferrer",
-    );
+  const openWatchFlow = async () => {
+    setIsOpeningWatch(true);
+    try {
+      let availability = currentAvailability;
+      if (!availability || !isAvailabilityFresh(availability, preferredRegion)) {
+        const resolved = await resolveAndFetchAvailability(
+          {
+            title: bookmark.title,
+            type: bookmark.type,
+            provider: bookmark.provider,
+            metadata: bookmark.metadata,
+          },
+          preferredRegion,
+        );
+        availability = resolved.availability;
+        setWatchSessionAvailability(availability);
+        await persistAvailability(availability, resolved.tmdbId);
+      }
+
+      if (availability && availability.providers.length === 1) {
+        openSafeLink(availability.providers[0].url);
+        return;
+      }
+
+      setWatchDialogOpen(true);
+    } catch {
+      toast({
+        title: "Could not load watch options",
+        description: "Use Search elsewhere while we retry provider data.",
+        variant: "destructive",
+      });
+      setWatchDialogOpen(true);
+    } finally {
+      setIsOpeningWatch(false);
+    }
   };
 
   return (
@@ -535,27 +644,19 @@ const BookmarkDetail = () => {
 
               {/* Primary actions */}
               <div className="flex flex-wrap gap-3 mb-6">
-                {bookmark.source_url && (
-                  <Button
-                    size="lg"
-                    className="bg-red-600 hover:bg-red-700 text-white gap-2 px-6"
-                    onClick={() => {
-                      if (!isSafeUrl(bookmark.source_url!)) {
-                        toast({
-                          title: "URL blocked",
-                          description: "This URL was blocked as it may be unsafe. Please verify the source before accessing it.",
-                          variant: "destructive",
-                        });
-                        return;
-                      }
-                      window.open(bookmark.source_url!, "_blank");
-                    }}
-                    disabled={!isSafeUrl(bookmark.source_url)}
-                  >
+                <Button
+                  size="lg"
+                  className="bg-red-600 hover:bg-red-700 text-white gap-2 px-6"
+                  onClick={openWatchFlow}
+                  disabled={isOpeningWatch}
+                >
+                  {isOpeningWatch ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
                     <Play className="w-5 h-5 fill-current" />
-                    Watch Now
-                  </Button>
-                )}
+                  )}
+                  {isOpeningWatch ? "Loading options" : "Watch Now"}
+                </Button>
                 <Button
                   size="lg"
                   variant="secondary"
@@ -565,6 +666,25 @@ const BookmarkDetail = () => {
                 >
                   <Check className="w-4 h-4" />
                   {bookmark.status === "done" ? "Already Watched" : "Mark as Watched"}
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={() => vaultMutation.mutate(!bookmark.is_vaulted)}
+                  disabled={vaultMutation.isPending}
+                  className="gap-2"
+                >
+                  {bookmark.is_vaulted ? (
+                    <>
+                      <Unlock className="w-4 h-4" />
+                      Remove from Vault
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-4 h-4" />
+                      Move to Vault
+                    </>
+                  )}
                 </Button>
               </div>
 
@@ -626,79 +746,13 @@ const BookmarkDetail = () => {
                 </div>
               )}
 
-              {/* WHERE TO WATCH — decision layer */}
-              {watchProviders !== undefined && (
-                <div className="mb-6">
-                  {hasProviders ? (
-                    <>
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                        Where to Watch
-                        {watchProviders.resolvedRegion ? ` (${watchProviders.resolvedRegion})` : ""}
-                      </p>
-                      <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
-                        {allProviderPills.map((p) => (
-                          <button
-                            key={`${p.provider_id}-${p.kind}`}
-                            type="button"
-                            onClick={() => openProvider(p.provider_name)}
-                            className="flex items-center gap-2 shrink-0 bg-white/10 hover:bg-white/20 backdrop-blur rounded-xl px-3 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                          >
-                            {p.logoUrl && (
-                              <img
-                                src={p.logoUrl}
-                                alt={p.provider_name}
-                                className="w-5 h-5 rounded-sm"
-                              />
-                            )}
-                            <span className="text-sm font-medium whitespace-nowrap">
-                              {p.provider_name}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground">
-                              {p.kind === 'flatrate'
-                                ? 'Included'
-                                : p.kind === 'rent'
-                                ? 'Rent'
-                                : 'Buy'}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                      {watchProviders.link && (
-                        <a
-                          href={watchProviders.link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-primary hover:underline inline-flex items-center gap-1 mt-2"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          See all on JustWatch
-                        </a>
-                      )}
-                    </>
-                  ) : (
-                    <div className="rounded-xl bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-                      Not available on major platforms yet.
-                      {watchProviders.link && (
-                        <a
-                          href={watchProviders.link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="ml-1 text-primary hover:underline"
-                        >
-                          Check JustWatch
-                        </a>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Synopsis — inline expand/collapse */}
+              {/* Synopsis */}
               {overview && (
                 <div className="mb-6 max-w-xl">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">About</p>
                   <p
                     className={`text-muted-foreground text-sm leading-relaxed ${
-                      synopsisExpanded ? "" : "line-clamp-3"
+                      synopsisExpanded ? "" : "line-clamp-4"
                     }`}
                   >
                     {overview}
@@ -714,6 +768,79 @@ const BookmarkDetail = () => {
                   )}
                 </div>
               )}
+
+              {/* WHERE TO WATCH — decision layer */}
+              <div className="mb-6 rounded-xl bg-muted/30 border border-border p-4">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
+                  Where You Can Watch ({currentAvailability?.region ?? preferredRegion})
+                </p>
+
+                {availableNowProviders.length > 0 ? (
+                  <div className="space-y-2">
+                    {availableNowProviders.slice(0, 4).map((provider) => (
+                      <div
+                        key={`${provider.providerId}-${provider.type}`}
+                        className="flex items-center justify-between rounded-lg bg-background/70 border border-border px-3 py-2"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {provider.logoUrl && (
+                            <img src={provider.logoUrl} alt={provider.name} className="w-5 h-5 rounded-sm" />
+                          )}
+                          <span className="text-sm font-medium truncate">{provider.name}</span>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => openSafeLink(provider.url)}
+                          className="gap-1"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Watch
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Not available on subscription platforms right now.</p>
+                )}
+
+                {rentOrBuyProviders.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Rent or Buy</p>
+                    {rentOrBuyProviders.slice(0, 4).map((provider) => (
+                      <div
+                        key={`${provider.providerId}-${provider.type}`}
+                        className="flex items-center justify-between rounded-lg bg-background/70 border border-border px-3 py-2"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {provider.logoUrl && (
+                            <img src={provider.logoUrl} alt={provider.name} className="w-5 h-5 rounded-sm" />
+                          )}
+                          <span className="text-sm font-medium truncate">{provider.name}</span>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openSafeLink(provider.url)}
+                          className="gap-1"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          {provider.type === "rent" ? "Rent" : "Buy"}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-4">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Search Elsewhere</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" onClick={() => openSafeLink(fallbackSearch.google)}>Search on Google</Button>
+                    <Button variant="outline" size="sm" onClick={() => openSafeLink(fallbackSearch.youtube)}>Search on YouTube</Button>
+                    <Button variant="outline" size="sm" onClick={() => openSafeLink(fallbackSearch.web)}>Search on Web</Button>
+                  </div>
+                </div>
+              </div>
 
               {/* ── LEVEL 2: MID LAYER ── */}
 
@@ -825,206 +952,172 @@ const BookmarkDetail = () => {
                 </div>
               )}
 
-              {/* ── LEVEL 3: COLLAPSIBLE "SHARING & ATTACHMENTS" ── */}
-              <Collapsible open={moreInfoOpen} onOpenChange={setMoreInfoOpen} className="mb-6">
-                <CollapsibleTrigger asChild>
+              {/* Source */}
+              {bookmark.source_url && (
+                <div className="mb-6">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Source</p>
+                  {isSafeUrl(bookmark.source_url) ? (
+                    <a
+                      href={bookmark.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline flex items-center gap-1 text-sm"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      {bookmark.source_url}
+                    </a>
+                  ) : (
+                    <span
+                      className="text-muted-foreground flex items-center gap-1 text-sm opacity-70 cursor-not-allowed"
+                      aria-disabled="true"
+                      title="Invalid or unsafe source URL"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      {bookmark.source_url}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Sharing */}
+              <div className="mb-6">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Sharing</p>
+                {bookmark.is_public && bookmark.share_token ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary" className="gap-1">
+                      <Globe className="w-3 h-3" />
+                      Anyone with the link can view
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        const url = `${window.location.origin}/share/${bookmark.share_token}`;
+                        navigator.clipboard.writeText(url).catch(() => {});
+                        toast({ title: "Link copied!" });
+                      }}
+                    >
+                      <Copy className="w-3 h-3 mr-1" />
+                      Copy link
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-muted-foreground"
+                      onClick={() => makePrivateMutation.mutate()}
+                      disabled={makePrivateMutation.isPending}
+                    >
+                      <Lock className="w-3 h-3 mr-1" />
+                      Make private
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => makePublicMutation.mutate()}
+                    disabled={makePublicMutation.isPending}
+                  >
+                    <Globe className="w-4 h-4 mr-2" />
+                    Share & copy link
+                  </Button>
+                )}
+              </div>
+
+              {/* Files */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Files {attachments.length > 0 && `(${attachments.length})`}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => attachFileRef.current?.click()}
+                  >
+                    <Upload className="w-3 h-3 mr-1" />
+                    Add
+                  </Button>
+                  <input
+                    ref={attachFileRef}
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={handleAttachFile}
+                  />
+                </div>
+                {attachments.length === 0 ? (
                   <button
                     type="button"
-                    className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mb-4 w-full text-left"
+                    onClick={() => attachFileRef.current?.click()}
+                    className="w-full border border-dashed border-border rounded-lg p-4 text-center text-sm text-muted-foreground hover:border-primary/50 transition-colors"
                   >
-                    <ChevronDown
-                      className={`w-4 h-4 transition-transform duration-200 ${
-                        moreInfoOpen ? 'rotate-180' : ''
-                      }`}
-                    />
-                    {moreInfoOpen ? 'Less' : 'Sharing & files'}
+                    No files yet — click to upload
                   </button>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  {/* My Rating */}
-                  <div className="mb-6">
-                    <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1">
-                      <Star className="w-4 h-4" />
-                      My Rating
-                    </h3>
-                    <div className="flex items-center gap-1">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <button
-                          key={star}
-                          type="button"
-                          onClick={() => rateMutation.mutate({
-                            rating: bookmark.user_rating === star ? null : star,
-                          })}
-                          className="p-1.5 hover:scale-110 transition-transform"
-                          aria-label={`Rate ${star} star${star !== 1 ? 's' : ''}`}
-                        >
-                          <Star
-                            className={`w-6 h-6 ${
-                              (bookmark.user_rating || 0) >= star
-                                ? 'fill-yellow-400 text-yellow-400'
-                                : 'text-muted-foreground'
-                            }`}
+                ) : (
+                  <div className="space-y-2">
+                    {attachments.map((att) => (
+                      <div
+                        key={att.id}
+                        className="flex items-center gap-3 p-3 bg-secondary rounded-lg"
+                      >
+                        {att.file_type?.startsWith("image/") ? (
+                          <img
+                            src={att.file_url}
+                            alt={att.file_name}
+                            className="w-10 h-10 object-cover rounded"
                           />
-                        </button>
-                      ))}
-                      {bookmark.user_rating && (
-                        <span className="text-sm text-muted-foreground ml-2">
-                          {bookmark.user_rating}/5
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Source Link */}
-                  {bookmark.source_url && (
-                    <div className="mb-6">
-                      <h3 className="text-sm font-medium text-muted-foreground mb-2">Source</h3>
-                      <a
-                        href={bookmark.source_url && isSafeUrl(bookmark.source_url) ? bookmark.source_url : "#"}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline flex items-center gap-1 text-sm"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                        {bookmark.source_url}
-                      </a>
-                    </div>
-                  )}
-
-                  {/* Sharing */}
-                  <div className="mb-6">
-                    <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1">
-                      <Share2 className="w-4 h-4" />
-                      Sharing
-                    </h3>
-                    {bookmark.is_public && bookmark.share_token ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary" className="gap-1">
-                          <Globe className="w-3 h-3" />
-                          Anyone with the link can view
-                        </Badge>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => {
-                            const url = `${window.location.origin}/share/${bookmark.share_token}`;
-                            navigator.clipboard.writeText(url).catch(() => {});
-                            toast({ title: "Link copied!" });
-                          }}
-                        >
-                          <Copy className="w-3 h-3 mr-1" />
-                          Copy link
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs text-muted-foreground"
-                          onClick={() => makePrivateMutation.mutate()}
-                          disabled={makePrivateMutation.isPending}
-                        >
-                          <Lock className="w-3 h-3 mr-1" />
-                          Make private
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => makePublicMutation.mutate()}
-                        disabled={makePublicMutation.isPending}
-                      >
-                        <Globe className="w-4 h-4 mr-2" />
-                        Share & copy link
-                      </Button>
-                    )}
-                  </div>
-
-                  {/* Files */}
-                  <div className="mb-6">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                        <Paperclip className="w-4 h-4" />
-                        Files {attachments.length > 0 && `(${attachments.length})`}
-                      </h3>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => attachFileRef.current?.click()}
-                      >
-                        <Upload className="w-3 h-3 mr-1" />
-                        Add
-                      </Button>
-                      <input
-                        ref={attachFileRef}
-                        type="file"
-                        accept="image/*,.pdf"
-                        className="hidden"
-                        onChange={handleAttachFile}
-                      />
-                    </div>
-                    {attachments.length === 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => attachFileRef.current?.click()}
-                        className="w-full border border-dashed border-border rounded-lg p-4 text-center text-sm text-muted-foreground hover:border-primary/50 transition-colors"
-                      >
-                        No files yet — click to upload
-                      </button>
-                    ) : (
-                      <div className="space-y-2">
-                        {attachments.map((att) => (
-                          <div
-                            key={att.id}
-                            className="flex items-center gap-3 p-3 bg-secondary rounded-lg"
+                        ) : (
+                          <FileText className="w-8 h-8 text-muted-foreground shrink-0" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{att.file_name}</p>
+                          {att.size && (
+                            <p className="text-xs text-muted-foreground">
+                              {(att.size / 1024).toFixed(1)} KB
+                            </p>
+                          )}
+                        </div>
+                        {isSafeUrl(att.file_url) ? (
+                          <a
+                            href={att.file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 hover:bg-background rounded transition-colors"
+                            title="Download"
                           >
-                            {att.file_type?.startsWith("image/") ? (
-                              <img
-                                src={att.file_url}
-                                alt={att.file_name}
-                                className="w-10 h-10 object-cover rounded"
-                              />
-                            ) : (
-                              <FileText className="w-8 h-8 text-muted-foreground shrink-0" />
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">{att.file_name}</p>
-                              {att.size && (
-                                <p className="text-xs text-muted-foreground">
-                                  {(att.size / 1024).toFixed(1)} KB
-                                </p>
-                              )}
-                            </div>
-                            <a
-                              href={isSafeUrl(att.file_url) ? att.file_url : "#"}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="p-1.5 hover:bg-background rounded transition-colors"
-                              title="Download"
-                            >
-                              <Download className="w-4 h-4 text-muted-foreground" />
-                            </a>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                              onClick={() => { setDeletingAttachmentId(att.id); deleteAttachmentMutation.mutate(att.id); }}
-                              disabled={deletingAttachmentId === att.id}
-                            >
-                              {deletingAttachmentId === att.id ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <X className="w-3 h-3" />
-                              )}
-                            </Button>
-                          </div>
-                        ))}
+                            <Download className="w-4 h-4 text-muted-foreground" />
+                          </a>
+                        ) : (
+                          <span
+                            className="p-1.5 rounded text-muted-foreground/50 cursor-not-allowed"
+                            aria-disabled="true"
+                            aria-label="Invalid or unsafe attachment URL"
+                            title="Invalid or unsafe attachment URL"
+                          >
+                            <Download className="w-4 h-4 text-muted-foreground" />
+                          </span>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => { setDeletingAttachmentId(att.id); deleteAttachmentMutation.mutate(att.id); }}
+                          disabled={deletingAttachmentId === att.id}
+                        >
+                          {deletingAttachmentId === att.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <X className="w-3 h-3" />
+                          )}
+                        </Button>
                       </div>
-                    )}
+                    ))}
                   </div>
-                </CollapsibleContent>
-              </Collapsible>
+                )}
+              </div>
 
               {/* ── LEVEL 4: SIMILAR TITLES ── */}
               {similarTitles.length > 0 && (
@@ -1081,6 +1174,69 @@ const BookmarkDetail = () => {
           </div>
         )}
       </div>
+
+      <Dialog open={watchDialogOpen} onOpenChange={setWatchDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{bookmark.title}</DialogTitle>
+            <DialogDescription>
+              Where you can watch
+              {currentAvailability?.region ? ` (${currentAvailability.region})` : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {noTmdbMatch ? (
+              <div className="rounded-md bg-muted/40 border border-border px-3 py-2 text-sm text-muted-foreground">
+                We couldn't match this title automatically. Try searching below.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Available now</p>
+                {availableNowProviders.length > 0 ? (
+                  availableNowProviders.map((provider) => (
+                    <div key={`${provider.providerId}-${provider.type}`} className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {provider.logoUrl && <img src={provider.logoUrl} alt={provider.name} className="w-5 h-5 rounded-sm" />}
+                        <span className="text-sm truncate">{provider.name}</span>
+                      </div>
+                      <Button size="sm" onClick={() => openSafeLink(provider.url)}>Watch</Button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">Not available on streaming right now.</p>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Search elsewhere</p>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => openSafeLink(fallbackSearch.google)}>Search on Google</Button>
+                <Button variant="outline" size="sm" onClick={() => openSafeLink(fallbackSearch.youtube)}>Search on YouTube</Button>
+                <Button variant="outline" size="sm" onClick={() => openSafeLink(fallbackSearch.web)}>Search on Web</Button>
+              </div>
+            </div>
+
+            {rentOrBuyProviders.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Rent or buy</p>
+                {rentOrBuyProviders.map((provider) => (
+                  <div key={`${provider.providerId}-${provider.type}`} className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {provider.logoUrl && <img src={provider.logoUrl} alt={provider.name} className="w-5 h-5 rounded-sm" />}
+                      <span className="text-sm truncate">{provider.name}</span>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => openSafeLink(provider.url)}>
+                      {provider.type === "rent" ? "Rent" : "Buy"}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

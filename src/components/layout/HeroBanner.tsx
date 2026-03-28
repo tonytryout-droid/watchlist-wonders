@@ -20,7 +20,7 @@
 
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Play, Info, Clock } from "lucide-react";
+import { Play, Info, Clock, CalendarPlus, SkipForward } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GradientBarsBackground } from "@/components/ui/gradient-bars-background";
 import { cn } from "@/lib/utils";
@@ -43,7 +43,12 @@ interface Bookmark {
 interface HeroBannerProps {
   bookmark: Bookmark | null;
   onPlay?: () => void;
+  onSchedule?: () => void;
+  onSkip?: () => void;
   onMoreInfo?: () => void;
+  reason?: string;
+  streakCount?: number;
+  onKeepStreak?: () => void;
   className?: string;
   isLoading?: boolean;
 }
@@ -79,7 +84,18 @@ const FALLBACK_DESCRIPTION: Record<string, string> = {
   doc:    "A documentary worth your time. Open it, take notes, mark it watched when you're done.",
 };
 
-export function HeroBanner({ bookmark, onPlay, onMoreInfo, className, isLoading }: HeroBannerProps) {
+export function HeroBanner({
+  bookmark,
+  onPlay,
+  onSchedule,
+  onSkip,
+  onMoreInfo,
+  reason,
+  streakCount,
+  onKeepStreak,
+  className,
+  isLoading,
+}: HeroBannerProps) {
   const [imgError, setImgError] = useState(false);
 
   // Loading skeleton — full hero area shimmer
@@ -200,6 +216,13 @@ export function HeroBanner({ bookmark, onPlay, onMoreInfo, className, isLoading 
           {moodSummary && <span className="text-white/65 text-xs">{moodSummary}</span>}
         </div>
 
+        {reason && (
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/40 px-3 py-1 text-xs text-[#54b3d6]">
+            <span className="font-semibold">Why this?</span>
+            <span className="truncate max-w-[320px]">{reason}</span>
+          </div>
+        )}
+
         <p className="text-sm md:text-base text-white/78 max-w-2xl mb-7 line-clamp-3 leading-relaxed">
           {description}
         </p>
@@ -212,18 +235,50 @@ export function HeroBanner({ bookmark, onPlay, onMoreInfo, className, isLoading 
             className="bg-white hover:bg-white/90 text-black font-bold rounded px-8 h-12 text-base shadow-none"
           >
             <Play className="w-5 h-5 fill-black mr-2" />
-            Watch
+            Watch now
           </Button>
           <Button
             variant="outline"
             size="lg"
-            onClick={onMoreInfo}
+            onClick={onSchedule}
             className="bg-white/20 hover:bg-white/30 text-white border-white/0 font-semibold rounded px-6 h-12 text-base backdrop-blur-sm"
           >
-            <Info className="w-5 h-5 mr-2" />
-            More Info
+            <CalendarPlus className="w-5 h-5 mr-2" />
+            Schedule
           </Button>
+          <Button
+            variant="outline"
+            size="lg"
+            onClick={onSkip}
+            className="bg-white/12 hover:bg-white/22 text-white border-white/0 font-semibold rounded px-6 h-12 text-base backdrop-blur-sm"
+          >
+            <SkipForward className="w-5 h-5 mr-2" />
+            Skip
+          </Button>
+          <button
+            type="button"
+            onClick={onMoreInfo}
+            className="text-sm text-white/70 hover:text-white inline-flex items-center gap-1.5 px-1 py-1"
+          >
+            <Info className="w-4 h-4" />
+            Details
+          </button>
         </div>
+
+        {streakCount && streakCount > 0 && (
+          <div className="mt-4 flex items-center gap-3">
+            <span className="text-xs text-primary font-semibold">
+              {streakCount} day streak
+            </span>
+            <button
+              type="button"
+              onClick={onKeepStreak}
+              className="text-xs text-primary/90 hover:text-primary underline underline-offset-4"
+            >
+              Keep it alive
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );

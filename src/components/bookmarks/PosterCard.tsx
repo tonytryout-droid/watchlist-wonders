@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   Play, Plus, Check, CalendarPlus, MoreHorizontal, ExternalLink,
-  Trash2, Undo2, Eye, BookMarked, Minus, ThumbsUp, Info, Film, Star,
+  Trash2, Undo2, Eye, BookMarked, Minus, ThumbsUp, Info, Film, Star, SkipForward,
+  Lock, Unlock, Globe, Share2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12,17 +13,23 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { format } from "date-fns";
 import { cn, extractYouTubeVideoId } from "@/lib/utils";
+import { getNextStatus } from "@/engine/lifecycle";
 import { fetchTrailerEmbedUrlViaProxy } from "@/services/tmdbProxy";
 import { QuickScheduleSheet } from "@/components/schedules/QuickScheduleSheet";
-import type { Bookmark } from "@/types/database";
+import { WatchModal } from "@/components/bookmarks/WatchModal";
+import type { Bookmark, Schedule } from "@/types/database";
 
 interface PosterCardProps {
   bookmark: Bookmark;
   rank?: number;
   cardSize?: "default" | "featured";
+  recommendationReason?: string;
+  isHighlighted?: boolean;
   onPlay?: () => void;
   onSchedule?: () => void;
+  onSkip?: () => void;
   onMarkDone?: () => void;
   onAddToPlan?: () => void;
   onDelete?: () => void;
@@ -36,6 +43,11 @@ interface PosterCardProps {
   isSelected?: boolean;
   onSelect?: () => void;
   onToggleUpNext?: (bookmark: Bookmark) => void;
+  onSharePublic?: () => void;
+  onSharePrivate?: () => void;
+  onVault?: () => void;
+  onUnvault?: () => void;
+  schedule?: Schedule;
 }
 
 const PROVIDER_COLOR: Record<string, string> = {
@@ -62,19 +74,22 @@ const PROVIDER_COLOR: Record<string, string> = {
   generic:        "bg-neutral-500",
 };
 
-const STATUS_CYCLE: Record<string, Bookmark["status"]> = {
-  backlog: "watching",
-  watching: "done",
-  done: "backlog",
-  scheduled: "watching",
-  dropped: "backlog",
-};
-
 function formatRuntime(minutes: number) {
   if (minutes < 60) return `${minutes}m`;
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function formatScheduleBadge(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) {
+    return `Today ${format(date, 'h a')}`;
+  }
+  const tomorrow = new Date(now.getTime() + 86400000);
+  if (date.toDateString() === tomorrow.toDateString()) return 'Tomorrow';
+  return format(date, 'EEE MMM d');
 }
 
 function isNewBookmark(createdAt: string) {
@@ -119,6 +134,35 @@ function toYouTubeEmbedUrl(videoId: string, autoplay = true): string {
   return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
 }
 
+function toYouTubeWatchUrl(rawUrl: string): string | null {
+  const parsedId = extractYouTubeVideoId(rawUrl);
+  if (parsedId) {
+    return `https://www.youtube.com/watch?v=${parsedId}`;
+  }
+
+  try {
+    const parsed = new URL(rawUrl);
+    const hostname = parsed.hostname.toLowerCase();
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    if (!hostname.includes("youtube.com")) return null;
+
+    const embedId = segments[0] === "embed" ? segments[1] : null;
+    const shortsId = segments[0] === "shorts" ? segments[1] : null;
+    const videoId = embedId ?? shortsId;
+    if (!videoId) return null;
+
+    const watchUrl = new URL("https://www.youtube.com/watch");
+    watchUrl.searchParams.set("v", videoId);
+    const list = parsed.searchParams.get("list");
+    const start = parsed.searchParams.get("start") ?? parsed.searchParams.get("t");
+    if (list) watchUrl.searchParams.set("list", list);
+    if (start) watchUrl.searchParams.set("t", start);
+    return watchUrl.toString();
+  } catch {
+    return null;
+  }
+}
+
 function toTrailerEmbedUrl(rawUrl: string): string | null {
   const youtubeId = extractYouTubeVideoId(rawUrl);
   if (youtubeId) return toYouTubeEmbedUrl(youtubeId);
@@ -161,8 +205,11 @@ export function PosterCard({
   bookmark,
   rank,
   cardSize = "default",
+  recommendationReason,
+  isHighlighted = false,
   onPlay,
   onSchedule,
+  onSkip,
   onMarkDone,
   onAddToPlan,
   onDelete,
@@ -176,12 +223,18 @@ export function PosterCard({
   isSelected,
   onSelect,
   onToggleUpNext,
+  onSharePublic,
+  onSharePrivate,
+  onVault,
+  onUnvault,
+  schedule,
 }: PosterCardProps) {
   const isMobile = useIsMobile();
   const [isHovered, setIsHovered] = useState(false);
   const [isTouched, setIsTouched] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [quickScheduleOpen, setQuickScheduleOpen] = useState(false);
+  const [watchModalOpen, setWatchModalOpen] = useState(false);
   const [trailerUrl, setTrailerUrl] = useState<string | null>(() => getBookmarkTrailerUrl(bookmark));
   const [isLoadingTrailer, setIsLoadingTrailer] = useState(false);
   const [episodePopoverOpen, setEpisodePopoverOpen] = useState(false);
@@ -212,8 +265,30 @@ export function PosterCard({
     e.preventDefault();
     e.stopPropagation();
     if (onPlay) { onPlay(); return; }
-    if (!trailerUrl && bookmark.source_url) {
+
+    const providers = bookmark.availability?.providers ?? [];
+    if (providers.length === 1) {
+      const url = providers[0].url;
+      try {
+        const { protocol } = new URL(url);
+        if (protocol === "https:" || protocol === "http:") {
+          window.open(url, "_blank", "noopener");
+          return;
+        }
+      } catch { /* fall through */ }
+    }
+    if (providers.length > 1) {
+      setWatchModalOpen(true);
+      return;
+    }
+
+    if (bookmark.source_url) {
       window.open(bookmark.source_url, "_blank", "noopener");
+      return;
+    }
+    const trailerWatchUrl = trailerUrl ? toYouTubeWatchUrl(trailerUrl) ?? trailerUrl : null;
+    if (trailerWatchUrl) {
+      window.open(trailerWatchUrl, "_blank", "noopener");
       return;
     }
     setIsHovered(true);
@@ -249,7 +324,7 @@ export function PosterCard({
     e.preventDefault();
     e.stopPropagation();
     if (!onStatusCycle) return;
-    const next = STATUS_CYCLE[bookmark.status] ?? "backlog";
+    const next = getNextStatus(bookmark.status);
     onStatusCycle(bookmark, next);
   };
 
@@ -374,6 +449,7 @@ export function PosterCard({
             : "w-64 sm:w-72 md:w-80",
           rank && "ml-6",
           showExpanded && "z-30",
+          isHighlighted && "ring-2 ring-primary/70 ring-offset-2 ring-offset-background rounded-md motion-safe:animate-[pulse_2.2s_ease-in-out_infinite] motion-reduce:animate-none",
           isSelected && "ring-2 ring-primary rounded-md",
           className
         )}
@@ -475,12 +551,30 @@ export function PosterCard({
               </div>
             )}
 
+            {/* Schedule badge */}
+            {schedule && bookmark.queue_status !== "up_next" && !isNew && !isSelectable && (
+              <div className="absolute top-1.5 right-1.5">
+                <span className="text-[9px] font-bold bg-blue-600 text-white px-1.5 py-0.5 rounded-sm uppercase tracking-wide">
+                  {formatScheduleBadge(schedule.scheduled_for)}
+                </span>
+              </div>
+            )}
+
             {/* Up Next badge */}
             {bookmark.queue_status === "up_next" && !isSelectable && !isNew && (
               <div className="absolute top-1.5 right-1.5">
                 <span className="flex items-center gap-0.5 text-[9px] font-bold bg-wm-gold text-background px-1.5 py-0.5 rounded-sm uppercase tracking-wide">
                   <Star className="w-2 h-2 fill-current" />
                   Up Next
+                </span>
+              </div>
+            )}
+
+            {bookmark.is_public && !isSelectable && (
+              <div className="absolute bottom-2 right-2 z-20">
+                <span className="inline-flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[9px] font-semibold text-white/95 backdrop-blur-sm">
+                  <Globe className="w-2.5 h-2.5" />
+                  Public
                 </span>
               </div>
             )}
@@ -639,6 +733,29 @@ export function PosterCard({
                     <DropdownMenuItem onClick={handleScheduleClick} className="text-white/90">
                       <CalendarPlus className="w-4 h-4 mr-2" />Quick Schedule
                     </DropdownMenuItem>
+                    {bookmark.status !== "done" && (
+                      <DropdownMenuItem onClick={onSkip} className="text-white/90">
+                        <SkipForward className="w-4 h-4 mr-2" />Skip for now
+                      </DropdownMenuItem>
+                    )}
+                    {bookmark.is_public ? (
+                      <DropdownMenuItem onClick={onSharePrivate} className="text-white/90">
+                        <Globe className="w-4 h-4 mr-2" />Make private
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onClick={onSharePublic} className="text-white/90">
+                        <Share2 className="w-4 h-4 mr-2" />Share publicly
+                      </DropdownMenuItem>
+                    )}
+                    {bookmark.is_vaulted ? (
+                      <DropdownMenuItem onClick={onUnvault} className="text-white/90">
+                        <Unlock className="w-4 h-4 mr-2" />Remove from Vault
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onClick={onVault} className="text-white/90">
+                        <Lock className="w-4 h-4 mr-2" />Move to Vault
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator className="bg-white/10" />
                     <DropdownMenuItem onClick={handleOpenSource} className="text-white/90">
                       <ExternalLink className="w-4 h-4 mr-2" />Open Source
@@ -664,18 +781,51 @@ export function PosterCard({
           >
             <div className="p-2.5">
               {/* Action row */}
-              <div className="flex items-center gap-1.5 mb-2">
-                {/* Play */}
+              <div className="grid grid-cols-1 gap-1.5 mb-2">
                 <button
                   type="button"
                   onClick={handlePlay}
-                  className="w-8 h-8 rounded-full bg-white flex items-center justify-center hover:bg-white/90 transition-colors shrink-0"
-                  aria-label={`Play ${bookmark.title}`}
+                  className="h-8 rounded-md bg-white text-black text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-white/90 transition-colors"
+                  aria-label={`Watch now: ${bookmark.title}`}
                 >
-                  <Play className="w-4 h-4 fill-black text-black" />
+                  <Play className="w-3.5 h-3.5 fill-black text-black" />
+                  <span>Watch now</span>
                 </button>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleScheduleClick}
+                    className="h-8 rounded-md border border-white/30 text-white text-xs font-medium flex items-center justify-center gap-1.5 hover:border-white transition-colors"
+                    aria-label={`Schedule ${bookmark.title}`}
+                  >
+                    <CalendarPlus className="w-3.5 h-3.5" />
+                    <span>Schedule</span>
+                  </button>
+                  {bookmark.status !== "done" ? (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSkip?.(); }}
+                      className="h-8 rounded-md border border-white/30 text-white text-xs font-medium flex items-center justify-center gap-1.5 hover:border-white transition-colors"
+                      aria-label={`Skip ${bookmark.title} for now`}
+                    >
+                      <SkipForward className="w-3.5 h-3.5" />
+                      <span>Skip</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUndoDone?.(); }}
+                      className="h-8 rounded-md border border-[#46d369] text-[#46d369] text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-[#46d369]/10 transition-colors"
+                      aria-label="Undo watched"
+                    >
+                      <Undo2 className="w-3.5 h-3.5" />
+                      <span>Undo</span>
+                    </button>
+                  )}
+                </div>
+              </div>
 
-                {/* Add to plan */}
+              <div className="flex items-center gap-1.5 mb-2">
                 <button
                   type="button"
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAddToPlan?.(); }}
@@ -685,7 +835,6 @@ export function PosterCard({
                   <Plus className="w-4 h-4" />
                 </button>
 
-                {/* Up Next toggle */}
                 {onToggleUpNext && bookmark.status !== "done" && (
                   <button
                     type="button"
@@ -703,7 +852,6 @@ export function PosterCard({
                   </button>
                 )}
 
-                {/* Mark done */}
                 <button
                   type="button"
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); bookmark.status === "done" ? onUndoDone?.() : onMarkDone?.(); }}
@@ -718,7 +866,6 @@ export function PosterCard({
                   <ThumbsUp className="w-4 h-4" />
                 </button>
 
-                {/* More options / overflow */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
@@ -748,6 +895,24 @@ export function PosterCard({
                     <DropdownMenuItem onClick={handleScheduleClick} className="text-white/90">
                       <CalendarPlus className="w-4 h-4 mr-2" />Quick Schedule
                     </DropdownMenuItem>
+                    {bookmark.is_public ? (
+                      <DropdownMenuItem onClick={onSharePrivate} className="text-white/90">
+                        <Globe className="w-4 h-4 mr-2" />Make private
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onClick={onSharePublic} className="text-white/90">
+                        <Share2 className="w-4 h-4 mr-2" />Share publicly
+                      </DropdownMenuItem>
+                    )}
+                    {bookmark.is_vaulted ? (
+                      <DropdownMenuItem onClick={onUnvault} className="text-white/90">
+                        <Unlock className="w-4 h-4 mr-2" />Remove from Vault
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onClick={onVault} className="text-white/90">
+                        <Lock className="w-4 h-4 mr-2" />Move to Vault
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator className="bg-white/10" />
                     <DropdownMenuItem onClick={handleOpenSource} className="text-white/90">
                       <ExternalLink className="w-4 h-4 mr-2" />Open Source
@@ -775,6 +940,12 @@ export function PosterCard({
                   <span className="text-[10px] text-white/50">{bookmark.mood_tags.slice(0, 2).join(" | ")}</span>
                 )}
               </div>
+              {recommendationReason && (
+                <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-[#54b3d6]">
+                  <Info className="h-3 w-3 shrink-0" />
+                  <p className="truncate">Why this? {recommendationReason}</p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -785,6 +956,11 @@ export function PosterCard({
             <p className="text-[11px] font-medium text-white/80 truncate leading-tight">
               {bookmark.title}
             </p>
+            {recommendationReason && (
+              <p className="text-[10px] text-[#54b3d6]/90 truncate leading-tight mt-0.5">
+                Why this? {recommendationReason}
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -794,6 +970,12 @@ export function PosterCard({
         bookmark={bookmark}
         open={quickScheduleOpen}
         onOpenChange={setQuickScheduleOpen}
+      />
+
+      <WatchModal
+        bookmark={bookmark}
+        open={watchModalOpen}
+        onClose={() => setWatchModalOpen(false)}
       />
     </>
   );

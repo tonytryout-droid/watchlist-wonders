@@ -46,6 +46,14 @@ const PROVIDER_STYLES: Record<string, { label: string; dot: string }> = {
 
 interface QuickAddBarProps {
   className?: string;
+  value?: string;
+  onValueChange?: (value: string) => void;
+  onSubmit?: () => void | Promise<void>;
+  isLoading?: boolean;
+  loadingLabel?: string;
+  saveLabel?: string;
+  statusMessage?: string | null;
+  disableSubmit?: boolean;
 }
 
 const EMPTY_SMART_FILL: SmartFillData = {
@@ -59,19 +67,38 @@ const EMPTY_SMART_FILL: SmartFillData = {
   matchConfidence: "unknown",
 };
 
-export function QuickAddBar({ className }: QuickAddBarProps) {
+export function QuickAddBar({
+  className,
+  value,
+  onValueChange,
+  onSubmit,
+  isLoading = false,
+  loadingLabel = "Fetching...",
+  saveLabel = "Save",
+  statusMessage,
+  disableSubmit = false,
+}: QuickAddBarProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const [url, setUrl] = useState("");
+  const [internalUrl, setInternalUrl] = useState("");
   const [isEnriching, setIsEnriching] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmInitial, setConfirmInitial] = useState<ConfirmMetadataPayload>({ url: "" });
   const [smartFill, setSmartFill] = useState<SmartFillData>(EMPTY_SMART_FILL);
 
+  const url = value ?? internalUrl;
+  const setUrl = (nextValue: string) => {
+    onValueChange?.(nextValue);
+    if (value === undefined) {
+      setInternalUrl(nextValue);
+    }
+  };
+
   const detectedProvider = url.trim() ? detectProvider(url.trim()) : null;
   const providerInfo = detectedProvider ? PROVIDER_STYLES[detectedProvider] : null;
+  const isBusy = isLoading || isEnriching;
 
   const createMutation = useMutation({
     mutationFn: (data: Parameters<typeof bookmarkService.createBookmark>[0]) =>
@@ -115,6 +142,11 @@ export function QuickAddBar({ className }: QuickAddBarProps) {
   const handleFetch = async () => {
     const trimmed = url.trim();
     if (!trimmed) return;
+
+    if (onSubmit) {
+      await onSubmit();
+      return;
+    }
 
     setIsEnriching(true);
     const dp = detectProvider(trimmed);
@@ -170,14 +202,14 @@ export function QuickAddBar({ className }: QuickAddBarProps) {
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && url.trim()) {
-      handleFetch();
+      void handleFetch();
     }
     if (e.key === "Escape") {
       setUrl("");
     }
   };
 
-  const canSave = Boolean(url.trim()) && !isEnriching && !createMutation.isPending;
+  const canSave = Boolean(url.trim()) && !isBusy && !createMutation.isPending && !disableSubmit;
 
   return (
     <>
@@ -223,14 +255,14 @@ export function QuickAddBar({ className }: QuickAddBarProps) {
           <Button
             size="sm"
             disabled={!canSave}
-            onClick={handleFetch}
+            onClick={() => { void handleFetch(); }}
             className="shrink-0 h-8 text-xs"
           >
-            {isEnriching ? (
-              <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />Fetching…</>
+            {isBusy ? (
+              <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />{loadingLabel}</>
             ) : createMutation.isPending ? (
               <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />Saving…</>
-            ) : "Save"}
+            ) : saveLabel}
           </Button>
         </div>
 
@@ -240,6 +272,12 @@ export function QuickAddBar({ className }: QuickAddBarProps) {
             <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", providerInfo.dot)} />
             <span className="text-[11px] text-muted-foreground">{providerInfo.label} detected</span>
           </div>
+        )}
+
+        {statusMessage && (
+          <p className="text-xs text-muted-foreground mt-1.5 px-1 animate-pulse">
+            {statusMessage}
+          </p>
         )}
 
         {/* Helper text */}
