@@ -25,6 +25,7 @@ describe("normalizeBookmark", () => {
       progress_percent: "130",
       shown_count: "3",
       share_token: "  token-123  ",
+      is_vaulted: true,
     });
 
     expect(bookmark.title).toBe("Test Title");
@@ -42,6 +43,7 @@ describe("normalizeBookmark", () => {
     expect(bookmark.shown_count).toBe(3);
     expect(bookmark.queue_status).toBe("in_progress");
     expect(bookmark.share_token).toBe("token-123");
+    expect(bookmark.is_vaulted).toBe(true);
   });
 
   it("falls back safely when required fields are missing or invalid", () => {
@@ -54,6 +56,7 @@ describe("normalizeBookmark", () => {
       mood_tags: "not-an-array",
       user_rating: "NaN",
       progress_percent: -50,
+      is_vaulted: "yes",
     });
 
     expect(bookmark.title).toBe("Untitled");
@@ -63,6 +66,7 @@ describe("normalizeBookmark", () => {
     expect(bookmark.mood_tags).toEqual([]);
     expect(bookmark.user_rating).toBeNull();
     expect(bookmark.progress_percent).toBe(0);
+    expect(bookmark.is_vaulted).toBeUndefined();
     expect(typeof bookmark.created_at).toBe("string");
     expect(typeof bookmark.updated_at).toBe("string");
   });

@@ -6,9 +6,10 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
 
-    // Public bookmarks — anyone can read if is_public == true
+    // Public bookmarks — anyone can read if is_public == true scoped to /users/{uid}/bookmarks
     match /users/{uid}/bookmarks/{bookmarkId} {
-      allow read: if resource.data.is_public == true;
+      allow read: if resource.data.is_public == true
+        || (request.auth != null && request.auth.uid == uid);
     }
 
     // Feed items — owner can read their own feed; writes restricted to Cloud Functions only
@@ -23,3 +24,4 @@ service cloud.firestore {
     }
   }
 }
+

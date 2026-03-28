@@ -26,6 +26,11 @@ import { cn } from "@/lib/utils";
 
 interface EmptyStateGuideProps {
   className?: string;
+  demoActive?: boolean;
+  demoLoading?: boolean;
+  demoInputValue?: string;
+  onDemoInputChange?: (value: string) => void;
+  onStartDemo?: () => void;
 }
 
 const FEATURE_HINTS = [
@@ -91,11 +96,18 @@ function PosterStackPreview() {
   );
 }
 
-export function EmptyStateGuide({ className }: EmptyStateGuideProps) {
+export function EmptyStateGuide({
+  className,
+  demoActive = false,
+  demoLoading = false,
+  demoInputValue = "",
+  onDemoInputChange,
+  onStartDemo,
+}: EmptyStateGuideProps) {
   const navigate = useNavigate();
 
   return (
-    <div className={cn("flex flex-col items-center text-center py-16 px-4", className)}>
+    <div className={cn("flex flex-col items-center text-center py-16 px-4", demoActive && "relative z-50", className)}>
       <PosterStackPreview />
 
       <h2 className="text-2xl font-bold text-foreground mb-2">
@@ -107,18 +119,31 @@ export function EmptyStateGuide({ className }: EmptyStateGuideProps) {
 
       {/* Try an example — guided first success */}
       <Button
-        variant="ghost"
+        variant={demoActive ? "secondary" : "ghost"}
         size="sm"
         className="text-xs text-primary hover:text-primary/80 mb-6 gap-1.5 h-7"
-        onClick={() => navigate("/new?demo=1")}
+        onClick={() => {
+          if (onStartDemo) {
+            onStartDemo();
+            return;
+          }
+          navigate("/new?demo=1");
+        }}
       >
         <Sparkles className="w-3 h-3" />
-        Try with an example link
+        {demoActive ? "Demo Running" : "Try Demo"}
       </Button>
 
       {/* QuickAddBar — visually dominant, the ONE primary action */}
       <div className="w-full max-w-md ring-1 ring-primary/20 rounded-2xl shadow-[0_0_32px_rgba(229,9,20,0.15)]">
-        <QuickAddBar />
+        <QuickAddBar
+          value={demoActive ? demoInputValue : undefined}
+          onValueChange={demoActive ? onDemoInputChange : undefined}
+          onSubmit={demoActive ? async () => {} : undefined}
+          isLoading={demoLoading}
+          statusMessage={demoLoading ? "Getting details..." : null}
+          disableSubmit={demoActive}
+        />
       </div>
 
       <p className="text-xs text-muted-foreground mt-3">

@@ -150,4 +150,22 @@ export const socialService = {
     const uid = getUid();
     await setDoc(doc(db, 'users', uid, 'profile', 'public'), profile, { merge: true });
   },
+
+  /** Persist private onboarding preferences used for future recommendations. */
+  async savePrivatePreferences(preferences: {
+    favorite_genres?: string[];
+    preferred_providers?: string[];
+    onboarding_completed_at?: string;
+    onboarding_added_ids?: string[];
+  }): Promise<void> {
+    const uid = getUid();
+    await setDoc(
+      doc(db, "users", uid, "profile", "private"),
+      {
+        ...preferences,
+        updated_at: new Date().toISOString(),
+      },
+      { merge: true },
+    );
+  },
 };

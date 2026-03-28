@@ -1,3 +1,5 @@
+import type { BookmarkAvailability } from "@/services/watchAvailability";
+
 export interface Bookmark {
   id: string;
   user_id: string;
@@ -28,10 +30,13 @@ export interface Bookmark {
   // Sharing
   is_public?: boolean;
   share_token?: string;
+  // Privacy vault
+  is_vaulted?: boolean;
   // Queue engine (Phase 2)
   priority?: number;               // float — higher value = sooner in queue (default 100)
   queue_status?: "queued" | "up_next" | "in_progress" | "completed";
   progress_percent?: number;       // 0–100 watch progress
+  availability?: BookmarkAvailability | null;
 }
 
 export interface Attachment {

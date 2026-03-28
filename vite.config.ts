@@ -71,6 +71,17 @@ export default defineConfig(({ mode }) => ({
               expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
             },
           },
+          {
+            // Poster/backdrop CDNs used by enriched metadata
+            urlPattern: ({ request, url }) =>
+              request.destination === "image" &&
+              ["m.media-amazon.com", "i.ytimg.com"].includes(url.hostname),
+            handler: "CacheFirst",
+            options: {
+              cacheName: "external-media-images",
+              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
+            },
+          },
         ],
       },
     }),

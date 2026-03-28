@@ -36,6 +36,11 @@ interface CompletionSheetProps {
   onOpenChange: (open: boolean) => void;
   onRate: (id: string, rating: number | undefined, review?: string, watchedWith?: string | null) => void;
   onSkip: () => void;
+  nextSuggestion?: Bookmark | null;
+  nextReason?: string;
+  streakCount?: number;
+  onPlayNext?: () => void;
+  onScheduleNext?: () => void;
 }
 
 const WATCHED_WITH_OPTIONS = [
@@ -47,7 +52,18 @@ const WATCHED_WITH_OPTIONS = [
 
 const RATING_LABELS = ["", "Didn't enjoy it", "It was okay", "Pretty good!", "Really liked it", "Absolutely loved it"];
 
-export function CompletionSheet({ bookmark, open, onOpenChange, onRate, onSkip }: CompletionSheetProps) {
+export function CompletionSheet({
+  bookmark,
+  open,
+  onOpenChange,
+  onRate,
+  onSkip,
+  nextSuggestion,
+  nextReason,
+  streakCount,
+  onPlayNext,
+  onScheduleNext,
+}: CompletionSheetProps) {
   const [rating, setRating] = useState<number | null>(null);
   const [hoveredRating, setHoveredRating] = useState<number | null>(null);
   const [review, setReview] = useState("");
@@ -93,6 +109,7 @@ export function CompletionSheet({ bookmark, open, onOpenChange, onRate, onSkip }
   const saveCTA = hasInput ? "Save review" : "Save progress";
 
   if (!bookmark) return null;
+  const safeNext = nextSuggestion && nextSuggestion.id !== bookmark.id ? nextSuggestion : null;
 
   const posterUrl = bookmark.poster_url || bookmark.backdrop_url;
 
@@ -104,6 +121,13 @@ export function CompletionSheet({ bookmark, open, onOpenChange, onRate, onSkip }
             🎉 Nice one!
           </SheetTitle>
         </SheetHeader>
+
+        {/* Momentum / streak */}
+        {streakCount && streakCount > 0 && (
+          <div className="mb-4 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-xs text-primary font-semibold">
+            {streakCount} day streak &mdash; keep it alive with one more watch.
+          </div>
+        )}
 
         {/* Bookmark identity */}
         <div className="flex items-center gap-3 mb-6">
@@ -196,6 +220,47 @@ export function CompletionSheet({ bookmark, open, onOpenChange, onRate, onSkip }
             {saveCTA}
           </Button>
         </div>
+
+        {safeNext && (
+          <div className="mt-6 border-t border-border pt-4">
+            <p className="text-sm font-semibold text-foreground mb-2">Up next</p>
+            <div className="flex items-center gap-3">
+              {(safeNext.poster_url || safeNext.backdrop_url) && (
+                <img
+                  src={safeNext.poster_url || safeNext.backdrop_url || undefined}
+                  alt={safeNext.title}
+                  className="w-10 h-14 object-cover rounded-md shrink-0"
+                />
+              )}
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">{safeNext.title}</p>
+                {nextReason && (
+                  <p className="text-[11px] text-[#54b3d6] truncate mt-0.5">Why this? {nextReason}</p>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-2 mt-3">
+              <Button
+                variant="default"
+                size="sm"
+                className="flex-1"
+                onClick={onPlayNext}
+                disabled={!onPlayNext}
+              >
+                Watch now
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={onScheduleNext}
+                disabled={!onScheduleNext}
+              >
+                Schedule
+              </Button>
+            </div>
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   );

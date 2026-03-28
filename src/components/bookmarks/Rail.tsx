@@ -21,16 +21,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Film } from "lucide-react";
 import { PosterCard } from "./PosterCard";
 import { cn } from "@/lib/utils";
-import type { Bookmark } from "@/types/database";
+import type { Bookmark, Schedule } from "@/types/database";
 
 interface RailProps {
   title: string;
   subtitle?: string;
   bookmarks: Bookmark[];
+  itemReasons?: Record<string, string>;
+  itemSchedules?: Record<string, Schedule>;
+  highlightBookmarkId?: string;
   variant?: "poster" | "backdrop";
   showRanks?: boolean;
   cardSize?: "default" | "featured";
   onSchedule?: (bookmark: Bookmark) => void;
+  onSkip?: (bookmark: Bookmark) => void;
   onMarkDone?: (bookmark: Bookmark) => void;
   onAddToPlan?: (bookmark: Bookmark) => void;
   onDelete?: (bookmark: Bookmark) => void;
@@ -39,6 +43,10 @@ interface RailProps {
   onStatusCycle?: (bookmark: Bookmark, newStatus: Bookmark["status"]) => void;
   onEpisodeUpdate?: (bookmark: Bookmark, count: number) => void;
   onToggleUpNext?: (bookmark: Bookmark) => void;
+  onSharePublic?: (bookmark: Bookmark) => void;
+  onSharePrivate?: (bookmark: Bookmark) => void;
+  onVault?: (bookmark: Bookmark) => void;
+  onUnvault?: (bookmark: Bookmark) => void;
   emptyMessage?: string;
   emptyState?: React.ReactNode;
   className?: string;
@@ -66,10 +74,14 @@ export function Rail({
   title,
   subtitle,
   bookmarks,
+  itemReasons,
+  itemSchedules,
+  highlightBookmarkId,
   variant = "poster",
   showRanks = false,
   cardSize = "default",
   onSchedule,
+  onSkip,
   onMarkDone,
   onAddToPlan,
   onDelete,
@@ -78,6 +90,10 @@ export function Rail({
   onStatusCycle,
   onEpisodeUpdate,
   onToggleUpNext,
+  onSharePublic,
+  onSharePrivate,
+  onVault,
+  onUnvault,
   emptyMessage = "No items yet",
   emptyState,
   className,
@@ -255,10 +271,13 @@ export function Rail({
             <PosterCard
               key={bookmark.id}
               bookmark={bookmark}
+              recommendationReason={itemReasons?.[bookmark.id]}
+              isHighlighted={highlightBookmarkId === bookmark.id}
               variant={variant}
               rank={showRanks ? index + 1 : undefined}
               cardSize={cardSize}
               onSchedule={() => onSchedule?.(bookmark)}
+              onSkip={() => onSkip?.(bookmark)}
               onMarkDone={() => onMarkDone?.(bookmark)}
               onAddToPlan={() => onAddToPlan?.(bookmark)}
               onDelete={() => onDelete?.(bookmark)}
@@ -267,6 +286,11 @@ export function Rail({
               onStatusCycle={onStatusCycle}
               onEpisodeUpdate={onEpisodeUpdate}
               onToggleUpNext={onToggleUpNext}
+              onSharePublic={() => onSharePublic?.(bookmark)}
+              onSharePrivate={() => onSharePrivate?.(bookmark)}
+              onVault={() => onVault?.(bookmark)}
+              onUnvault={() => onUnvault?.(bookmark)}
+              schedule={itemSchedules?.[bookmark.id]}
               isSelectable={isSelectable}
               isSelected={selectedIds?.has(bookmark.id)}
               onSelect={() => onSelect?.(bookmark.id)}
