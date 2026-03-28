@@ -147,7 +147,7 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent, vaul
             <Button
               type="button"
               onClick={openPickForMe}
-              className="h-10 px-4 text-sm font-semibold rounded-md motion-safe:animate-pulse [animation-duration:2.8s]"
+              className="h-10 px-4 text-sm font-semibold rounded-md"
             >
               <Sparkles className="w-4 h-4 mr-1.5" />
               Pick for Me

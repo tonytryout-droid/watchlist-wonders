@@ -113,8 +113,13 @@ export interface PublicProfile {
   display_name: string | null;
   bio: string | null;
   avatar_url: string | null;
-  push_enabled?: boolean;
   bookmarks_count?: number;
+}
+
+export interface PrivatePreferences {
+  fcm_token?: string | null;
+  push_enabled?: boolean;
+  email_reminders_enabled?: boolean;
 }
 
 export interface UserFollow {

@@ -32,6 +32,8 @@ const Settings = () => {
   const [profileLoading, setProfileLoading] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
+  const [emailRemindersEnabled, setEmailRemindersEnabled] = useState(false);
+  const [emailRemindersLoading, setEmailRemindersLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: bookmarks = [] } = useQuery({
@@ -45,15 +47,29 @@ const Settings = () => {
     enabled: !!user,
   });
 
+  const { data: privatePrefs } = useQuery({
+    queryKey: ['private-prefs', user?.uid],
+    queryFn: () => socialService.getPrivatePreferences(),
+    enabled: !!user,
+  });
+
   useEffect(() => {
     if (publicProfile) {
       setDisplayName(publicProfile.display_name || '');
       setBio(publicProfile.bio || '');
-      if (typeof publicProfile.push_enabled === 'boolean') {
-        setPushEnabled(publicProfile.push_enabled);
-      }
     }
   }, [publicProfile]);
+
+  useEffect(() => {
+    if (privatePrefs) {
+      if (typeof privatePrefs.push_enabled === 'boolean') {
+        setPushEnabled(privatePrefs.push_enabled);
+      }
+      if (typeof privatePrefs.email_reminders_enabled === 'boolean') {
+        setEmailRemindersEnabled(privatePrefs.email_reminders_enabled);
+      }
+    }
+  }, [privatePrefs]);
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -153,6 +169,19 @@ const Settings = () => {
       toast({ title: "Failed to update notifications", description: "Could not update notification settings. Please try again.", variant: "destructive" });
     } finally {
       setPushLoading(false);
+    }
+  };
+
+  const handleEmailRemindersToggle = async (enabled: boolean) => {
+    setEmailRemindersLoading(true);
+    try {
+      await socialService.savePrivatePreferences({ email_reminders_enabled: enabled });
+      setEmailRemindersEnabled(enabled);
+      toast({ title: enabled ? "Email reminders enabled" : "Email reminders disabled" });
+    } catch {
+      toast({ title: "Failed to update email reminders", variant: "destructive" });
+    } finally {
+      setEmailRemindersLoading(false);
     }
   };
 
@@ -339,18 +368,18 @@ const Settings = () => {
                 <CardDescription>Control how we remind you to watch</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Email — coming soon */}
+                {/* Email reminders */}
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5 flex-1">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm">Email reminders</Label>
-                      <span className="text-[10px] font-semibold bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full uppercase tracking-wide">
-                        Coming soon
-                      </span>
-                    </div>
+                    <Label className="text-sm">Email reminders</Label>
                     <p className="text-xs text-muted-foreground">Get email reminders for scheduled content</p>
                   </div>
-                  <Switch disabled aria-label="Email reminders (coming soon)" />
+                  <Switch
+                    checked={emailRemindersEnabled}
+                    onCheckedChange={handleEmailRemindersToggle}
+                    disabled={emailRemindersLoading}
+                    aria-label="Email reminders"
+                  />
                 </div>
 
                 <Separator />

@@ -13,7 +13,7 @@ import {
   getCountFromServer,
 } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
-import type { UserFollow, FeedItem, PublicProfile } from '@/types/database';
+import type { UserFollow, FeedItem, PublicProfile, PrivatePreferences } from '@/types/database';
 
 function getUid(): string {
   const user = auth.currentUser;
@@ -151,12 +151,20 @@ export const socialService = {
     await setDoc(doc(db, 'users', uid, 'profile', 'public'), profile, { merge: true });
   },
 
+  /** Read the current user's private preferences. */
+  async getPrivatePreferences(): Promise<PrivatePreferences> {
+    const uid = getUid();
+    const snap = await getDoc(doc(db, 'users', uid, 'profile', 'private'));
+    return (snap.data() as PrivatePreferences) ?? {};
+  },
+
   /** Persist private onboarding preferences used for future recommendations. */
   async savePrivatePreferences(preferences: {
     favorite_genres?: string[];
     preferred_providers?: string[];
     onboarding_completed_at?: string;
     onboarding_added_ids?: string[];
+    email_reminders_enabled?: boolean;
   }): Promise<void> {
     const uid = getUid();
     await setDoc(

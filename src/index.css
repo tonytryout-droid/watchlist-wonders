@@ -69,6 +69,9 @@
     --wm-ease-snappy: cubic-bezier(0.22, 1, 0.36, 1);
     --wm-ease-fluid: cubic-bezier(0.16, 1, 0.3, 1);
     --wm-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+    --wm-duration-fast: 150ms;
+    --wm-duration-mid: 250ms;
+    --wm-duration-slow: 400ms;
 
     --font-sans: "Archivo", ui-sans-serif, system-ui, -apple-system, sans-serif;
   }
@@ -178,6 +181,26 @@
   }
 }
 
+@keyframes hero-zoom {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.05);
+  }
+}
+
+@keyframes section-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Animations: only run if user has no preference against motion */
 @media (prefers-reduced-motion: no-preference) {
   .animate-shimmer {
@@ -215,6 +238,25 @@
     --input: 0 0% 30%;
   }
 }
+.section-reveal {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.section-reveal.is-visible {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--wm-duration-slow) ease,
+    transform var(--wm-duration-slow) var(--wm-ease-fluid);
+}
+
+button:active,
+[role="button"]:active {
+  transform: scale(0.96);
+  transition: transform var(--wm-duration-fast) ease;
+}
+
 /* Global thin scrollbar — visible but unobtrusive */
 * {
   scrollbar-width: thin;

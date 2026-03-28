@@ -163,7 +163,7 @@ const TonightPick = () => {
       </div>
 
       {/* Cards */}
-      <div className="flex-1 container mx-auto px-4 lg:px-8 py-6">
+      <div className="flex-1 container mx-auto px-4 lg:px-8 pt-6 pb-24 md:pb-8">
         <div className="grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3 max-w-5xl mx-auto">
           {picks.map((bookmark, index) => (
             <div
@@ -194,7 +194,7 @@ const TonightPick = () => {
                   aria-label="Not feeling it — swap for another pick"
                 >
                   <Shuffle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                  <span>Skip</span>
+                  <span>Try another</span>
                 </Button>
                 {/* Runtime */}
                 {bookmark.runtime_minutes && (
@@ -263,18 +263,21 @@ const TonightPick = () => {
                     className="flex-1"
                     onClick={() => handleWatch(bookmark)}
                     disabled={!bookmark.source_url}
+                    title={!bookmark.source_url ? "No link saved — open Details to add one" : undefined}
                   >
                     <Play className="w-4 h-4 mr-1 fill-current" />
                     Watch
                   </Button>
                   <Button
                     variant="secondary"
-                    size="icon"
-                    className="h-9 w-9"
+                    size="sm"
+                    className="h-9 gap-1.5 px-3"
                     onClick={() => handleMarkDone(bookmark)}
                     disabled={markDoneMutation.isPending}
+                    aria-label="Mark as done"
                   >
                     <Check className="w-4 h-4" />
+                    <span className="sr-only sm:not-sr-only">Done</span>
                   </Button>
                 </div>
               </div>

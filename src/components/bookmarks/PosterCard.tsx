@@ -431,7 +431,7 @@ export function PosterCard({
   const showExpanded = (isHovered || isTouched) && !isSelectable;
   const shouldElevate = showExpanded && !isMobile;
   const elevatedTransform =
-    variant === "poster" ? "translateY(-24px) scale(1.08)" : "translateY(-18px) scale(1.05)";
+    variant === "poster" ? "translateY(-4px) scale(1.08)" : "translateY(-4px) scale(1.05)";
 
   return (
     <>
@@ -439,7 +439,7 @@ export function PosterCard({
       <div
         ref={cardRef}
         className={cn(
-          "group relative flex-shrink-0 snap-start transition-transform duration-300 ease-out will-change-transform",
+          "group relative flex-shrink-0 snap-start transition-transform transition-shadow ease-out will-change-transform",
           variant === "poster"
             ? cardSize === "featured"
               ? "w-44 sm:w-48 md:w-52 lg:w-56"
@@ -456,6 +456,7 @@ export function PosterCard({
         style={{
           transform: shouldElevate ? elevatedTransform : "translateY(0) scale(1)",
           transformOrigin: "bottom center",
+          transitionDuration: "250ms",
         }}
         onMouseEnter={() => !isMobile && scheduleHoverOpen()}
         onMouseLeave={() => !isMobile && scheduleHoverClose()}
@@ -489,10 +490,11 @@ export function PosterCard({
           {/* Image container */}
           <div
             className={cn(
-              "relative overflow-hidden rounded-sm transition-transform duration-300 ease-out",
+              "relative overflow-hidden rounded-sm transition-[transform,box-shadow] ease-out",
               aspectRatio,
-              showExpanded && "rounded-t-sm rounded-b-none shadow-[0_18px_30px_rgba(0,0,0,0.55)]"
+              showExpanded && "rounded-t-sm rounded-b-none shadow-[0_20px_40px_rgba(0,0,0,0.4)]"
             )}
+            style={{ transitionDuration: "250ms" }}
           >
             {imageUrl && !imageError ? (
               <img
@@ -781,97 +783,61 @@ export function PosterCard({
           >
             <div className="p-2.5">
               {/* Action row */}
-              <div className="grid grid-cols-1 gap-1.5 mb-2">
+              {/* Row 1: Primary — Watch (full width) */}
+              <div className="mb-1.5">
                 <button
                   type="button"
                   onClick={handlePlay}
-                  className="h-8 rounded-md bg-white text-black text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-white/90 transition-colors"
+                  className="w-full h-8 rounded-md bg-white text-black text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-white/90 transition-colors"
                   aria-label={`Watch now: ${bookmark.title}`}
                 >
                   <Play className="w-3.5 h-3.5 fill-black text-black" />
                   <span>Watch now</span>
                 </button>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={handleScheduleClick}
-                    className="h-8 rounded-md border border-white/30 text-white text-xs font-medium flex items-center justify-center gap-1.5 hover:border-white transition-colors"
-                    aria-label={`Schedule ${bookmark.title}`}
-                  >
-                    <CalendarPlus className="w-3.5 h-3.5" />
-                    <span>Schedule</span>
-                  </button>
-                  {bookmark.status !== "done" ? (
-                    <button
-                      type="button"
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSkip?.(); }}
-                      className="h-8 rounded-md border border-white/30 text-white text-xs font-medium flex items-center justify-center gap-1.5 hover:border-white transition-colors"
-                      aria-label={`Skip ${bookmark.title} for now`}
-                    >
-                      <SkipForward className="w-3.5 h-3.5" />
-                      <span>Skip</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUndoDone?.(); }}
-                      className="h-8 rounded-md border border-[#46d369] text-[#46d369] text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-[#46d369]/10 transition-colors"
-                      aria-label="Undo watched"
-                    >
-                      <Undo2 className="w-3.5 h-3.5" />
-                      <span>Undo</span>
-                    </button>
-                  )}
-                </div>
               </div>
 
-              <div className="flex items-center gap-1.5 mb-2">
+              {/* Row 2: Schedule | Mark Done */}
+              <div className="grid grid-cols-2 gap-1.5 mb-1.5">
                 <button
                   type="button"
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAddToPlan?.(); }}
-                  className="w-8 h-8 rounded-full border border-white/30 flex items-center justify-center hover:border-white transition-colors text-white shrink-0"
-                  aria-label="Add to plan"
+                  onClick={handleScheduleClick}
+                  className="h-8 rounded-md border border-white/30 text-white text-xs font-medium flex items-center justify-center gap-1.5 hover:border-white transition-colors"
+                  aria-label={`Schedule ${bookmark.title}`}
                 >
-                  <Plus className="w-4 h-4" />
+                  <CalendarPlus className="w-3.5 h-3.5" />
+                  <span>Schedule</span>
                 </button>
-
-                {onToggleUpNext && bookmark.status !== "done" && (
+                {bookmark.status === "done" ? (
                   <button
                     type="button"
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleUpNext(bookmark); }}
-                    className={cn(
-                      "w-8 h-8 rounded-full border flex items-center justify-center transition-colors shrink-0",
-                      bookmark.queue_status === "up_next"
-                        ? "border-wm-gold text-wm-gold bg-wm-gold/10"
-                        : "border-white/30 text-white hover:border-wm-gold hover:text-wm-gold"
-                    )}
-                    aria-label={bookmark.queue_status === "up_next" ? "Remove from Up Next" : "Add to Up Next"}
-                    title={bookmark.queue_status === "up_next" ? "Remove from Up Next" : "Add to Up Next"}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUndoDone?.(); }}
+                    className="h-8 rounded-md border border-[#46d369] text-[#46d369] text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-[#46d369]/10 transition-colors"
+                    aria-label="Undo watched"
                   >
-                    <Star className={cn("w-4 h-4", bookmark.queue_status === "up_next" && "fill-current")} />
+                    <Undo2 className="w-3.5 h-3.5" />
+                    <span>Undo</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onMarkDone?.(); }}
+                    className="h-8 rounded-md border border-white/30 text-white text-xs font-medium flex items-center justify-center gap-1.5 hover:border-[#46d369] hover:text-[#46d369] transition-colors"
+                    aria-label={`Mark ${bookmark.title} as done`}
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Done</span>
                   </button>
                 )}
+              </div>
 
-                <button
-                  type="button"
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); bookmark.status === "done" ? onUndoDone?.() : onMarkDone?.(); }}
-                  className={cn(
-                    "w-8 h-8 rounded-full border flex items-center justify-center transition-colors text-white shrink-0",
-                    bookmark.status === "done"
-                      ? "border-[#46d369] text-[#46d369]"
-                      : "border-white/30 hover:border-white"
-                  )}
-                  aria-label={bookmark.status === "done" ? "Undo watched" : "Mark as watched"}
-                >
-                  <ThumbsUp className="w-4 h-4" />
-                </button>
-
+              {/* Row 3: Overflow — tertiary actions */}
+              <div className="flex justify-end mb-2">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                      className="w-8 h-8 rounded-full border border-white/30 flex items-center justify-center hover:border-white transition-colors text-white shrink-0 ml-auto"
+                      className="w-8 h-8 rounded-full border border-white/30 flex items-center justify-center hover:border-white transition-colors text-white"
                       aria-label="More options"
                     >
                       <MoreHorizontal className="w-4 h-4" />
@@ -883,6 +849,11 @@ export function PosterCard({
                         <Eye className="w-4 h-4 mr-2" />Set as Watching
                       </DropdownMenuItem>
                     )}
+                    {bookmark.status !== "done" && (
+                      <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSkip?.(); }} className="text-white/90">
+                        <SkipForward className="w-4 h-4 mr-2" />Skip for now
+                      </DropdownMenuItem>
+                    )}
                     {onToggleUpNext && bookmark.status !== "done" && (
                       <DropdownMenuItem
                         onClick={() => onToggleUpNext(bookmark)}
@@ -892,9 +863,10 @@ export function PosterCard({
                         {bookmark.queue_status === "up_next" ? "Remove from Up Next" : "Add to Up Next"}
                       </DropdownMenuItem>
                     )}
-                    <DropdownMenuItem onClick={handleScheduleClick} className="text-white/90">
-                      <CalendarPlus className="w-4 h-4 mr-2" />Quick Schedule
+                    <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAddToPlan?.(); }} className="text-white/90">
+                      <Plus className="w-4 h-4 mr-2" />Add to Plan
                     </DropdownMenuItem>
+                    <DropdownMenuSeparator className="bg-white/10" />
                     {bookmark.is_public ? (
                       <DropdownMenuItem onClick={onSharePrivate} className="text-white/90">
                         <Globe className="w-4 h-4 mr-2" />Make private
