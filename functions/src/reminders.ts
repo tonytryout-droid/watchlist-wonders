@@ -1,0 +1,323 @@
+import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { defineSecret } from 'firebase-functions/params';
+import * as logger from 'firebase-functions/logger';
+import { getApps, initializeApp } from 'firebase-admin/app';
+import { getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { getMessaging } from 'firebase-admin/messaging';
+import { getAuth } from 'firebase-admin/auth';
+import * as nodemailer from 'nodemailer';
+
+const smtpHost = defineSecret('SMTP_HOST');
+const smtpPort = defineSecret('SMTP_PORT');
+const smtpUser = defineSecret('SMTP_USER');
+const smtpPass = defineSecret('SMTP_PASS');
+const smtpFrom = defineSecret('SMTP_FROM');
+
+let firestoreDb: Firestore | null = null;
+
+function getDb(): Firestore {
+  if (firestoreDb) return firestoreDb;
+  if (!getApps().length) initializeApp();
+  firestoreDb = getFirestore();
+  return firestoreDb;
+}
+
+function ensureInit(): void {
+  if (!getApps().length) initializeApp();
+}
+
+/** Max lookahead: schedules whose reminder fires within this window are eligible. */
+const MAX_OFFSET_MINUTES = 120;
+
+interface PrivateProfile {
+  fcm_token?: string | null;
+  push_enabled?: boolean;
+  email_reminders_enabled?: boolean;
+}
+
+interface ScheduleData {
+  user_id?: string;
+  bookmark_id?: string;
+  scheduled_for?: string;
+  reminder_offset_minutes?: number;
+  state?: string;
+}
+
+interface BookmarkData {
+  title?: string;
+  type?: string;
+}
+
+function createMailTransport() {
+  return nodemailer.createTransport({
+    host: smtpHost.value(),
+    port: Number(smtpPort.value()) || 587,
+    secure: Number(smtpPort.value()) === 465,
+    auth: {
+      user: smtpUser.value(),
+      pass: smtpPass.value(),
+    },
+  });
+}
+
+function escapeHtml(str: string): string {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function buildEmailHtml(title: string, scheduledFor: Date, reminderOffsetMinutes: number): string {
+  const escapedTitle = escapeHtml(title);
+  const watchTime = scheduledFor.toLocaleString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  });
+  return `
+    <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+      <h2 style="margin:0 0 8px">Time to watch!</h2>
+      <p style="margin:0 0 16px;font-size:16px">
+        <strong>${escapedTitle}</strong> starts in ${reminderOffsetMinutes} minute${reminderOffsetMinutes === 1 ? '' : 's'}.
+      </p>
+      <p style="color:#666;font-size:14px;margin:0">Scheduled for: ${watchTime}</p>
+    </div>
+  `;
+}
+
+export const sendReminders = onSchedule(
+  {
+    schedule: 'every 5 minutes',
+    timeZone: 'UTC',
+    memory: '256MiB',
+    timeoutSeconds: 300,
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, smtpFrom],
+  },
+  async () => {
+    ensureInit();
+    const db = getDb();
+    const messaging = getMessaging();
+    const auth = getAuth();
+    const now = new Date();
+
+    // Upper bound: only fetch schedules that could have a reminder due now.
+    // The latest a reminder fires is reminder_offset_minutes before scheduled_for,
+    // so scheduled_for must be <= now + MAX_OFFSET_MINUTES.
+    const upperBound = new Date(now.getTime() + MAX_OFFSET_MINUTES * 60 * 1000).toISOString();
+
+    let schedulesSnap;
+    try {
+      schedulesSnap = await db
+        .collectionGroup('schedules')
+        .where('state', '==', 'scheduled')
+        .where('scheduled_for', '<=', upperBound)
+        .get();
+    } catch (err) {
+      logger.error('[reminders] Failed to query schedules', { error: String(err) });
+      return;
+    }
+
+    if (schedulesSnap.empty) {
+      logger.info('[reminders] No eligible schedules found.');
+      return;
+    }
+
+    // Collect schedules whose reminder time has passed
+    interface DueSchedule {
+      docRef: FirebaseFirestore.DocumentReference;
+      uid: string;
+      data: ScheduleData;
+    }
+
+    const due: DueSchedule[] = [];
+    for (const snap of schedulesSnap.docs) {
+      const data = snap.data() as ScheduleData;
+      const scheduledFor = data.scheduled_for ? new Date(data.scheduled_for) : null;
+      if (!scheduledFor || isNaN(scheduledFor.getTime())) continue;
+
+      const offsetMs = (data.reminder_offset_minutes ?? 60) * 60 * 1000;
+      const reminderAt = new Date(scheduledFor.getTime() - offsetMs);
+      if (reminderAt > now) continue; // Not yet time
+
+      // Extract uid from path: users/{uid}/schedules/{id}
+      const uid = snap.ref.parent?.parent?.id;
+      if (!uid) continue;
+
+      due.push({ docRef: snap.ref, uid, data });
+    }
+
+    if (due.length === 0) {
+      logger.info('[reminders] No reminders due at this time.');
+      return;
+    }
+
+    logger.info(`[reminders] Processing ${due.length} due reminder(s).`);
+
+    // Batch-fetch unique private profiles
+    const uniqueUids = [...new Set(due.map((d) => d.uid))];
+    const profileMap = new Map<string, PrivateProfile>();
+    await Promise.all(
+      uniqueUids.map(async (uid) => {
+        try {
+          const snap = await db.doc(`users/${uid}/profile/private`).get();
+          profileMap.set(uid, (snap.data() as PrivateProfile) ?? {});
+        } catch {
+          profileMap.set(uid, {});
+        }
+      }),
+    );
+
+    // Batch-fetch user emails from Firebase Auth
+    const emailMap = new Map<string, string>();
+    await Promise.all(
+      uniqueUids.map(async (uid) => {
+        try {
+          const record = await auth.getUser(uid);
+          if (record.email) emailMap.set(uid, record.email);
+        } catch {
+          // User may have been deleted
+        }
+      }),
+    );
+
+    // Batch-fetch bookmark titles
+    const bookmarkIds = [...new Set(due.map((d) => d.data.bookmark_id).filter(Boolean))] as string[];
+    const bookmarkMap = new Map<string, BookmarkData>();
+    await Promise.all(
+      bookmarkIds.map(async (bid) => {
+        try {
+          // Fetch from first user who has this bookmark (all users share the same bookmark titles)
+          const userWithBookmark = due.find((d) => d.data.bookmark_id === bid);
+          if (!userWithBookmark) return;
+          const snap = await db.doc(`users/${userWithBookmark.uid}/bookmarks/${bid}`).get();
+          if (snap.exists) bookmarkMap.set(bid, (snap.data() as BookmarkData) ?? {});
+        } catch {
+          // ignore
+        }
+      }),
+    );
+
+    // Build mail transport (only if needed)
+    const emailEnabled = due.some(({ uid }) => profileMap.get(uid)?.email_reminders_enabled);
+    let mailer: nodemailer.Transporter | null = null;
+    if (emailEnabled && smtpHost.value() && smtpUser.value() && smtpPass.value()) {
+      try {
+        mailer = createMailTransport();
+      } catch (err) {
+        logger.warn('[reminders] Could not create mail transport', { error: String(err) });
+      }
+    }
+
+    const fromAddress = smtpFrom.value() || smtpUser.value() || 'noreply@watchlist-wonders.app';
+
+    let sent = 0;
+    let failed = 0;
+
+    await Promise.all(
+      due.map(async ({ docRef, uid, data }) => {
+        const profile = profileMap.get(uid) ?? {};
+        const email = emailMap.get(uid);
+        const bookmark = data.bookmark_id ? bookmarkMap.get(data.bookmark_id) : undefined;
+        const title = bookmark?.title ?? 'Your show';
+        const scheduledFor = new Date(data.scheduled_for!);
+        const offsetMinutes = data.reminder_offset_minutes ?? 60;
+
+        const notifTitle = `Time to watch: ${title}`;
+        const notifBody = `Starts in ${offsetMinutes} minute${offsetMinutes === 1 ? '' : 's'}`;
+
+        const tasks: Promise<void>[] = [];
+
+        // Push notification
+        if (profile.push_enabled && profile.fcm_token) {
+          tasks.push(
+            messaging
+              .send({
+                token: profile.fcm_token,
+                notification: { title: notifTitle, body: notifBody },
+                webpush: {
+                  notification: {
+                    title: notifTitle,
+                    body: notifBody,
+                    icon: '/icons/icon-192x192.png',
+                  },
+                  fcmOptions: { link: '/' },
+                },
+              })
+              .then(() => {
+                logger.info('[reminders] Push sent', { uid });
+              })
+              .catch((err) => {
+                logger.warn('[reminders] Push failed', { uid, error: String(err) });
+              }),
+          );
+        }
+
+        // Email
+        if (profile.email_reminders_enabled && email && mailer) {
+          tasks.push(
+            mailer
+              .sendMail({
+                from: fromAddress,
+                to: email,
+                subject: notifTitle,
+                html: buildEmailHtml(title, scheduledFor, offsetMinutes),
+              })
+              .then(() => {
+                logger.info('[reminders] Email sent', { uid });
+              })
+              .catch((err) => {
+                logger.warn('[reminders] Email failed', { uid, error: String(err) });
+              }),
+          );
+        }
+
+        // Write in-app notification
+        const nowIso = new Date().toISOString();
+        tasks.push(
+          db
+            .collection(`users/${uid}/notifications`)
+            .add({
+              user_id: uid,
+              bookmark_id: data.bookmark_id ?? null,
+              schedule_id: docRef.id,
+              title: notifTitle,
+              body: notifBody,
+              read_at: null,
+              created_at: nowIso,
+            })
+            .then(() => {})
+            .catch((err) => {
+              logger.warn('[reminders] Failed to write notification doc', { uid, error: String(err) });
+            }),
+        );
+
+        // Execute all notification tasks and check for at least one success
+        let notificationSucceeded = false;
+        try {
+          const results = await Promise.allSettled(tasks);
+          // Check if at least one notification succeeded
+          notificationSucceeded = results.some((result) => result.status === 'fulfilled');
+        } catch {
+          notificationSucceeded = false;
+        }
+
+        // Only update state to 'fired' if at least one notification succeeded
+        if (notificationSucceeded) {
+          try {
+            await docRef.update({ state: 'fired', updated_at: nowIso });
+            sent++;
+          } catch (err) {
+            logger.warn('[reminders] Failed to mark schedule fired', { uid, error: String(err) });
+            failed++;
+          }
+        } else {
+          failed++;
+        }
+      }),
+    );
+
+    logger.info('[reminders] Run complete', { due: due.length, sent, failed });
+  },
+);

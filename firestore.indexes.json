@@ -25,6 +25,14 @@
       ]
     },
     {
+      "collectionGroup": "schedules",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "state", "order": "ASCENDING" },
+        { "fieldPath": "scheduled_for", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "bookmarks",
       "queryScope": "COLLECTION_GROUP",
       "fields": [

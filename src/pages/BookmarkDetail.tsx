@@ -475,7 +475,7 @@ const BookmarkDetail = () => {
         </Button>
 
         {/* Top-right actions */}
-        <div className="absolute top-4 right-4 flex gap-2">
+        <div className="absolute top-[76px] right-4 flex gap-2">
           <Button
             variant="ghost"
             size="icon"

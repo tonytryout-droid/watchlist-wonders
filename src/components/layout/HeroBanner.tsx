@@ -22,6 +22,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Play, Info, Clock, CalendarPlus, SkipForward } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { GradientBarsBackground } from "@/components/ui/gradient-bars-background";
 import { cn } from "@/lib/utils";
 
@@ -101,10 +102,10 @@ export function HeroBanner({
   // Loading skeleton — full hero area shimmer
   if (isLoading) {
     return (
-      <section className={cn("relative h-[86vh] min-h-[560px] flex items-end overflow-hidden", className)}>
+      <section className={cn("relative h-[86vh] min-h-[480px] sm:min-h-[560px] flex items-end overflow-hidden", className)}>
         <div className="absolute inset-0 bg-muted animate-pulse" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#141414] via-[#141414]/50 to-transparent" />
-        <div className="relative z-10 px-8 md:px-12 lg:px-16 pb-20 max-w-2xl space-y-4">
+        <div className="relative z-10 px-4 sm:px-8 md:px-12 lg:px-16 pb-20 max-w-2xl space-y-4">
           <div className="h-3 w-24 bg-muted-foreground/30 rounded animate-pulse" />
           <div className="space-y-3">
             <div className="h-14 w-72 bg-muted-foreground/30 rounded animate-pulse" />
@@ -125,13 +126,13 @@ export function HeroBanner({
 
   if (!bookmark) {
     return (
-      <section className={cn("relative h-[86vh] min-h-[560px] flex items-end overflow-hidden", className)}>
+      <section className={cn("relative h-[86vh] min-h-[480px] sm:min-h-[560px] flex items-end overflow-hidden", className)}>
         <GradientBarsBackground className="opacity-45" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#141414] via-[#141414]/50 to-transparent" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_75%_20%,rgba(229,9,20,0.18),transparent_40%)]" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#141414]/85 via-[#141414]/35 to-transparent" />
 
-        <div className="relative z-10 px-8 md:px-12 lg:px-16 pb-20 max-w-2xl">
+        <div className="relative z-10 px-4 sm:px-8 md:px-12 lg:px-16 pb-20 max-w-2xl">
           <p className="text-primary font-semibold text-xs tracking-[0.24em] uppercase mb-4">
             WatchMarks Home
           </p>
@@ -172,7 +173,7 @@ export function HeroBanner({
     "Saved to your watchlist — open it, enjoy it, then mark it done.";
 
   return (
-    <section className={cn("relative h-[86vh] min-h-[560px] flex items-end overflow-hidden", className)}>
+    <section className={cn("relative h-[86vh] min-h-[480px] sm:min-h-[560px] flex items-end overflow-hidden", className)}>
       {backdropUrl && !imgError && (
         <div className="absolute inset-0">
           <img
@@ -182,7 +183,8 @@ export function HeroBanner({
             // @ts-ignore — fetchpriority is valid but not in all TS lib typings
             fetchpriority="high"
             onError={() => setImgError(true)}
-            className="w-full h-full object-cover object-center scale-[1.03]"
+            className="w-full h-full object-cover object-center"
+            style={{ animation: "hero-zoom 20s ease-in-out infinite alternate" }}
           />
         </div>
       )}
@@ -193,7 +195,7 @@ export function HeroBanner({
       <div className="absolute inset-0 bg-gradient-to-r from-[#141414]/92 via-[#141414]/45 to-transparent" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_18%,rgba(229,9,20,0.14),transparent_44%)]" />
 
-      <div className="relative z-10 px-8 md:px-12 lg:px-16 pb-20 max-w-3xl">
+      <div className="relative z-10 px-4 sm:px-8 md:px-12 lg:px-16 pb-20 max-w-3xl animate-fade-up">
         <div className="flex flex-wrap items-center gap-2 mb-3 text-[11px] font-semibold tracking-wide uppercase">
           <span className="inline-flex items-center rounded bg-primary text-white px-2 py-1">{typeLabel}</span>
           <span className="inline-flex items-center rounded bg-white/10 text-white/90 px-2 py-1">
@@ -228,6 +230,7 @@ export function HeroBanner({
         </p>
 
         <div className="flex flex-wrap items-center gap-3">
+          {/* Primary CTA — dominant, full label */}
           <Button
             variant="default"
             size="lg"
@@ -237,28 +240,43 @@ export function HeroBanner({
             <Play className="w-5 h-5 fill-black mr-2" />
             Watch now
           </Button>
-          <Button
-            variant="outline"
-            size="lg"
-            onClick={onSchedule}
-            className="bg-white/20 hover:bg-white/30 text-white border-white/0 font-semibold rounded px-6 h-12 text-base backdrop-blur-sm"
-          >
-            <CalendarPlus className="w-5 h-5 mr-2" />
-            Schedule
-          </Button>
-          <Button
-            variant="outline"
-            size="lg"
-            onClick={onSkip}
-            className="bg-white/12 hover:bg-white/22 text-white border-white/0 font-semibold rounded px-6 h-12 text-base backdrop-blur-sm"
-          >
-            <SkipForward className="w-5 h-5 mr-2" />
-            Skip
-          </Button>
+
+          {/* Secondary — icon-only, reduce visual weight */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onSchedule}
+                aria-label="Schedule for later"
+                className="h-11 w-11 bg-white/15 hover:bg-white/25 text-white border-0 backdrop-blur-sm rounded"
+              >
+                <CalendarPlus className="w-5 h-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Schedule for later</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onSkip}
+                aria-label="Skip for now"
+                className="h-11 w-11 bg-white/10 hover:bg-white/20 text-white border-0 backdrop-blur-sm rounded"
+              >
+                <SkipForward className="w-5 h-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Skip for now</TooltipContent>
+          </Tooltip>
+
+          {/* Tertiary — text link */}
           <button
             type="button"
             onClick={onMoreInfo}
-            className="text-sm text-white/70 hover:text-white inline-flex items-center gap-1.5 px-1 py-1"
+            className="text-sm text-white/65 hover:text-white inline-flex items-center gap-1.5 px-1 py-1 transition-colors"
           >
             <Info className="w-4 h-4" />
             Details
