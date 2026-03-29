@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Search, X, ChevronDown, Sparkles, Loader2, Check } from "lucide-react";
+import { Search, X, ChevronDown, Sparkles, Loader2, Check, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -151,6 +151,16 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent, vaul
             >
               <Sparkles className="w-4 h-4 mr-1.5" />
               Pick for Me
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate("/new")}
+              className="h-10 px-4 text-sm font-semibold rounded-md border-white/20 text-white hover:text-white hover:bg-white/10"
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              Add
             </Button>
 
             <DropdownMenu>
