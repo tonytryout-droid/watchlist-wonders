@@ -28,6 +28,7 @@ const PublicProfile = lazy(() => import("./pages/PublicProfile"));
 const ShareView = lazy(() => import("./pages/ShareView"));
 const Stats = lazy(() => import("./pages/Stats"));
 const Vault = lazy(() => import("./pages/Vault"));
+const ShareTarget = lazy(() => import("./pages/ShareTarget"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -62,6 +63,8 @@ const App = () => (
                   {/* Public routes */}
                   <Route path="/u/:uid" element={<ErrorBoundary><PublicProfile /></ErrorBoundary>} />
                   <Route path="/share/:token" element={<ErrorBoundary><ShareView /></ErrorBoundary>} />
+                  {/* PWA Web Share Target — handles its own auth redirect */}
+                  <Route path="/share-target" element={<ErrorBoundary><ShareTarget /></ErrorBoundary>} />
                   <Route element={<ProtectedRoute />}>
                     <Route element={<AppLayout />}>
                       <Route path="/dashboard" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
