@@ -280,19 +280,6 @@ export function ConfirmMetadataDialog({ open, onOpenChange, initial, onConfirm }
               </SelectContent>
             </Select>
           </div>
-
-          {/* Poster URL — secondary to the click-to-upload above */}
-          <div className="space-y-1.5">
-            <Label htmlFor="confirm-poster">Poster URL <span className="text-xs text-muted-foreground font-normal">(optional)</span></Label>
-            <Input
-              id="confirm-poster"
-              type="url"
-              value={posterUrl}
-              onChange={(e) => setPosterUrl(e.target.value)}
-              placeholder="https://…"
-            />
-          </div>
-
           {/* Runtime — presets as primary, number input as override */}
           <div className="space-y-1.5">
             <Label>Runtime <span className="text-xs text-muted-foreground font-normal">(optional)</span></Label>

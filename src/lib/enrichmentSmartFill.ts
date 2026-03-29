@@ -4,6 +4,7 @@ export interface EnrichmentMatchCandidate {
   tmdbId: number;
   title: string;
   mediaType: 'movie' | 'tv';
+  contentType?: 'movie' | 'series' | 'episode';
   releaseYear?: number;
   posterUrl?: string;
   backdropUrl?: string;
@@ -25,25 +26,14 @@ export interface SmartFillData {
   matchConfidence: MatchConfidence;
 }
 
-const GENRE_TO_MOODS: Record<string, string[]> = {
-  action: ['action', 'intense', 'epic'],
-  adventure: ['epic', 'action', 'uplifting'],
-  animation: ['animation', 'family', 'fun'],
-  comedy: ['comedy', 'fun', 'uplifting'],
-  crime: ['dark', 'thriller', 'thoughtful'],
-  documentary: ['documentary', 'educational', 'thoughtful'],
-  drama: ['drama', 'emotional', 'thoughtful'],
-  family: ['family', 'uplifting', 'fun'],
-  fantasy: ['fantasy', 'epic', 'inspiring'],
-  history: ['thoughtful', 'educational', 'inspiring'],
-  horror: ['horror', 'dark', 'intense'],
-  mystery: ['thriller', 'thoughtful', 'dark'],
-  music: ['uplifting', 'emotional', 'inspiring'],
-  romance: ['romance', 'emotional', 'uplifting'],
-  'science fiction': ['scifi', 'intense', 'thoughtful'],
-  thriller: ['thriller', 'intense', 'dark'],
-  war: ['intense', 'dark', 'thoughtful'],
-  western: ['epic', 'action', 'nostalgic'],
+const GENRE_ALIASES: Record<string, string> = {
+  "science fiction": "scifi",
+  "sci-fi": "scifi",
+  "sci-fi & fantasy": "scifi",
+  "action & adventure": "action",
+  "war & politics": "war",
+  "tv movie": "movie",
+  "kids": "family",
 };
 
 function asString(value: unknown): string | null {
@@ -96,19 +86,26 @@ export function normalizeGenres(input: unknown): string[] {
   return genres;
 }
 
+function normalizeGenreTag(input: string): string {
+  const normalized = input
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\s&-]/g, "")
+    .replace(/\s+/g, " ");
+  return GENRE_ALIASES[normalized] ?? normalized;
+}
+
 export function mapGenresToMoodTags(genres: string[]): string[] {
-  const moods: string[] = [];
+  const normalizedGenres: string[] = [];
   const seen = new Set<string>();
   for (const genre of genres) {
-    const mapped = GENRE_TO_MOODS[genre.toLowerCase()] ?? [];
-    for (const mood of mapped) {
-      if (seen.has(mood)) continue;
-      seen.add(mood);
-      moods.push(mood);
-      if (moods.length >= 5) return moods;
-    }
+    const value = normalizeGenreTag(genre);
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    normalizedGenres.push(value);
+    if (normalizedGenres.length >= 8) break;
   }
-  return moods;
+  return normalizedGenres;
 }
 
 function normalizeMatchConfidence(value: unknown): MatchConfidence {
@@ -132,6 +129,10 @@ export function parseMatchCandidates(input: unknown): EnrichmentMatchCandidate[]
       tmdbId,
       title,
       mediaType,
+      contentType:
+        item.contentType === "episode" || item.contentType === "series" || item.contentType === "movie"
+          ? item.contentType
+          : undefined,
       releaseYear: asNumber(item.releaseYear) ?? undefined,
       posterUrl: asString(item.posterUrl) ?? undefined,
       backdropUrl: asString(item.backdropUrl) ?? undefined,

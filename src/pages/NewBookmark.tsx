@@ -11,13 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
-import { detectProvider, getMoodEmoji, cn } from "@/lib/utils";
+import { detectProvider, cn } from "@/lib/utils";
 import { fbFunctions } from "@/lib/firebase";
 import { httpsCallable } from "firebase/functions";
 import { bookmarkService } from "@/services/bookmarks";
@@ -28,14 +23,26 @@ import { ConfirmMetadataDialog, type ConfirmMetadataPayload } from "@/components
 import { QuickScheduleSheet } from "@/components/schedules/QuickScheduleSheet";
 import type { Bookmark } from "@/types/database";
 
-const MOOD_OPTIONS = [
-  "action", "comedy", "drama", "horror", "romance", "thriller",
-  "documentary", "scifi", "fantasy", "animation", "family",
-  "relaxing", "inspiring", "intense", "thoughtful", "nostalgic",
-  "uplifting", "dark", "quirky", "epic", "emotional", "fun", "educational"
+const GENRE_OPTIONS = [
+  "action",
+  "adventure",
+  "animation",
+  "comedy",
+  "crime",
+  "documentary",
+  "drama",
+  "family",
+  "fantasy",
+  "history",
+  "horror",
+  "music",
+  "mystery",
+  "romance",
+  "scifi",
+  "thriller",
+  "war",
+  "western",
 ];
-
-const MOOD_DEFAULT_VISIBLE = 9; // Hick's Law: show fewer to start
 
 const TYPE_OPTIONS: { value: Bookmark["type"]; label: string; icon: React.ElementType }[] = [
   { value: "movie",   label: "Movie",    icon: Film },
@@ -77,6 +84,23 @@ function toNumericId(value: unknown): number | null {
   return null;
 }
 
+function resolveTypeFromEnrichment(
+  data: Record<string, unknown>,
+  fallbackProvider: Bookmark["provider"],
+): Bookmark["type"] {
+  const contentType = typeof data.contentType === "string" ? data.contentType : "";
+  if (contentType === "video") return "video";
+  if (contentType === "episode") return "episode";
+  if (contentType === "series") return "series";
+  if (contentType === "movie") return "movie";
+
+  const mediaType = typeof data.mediaType === "string" ? data.mediaType : "";
+  if (mediaType === "movie") return "movie";
+  if (mediaType === "tv") return "series";
+  if (fallbackProvider === "youtube") return "video";
+  return "movie";
+}
+
 const DEMO_URL = "https://www.imdb.com/title/tt1375666/"; // Inception
 
 const NewBookmark = () => {
@@ -113,8 +137,6 @@ const NewBookmark = () => {
   const [selectedMoods, setSelectedMoods] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
-  const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
-  const [showAllMoods, setShowAllMoods] = useState(false);
 
   // Duplicate detection
   const { data: allBookmarks = [] } = useQuery({
@@ -217,7 +239,9 @@ const NewBookmark = () => {
       setSelectedMoods((prev) => prev.length === 0 ? candidateMoods : mergeUnique(prev, candidateMoods));
     }
 
-    setType(candidate.mediaType === "tv" ? "series" : "movie");
+    if (candidate.contentType === "episode") setType("episode");
+    else if (candidate.contentType === "series") setType("series");
+    else setType(candidate.mediaType === "tv" ? "series" : "movie");
     setMetadata((prev) => ({
       ...prev,
       tmdb_id: candidate.tmdbId,
@@ -255,7 +279,7 @@ const NewBookmark = () => {
           title: data.title,
           posterUrl: data.posterUrl,
           runtimeMinutes: data.runtimeMinutes,
-          type: dp === "youtube" ? "video" : "movie",
+          type: resolveTypeFromEnrichment(data, resolvedProvider),
           debugMessage: data.error ? "Could not fetch details for this link." : undefined,
         });
         setConfirmOpen(true);
@@ -281,10 +305,7 @@ const NewBookmark = () => {
         : toNumericId(smartFill.metadata.tmdb_id);
       setSelectedCandidateId(selectedTmdb);
 
-      // Detect type from Cloud Function mediaType
-      if (data.mediaType === "movie") setType("movie");
-      else if (data.mediaType === "tv") setType("series");
-      else if (dp === "youtube") setType("video");
+      setType(resolveTypeFromEnrichment(data, resolvedProvider));
 
       // Store TMDB metadata
       const metadataFromSmartFill = { ...smartFill.metadata };
@@ -303,7 +324,7 @@ const NewBookmark = () => {
       setConfirmInitial({
         url: trimmed,
         provider: dp2,
-        type: dp2 === "youtube" ? "video" : "movie",
+        type: resolveTypeFromEnrichment({}, dp2),
         debugMessage: getSafeErrorMessage(error, "Could not fetch details for this link."),
       });
       setConfirmOpen(true);
@@ -348,6 +369,12 @@ const NewBookmark = () => {
       ...metadata,
       ...(trimmedDescription ? { overview: trimmedDescription } : {}),
     };
+    if (duplicateBookmark) {
+      const shouldContinue = window.confirm(
+        `"${duplicateBookmark.title}" is already in your watchlist. Save this as another copy?`,
+      );
+      if (!shouldContinue) return;
+    }
     createBookmarkMutation.mutate({
       title: title.trim(),
       type,
@@ -531,13 +558,13 @@ const NewBookmark = () => {
             </div>
           </div>
         )}
-        {matchCandidates.length > 1 && (
+        {matchCandidates.length > 0 && (matchConfidence !== "high" || matchCandidates.length > 1) && (
           <div className="mb-6 rounded-lg border border-border bg-wm-surface p-3">
             <p className="text-sm font-medium text-foreground">
-              {matchConfidence === "low" ? "Multiple close TMDB matches found" : "Choose the best TMDB match"}
+              {matchCandidates.length === 1 ? "Is this the right title?" : "Choose the best match"}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Pick one to auto-fill synopsis, runtime, and mood hints.
+              Select the correct title to auto-fill synopsis, runtime, and genre.
             </p>
             <div className="grid sm:grid-cols-2 gap-2 mt-3">
               {matchCandidates.slice(0, 4).map((candidate) => {
@@ -670,11 +697,11 @@ const NewBookmark = () => {
                 </div>
               </div>
 
-              {/* Mood tags — Hick's Law: show subset by default */}
+              {/* Genre */}
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Mood Tags</Label>
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Mood tags">
-                  {(showAllMoods ? MOOD_OPTIONS : MOOD_OPTIONS.slice(0, MOOD_DEFAULT_VISIBLE)).map((mood) => {
+                <Label className="text-sm font-medium">Genre</Label>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Genre">
+                  {GENRE_OPTIONS.map((mood) => {
                     const isSelected = selectedMoods.includes(mood);
                     return (
                       <button
@@ -690,18 +717,10 @@ const NewBookmark = () => {
                             : "bg-transparent text-foreground border-border hover:bg-white/10"
                         )}
                       >
-                        {getMoodEmoji(mood)} {mood}
+                        {mood}
                       </button>
                     );
                   })}
-                  <button
-                    type="button"
-                    onClick={() => setShowAllMoods((v) => !v)}
-                    className="inline-flex items-center px-2.5 py-0.5 rounded-full border border-dashed border-border text-xs text-muted-foreground hover:border-solid hover:text-foreground transition-colors min-h-[28px]"
-                    aria-expanded={showAllMoods}
-                  >
-                    {showAllMoods ? "Show less" : `+${MOOD_OPTIONS.length - MOOD_DEFAULT_VISIBLE} more`}
-                  </button>
                 </div>
                 {selectedMoods.length > 0 && (
                   <p className="text-xs text-muted-foreground">{selectedMoods.length} selected</p>
@@ -721,107 +740,85 @@ const NewBookmark = () => {
                 />
               </div>
 
-              {/* More options (collapsible) */}
-              <Collapsible open={moreOptionsOpen} onOpenChange={setMoreOptionsOpen}>
-                <CollapsibleTrigger asChild>
-                  <Button type="button" variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground -ml-1">
-                    <ChevronRight className={cn("w-4 h-4 transition-transform", moreOptionsOpen && "rotate-90")} />
-                    {moreOptionsOpen ? "Fewer options" : "More options"}
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="space-y-4 mt-3">
-                  {/* Personal notes */}
-                  <div className="space-y-1.5">
-                    <Label htmlFor="my-notes" className="text-sm">My Notes</Label>
-                    <Textarea
-                      id="my-notes"
-                      placeholder="Personal thoughts, reminders, who recommended this…"
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      rows={2}
-                      className="resize-none"
-                    />
-                  </div>
-                  {/* Poster URL (hidden from main view — power user option) */}
-                  <div className="space-y-1.5">
-                    <Label className="text-sm">Poster URL</Label>
+              {/* My Notes — always visible; primes the user to record context */}
+              <div className="space-y-1.5">
+                <Label htmlFor="my-notes" className="text-sm font-medium">My Notes</Label>
+                <Textarea
+                  id="my-notes"
+                  placeholder="Why are you saving this? Who recommended it?"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  className="resize-none"
+                />
+              </div>
+
+              {/* Custom tags */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Custom Tags</Label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                     <Input
-                      type="url"
-                      placeholder="https://…"
-                      value={posterUrl}
-                      onChange={(e) => setPosterUrl(e.target.value)}
-                      className="h-9 text-sm"
+                      placeholder="Add a tag…"
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddTag(); } }}
+                      className="pl-9 h-10 text-sm"
                     />
                   </div>
-
-                  {/* Custom tags */}
-                  <div className="space-y-2">
-                    <Label className="text-sm">Custom Tags</Label>
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                        <Input
-                          placeholder="Add a tag…"
-                          value={tagInput}
-                          onChange={(e) => setTagInput(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddTag(); } }}
-                          className="pl-9 h-10 text-sm"
-                        />
-                      </div>
-                      {/* Fitts's Law: ≥44px touch target */}
-                      <Button type="button" variant="secondary" size="icon" className="h-11 w-11 shrink-0" onClick={handleAddTag}>
-                        <Plus className="w-4 h-4" />
-                      </Button>
-                    </div>
-                    {tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {tags.map((tag) => (
-                          <Badge key={tag} variant="secondary" className="gap-1 text-xs">
-                            {tag}
-                            <button type="button" onClick={() => setTags(tags.filter((t) => t !== tag))} className="hover:text-destructive min-w-[20px] min-h-[20px] flex items-center justify-center" aria-label={`Remove tag ${tag}`}>
-                              <X className="w-3 h-3" />
-                            </button>
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
+                  {/* Fitts's Law: ≥44px touch target */}
+                  <Button type="button" variant="secondary" size="icon" className="h-11 w-11 shrink-0" onClick={handleAddTag}>
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+                {tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {tags.map((tag) => (
+                      <Badge key={tag} variant="secondary" className="gap-1 text-xs">
+                        {tag}
+                        <button type="button" onClick={() => setTags(tags.filter((t) => t !== tag))} className="hover:text-destructive min-w-[20px] min-h-[20px] flex items-center justify-center" aria-label={`Remove tag ${tag}`}>
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    ))}
                   </div>
+                )}
+              </div>
 
-                  {/* Files */}
-                  <div className="space-y-2">
-                    <Label className="text-sm">Files (optional)</Label>
-                    <div className="border-2 border-dashed border-border rounded-lg p-4 text-center">
-                      <input
-                        type="file"
-                        id="attachments"
-                        multiple
-                        accept="image/*,.pdf"
-                        onChange={(e) => setAttachments([...attachments, ...Array.from(e.target.files || [])])}
-                        className="hidden"
-                      />
-                      <label htmlFor="attachments" className="cursor-pointer">
-                        <Upload className="w-6 h-6 mx-auto mb-1.5 text-muted-foreground" />
-                        <p className="text-xs text-muted-foreground">Upload screenshots, PDFs, or related files</p>
-                      </label>
-                    </div>
-                    {attachments.length > 0 && (
-                      <div className="space-y-1.5">
-                        {attachments.map((file) => {
-                          const stableKey = `${file.name}-${file.size}-${file.lastModified}`;
-                          return (
-                            <div key={stableKey} className="flex items-center justify-between p-2.5 bg-wm-surface rounded-lg text-sm">
-                              <span className="truncate max-w-[200px] text-xs">{file.name}</span>
-                              <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => setAttachments(attachments.filter((f) => `${f.name}-${f.size}-${f.lastModified}` !== stableKey))}>
-                                <X className="w-3.5 h-3.5" />
-                              </Button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+              {/* Files */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Files (optional)</Label>
+                <div className="border-2 border-dashed border-border rounded-lg p-4 text-center">
+                  <input
+                    type="file"
+                    id="attachments"
+                    multiple
+                    accept="image/*,.pdf"
+                    onChange={(e) => setAttachments([...attachments, ...Array.from(e.target.files || [])])}
+                    className="hidden"
+                  />
+                  <label htmlFor="attachments" className="cursor-pointer">
+                    <Upload className="w-6 h-6 mx-auto mb-1.5 text-muted-foreground" />
+                    <p className="text-xs text-muted-foreground">Upload screenshots, PDFs, or related files</p>
+                  </label>
+                </div>
+                {attachments.length > 0 && (
+                  <div className="space-y-1.5">
+                    {attachments.map((file) => {
+                      const stableKey = `${file.name}-${file.size}-${file.lastModified}`;
+                      return (
+                        <div key={stableKey} className="flex items-center justify-between p-2.5 bg-wm-surface rounded-lg text-sm">
+                          <span className="truncate max-w-[200px] text-xs">{file.name}</span>
+                          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => setAttachments(attachments.filter((f) => `${f.name}-${f.size}-${f.lastModified}` !== stableKey))}>
+                            <X className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      );
+                    })}
                   </div>
-                </CollapsibleContent>
-              </Collapsible>
+                )}
+              </div>
             </div>
           </div>
         </form>

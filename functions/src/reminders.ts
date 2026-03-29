@@ -61,9 +61,12 @@ function createMailTransport() {
 }
 
 function escapeHtml(str: string): string {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function buildEmailHtml(title: string, scheduledFor: Date, reminderOffsetMinutes: number): string {
@@ -248,7 +251,7 @@ export const sendReminders = onSchedule(
               .then(() => {
                 logger.info('[reminders] Push sent', { uid });
               })
-              .catch((err) => {
+              .catch((err: unknown) => {
                 logger.warn('[reminders] Push failed', { uid, error: String(err) });
               }),
           );
@@ -267,7 +270,7 @@ export const sendReminders = onSchedule(
               .then(() => {
                 logger.info('[reminders] Email sent', { uid });
               })
-              .catch((err) => {
+              .catch((err: unknown) => {
                 logger.warn('[reminders] Email failed', { uid, error: String(err) });
               }),
           );
@@ -288,7 +291,7 @@ export const sendReminders = onSchedule(
               created_at: nowIso,
             })
             .then(() => {})
-            .catch((err) => {
+            .catch((err: unknown) => {
               logger.warn('[reminders] Failed to write notification doc', { uid, error: String(err) });
             }),
         );
