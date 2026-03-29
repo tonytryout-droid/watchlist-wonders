@@ -1,9 +1,9 @@
-import { type RefObject } from "react";
+import { useState, type RefObject } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { Play, SkipForward } from "lucide-react";
 import { HeroBanner } from "@/components/layout/HeroBanner";
 import { Rail } from "@/components/bookmarks/Rail";
 import { PosterCard } from "@/components/bookmarks/PosterCard";
-import { SkeletonRail } from "@/components/ui/skeleton-card";
 import { EmptyStateGuide } from "@/components/EmptyStateGuide";
 import { MissedSchedulesBanner } from "@/components/schedules/MissedSchedulesBanner";
 import { MoodPicker } from "@/components/dashboard/MoodPicker";
@@ -99,6 +99,103 @@ function RevealSection({
   );
 }
 
+const PROVIDER_LABEL: Record<string, string> = {
+  netflix: "Netflix",
+  youtube: "YouTube",
+  imdb: "IMDb",
+  disneyplus: "Disney+",
+  primevideo: "Prime Video",
+  hbomax: "HBO Max",
+  generic: "Web",
+};
+
+function formatRuntime(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  if (hours === 0) return `${minutes}m`;
+  return remainder > 0 ? `${hours}h ${remainder}m` : `${hours}h`;
+}
+
+function TonightPickCard({
+  bookmark,
+  streakCount,
+  reason,
+  onSkip,
+}: {
+  bookmark: Bookmark;
+  streakCount: number;
+  reason?: string;
+  onSkip: () => void;
+}) {
+  const [imgError, setImgError] = useState(false);
+  const thumbUrl = bookmark.backdrop_url || bookmark.poster_url;
+  const provider = PROVIDER_LABEL[bookmark.provider] || bookmark.provider;
+  const runtime = bookmark.runtime_minutes ? formatRuntime(bookmark.runtime_minutes) : null;
+  const meta = [provider, runtime, bookmark.release_year].filter(Boolean).join(" · ");
+
+  return (
+    <div className="flex rounded-xl overflow-hidden bg-card border border-border/60 shadow-sm">
+      <div className="w-36 sm:w-48 shrink-0 bg-muted relative overflow-hidden">
+        {thumbUrl && !imgError ? (
+          <img
+            src={thumbUrl}
+            alt={bookmark.title}
+            loading="eager"
+            onError={() => setImgError(true)}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <Play className="w-8 h-8 text-muted-foreground/30" />
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent to-card/10" />
+      </div>
+
+      <div className="flex-1 min-w-0 p-4 flex flex-col justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold text-primary uppercase tracking-[0.18em] mb-1 select-none">
+            Tonight&apos;s pick
+          </p>
+          <h3 className="font-bold text-foreground text-base sm:text-lg leading-tight line-clamp-1">
+            {bookmark.title}
+          </h3>
+          {meta && <p className="text-xs text-muted-foreground mt-0.5">{meta}</p>}
+          {reason && (
+            <p className="text-xs text-muted-foreground/70 mt-0.5 line-clamp-1 italic">{reason}</p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            size="sm"
+            className="h-8 gap-1.5 text-xs"
+            disabled={!bookmark.source_url}
+            onClick={() => {
+              if (bookmark.source_url) window.open(bookmark.source_url, "_blank");
+            }}
+          >
+            <Play className="w-3 h-3 fill-current" />
+            Watch now
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs text-muted-foreground hover:text-foreground gap-1"
+            onClick={onSkip}
+          >
+            <SkipForward className="w-3 h-3" />
+            Skip
+          </Button>
+          {streakCount > 0 && (
+            <span className="ml-auto text-xs text-primary font-semibold">{streakCount} day streak</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function DashboardShell({
   heroBookmark,
   bestNextItem,
@@ -173,7 +270,13 @@ export function DashboardShell({
     ? visibleBookmarks.filter((b) => b.mood_tags?.includes(activeMood))
     : [];
 
-  const showHero = !!heroBookmark && !activeMood;
+  const showHero = !!heroBookmark && !activeMood && !demoActive;
+  const isDemoSavedStep = demoActive && demoStep === 3;
+  const isDemoPickStep = demoActive && demoStep === 4;
+  const demoSavedBookmark = isDemoSavedStep ? (visibleBookmarks[0] ?? null) : null;
+  const demoPickBookmark = isDemoPickStep
+    ? (bestNextItem ?? heroBookmark ?? visibleBookmarks[0] ?? null)
+    : null;
 
   return (
     <div className="min-h-full bg-background pb-20 md:pb-0">
@@ -262,14 +365,28 @@ export function DashboardShell({
             {/* ── Default view (no mood selected) ── */}
             {!activeMood && (
               <div className="space-y-3">
-                <div className="px-4 sm:px-6 lg:px-8 pt-1 pb-0.5">
-                  <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                    From your list
-                  </h2>
-                </div>
+                {!isDemoPickStep && (
+                  <div className="px-4 sm:px-6 lg:px-8 pt-1 pb-0.5">
+                    <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      From your list
+                    </h2>
+                  </div>
+                )}
 
-                {/* Watch This Next rail */}
-                {bestNextItem && (
+                {isDemoPickStep && demoPickBookmark && (
+                  <div className="px-4 sm:px-6 lg:px-8" ref={upNextHighlightRef}>
+                    <div className="relative z-50 rounded-2xl ring-2 ring-white/90 shadow-[0_0_0_1px_rgba(255,255,255,0.15),0_0_40px_rgba(255,255,255,0.18)] p-1">
+                      <TonightPickCard
+                        bookmark={demoPickBookmark}
+                        streakCount={streakCount}
+                        reason={nextReason}
+                        onSkip={onHeroSkip}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {!demoActive && bestNextItem && (
                   <RevealSection delayMs={0} sectionRef={watchNextRailRef}>
                     <Rail
                       title="Watch This Next"
@@ -284,19 +401,9 @@ export function DashboardShell({
                   </RevealSection>
                 )}
 
-                {/* Supporting rails */}
-                {supportingRails.map((rail, index) => {
-                  const shouldHighlight = demoStep === 4 && index === 0;
-                  return (
-                    <RevealSection
-                      key={rail.id}
-                      delayMs={(index + 1) * 80}
-                      sectionRef={shouldHighlight ? upNextHighlightRef : undefined}
-                      className={cn(
-                        shouldHighlight &&
-                          "relative z-50 scale-[1.01] rounded-2xl ring-2 ring-white/90 shadow-[0_0_0_1px_rgba(255,255,255,0.15),0_0_40px_rgba(255,255,255,0.18)] transition-all",
-                      )}
-                    >
+                {!demoActive &&
+                  supportingRails.map((rail, index) => (
+                    <RevealSection key={rail.id} delayMs={(index + 1) * 80}>
                       <Rail
                         title={rail.title}
                         subtitle={rail.subtitle}
@@ -307,10 +414,21 @@ export function DashboardShell({
                         {...railHandlers}
                       />
                     </RevealSection>
-                  );
-                })}
+                  ))}
 
-                {/* Empty state */}
+                {isDemoSavedStep && demoSavedBookmark && (
+                  <div className="px-4 sm:px-6 lg:px-8">
+                    <div className="max-w-[220px]">
+                      <PosterCard
+                        bookmark={demoSavedBookmark}
+                        schedule={allScheduleMap[demoSavedBookmark.id]}
+                        isHighlighted
+                        {...railHandlers}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 {isEmpty && !hasOnlyVaultedItems && (
                   <div className="px-4 sm:px-6 lg:px-8">
                     <EmptyStateGuide
@@ -323,7 +441,6 @@ export function DashboardShell({
                   </div>
                 )}
 
-                {/* Vault-only empty state */}
                 {hasOnlyVaultedItems && (
                   <div className="px-4 sm:px-6 lg:px-8 py-12">
                     <div className="mx-auto max-w-lg rounded-xl border border-border bg-card p-6 text-center">
@@ -353,6 +470,7 @@ export function DashboardShell({
                 )}
               </div>
             )}
+
           </div>
         </div>
       </div>
