@@ -12,6 +12,7 @@ interface EnrichResponse {
   backdropUrl?: string;
   runtimeMinutes?: number;
   releaseYear?: number;
+  contentType?: 'movie' | 'series' | 'episode' | 'video';
   mediaType?: 'movie' | 'tv' | 'unknown';
   provider?: string;
   tmdbId?: number;
@@ -29,6 +30,7 @@ interface TmdbMatchCandidate {
   tmdbId: number;
   title: string;
   mediaType: 'movie' | 'tv';
+  contentType?: 'movie' | 'series' | 'episode';
   releaseYear?: number;
   posterUrl?: string;
   backdropUrl?: string;
@@ -306,10 +308,44 @@ function extractHashtags(...values: Array<string | undefined | null>): string[] 
   return Array.from(seen);
 }
 
+function extractUrlsFromText(...values: Array<string | undefined | null>): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  const pattern = /https?:\/\/[^\s"'<>]+/gi;
+
+  for (const value of values) {
+    if (!value) continue;
+    const matches = value.match(pattern);
+    if (!matches) continue;
+    for (const match of matches) {
+      const normalized = match.trim().replace(/[),.!?]+$/, '');
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      urls.push(normalized);
+      if (urls.length >= 12) return urls;
+    }
+  }
+
+  return urls;
+}
+
 const SCORING_STOP_WORDS = new Set([
   'the', 'and', 'for', 'with', 'from', 'into', 'over', 'this', 'that', 'your', 'our',
   'you', 'are', 'was', 'were', 'his', 'her', 'their', 'its', 'movie', 'show', 'series',
   'season', 'episode', 'official', 'trailer', 'teaser', 'clip', 'video',
+]);
+
+// Hashtags that carry zero signal about specific content — skip when using hashtags as TMDB queries
+const SOCIAL_JUNK_TAGS = new Set([
+  'fyp', 'foryou', 'foryoupage', 'viral', 'trending', 'explore', 'explorepage',
+  'reels', 'reel', 'shorts', 'short', 'instareels', 'instavideo', 'watchthis',
+  'movie', 'movies', 'film', 'films', 'cinema', 'watch', 'watching', 'binge', 'bingewatch',
+  'netflix', 'disneyplus', 'hbo', 'hulu', 'amazon', 'primevideo', 'appletv',
+  'trailer', 'preview', 'official', 'officialtrailer', 'comingsoon', 'nowstreaming',
+  'series', 'episode', 'show', 'tvshow', 'webseries', 'newseries',
+  'funny', 'comedy', 'meme', 'entertainment', 'fun', 'lol',
+  'followme', 'follow', 'like', 'subscribe', 'share', 'comment',
+  'mustwatch', 'recommended', 'recommendation', 'review', 'reaction',
 ]);
 
 function tokensForScore(value: string): string[] {
@@ -384,6 +420,25 @@ function typeMatchScore(
 ): number {
   if (!preferredMediaType || preferredMediaType === 'unknown') return 0.5;
   return preferredMediaType === candidateType ? 1 : 0;
+}
+
+function hasEpisodeSignal(...values: Array<string | undefined | null>): boolean {
+  for (const value of values) {
+    if (!value) continue;
+    if (/\bS\d{1,2}\s*E\d{1,3}\b/i.test(value)) return true;
+    if (/\bSeason\s*\d{1,2}\b.*\bEpisode\s*\d{1,3}\b/i.test(value)) return true;
+    if (/\bEpisode\s*\d{1,3}\b/i.test(value)) return true;
+  }
+  return false;
+}
+
+function toContentType(
+  mediaType: 'movie' | 'tv' | 'unknown' | undefined,
+  isEpisode: boolean
+): 'movie' | 'series' | 'episode' | undefined {
+  if (mediaType === 'movie') return 'movie';
+  if (mediaType === 'tv') return isEpisode ? 'episode' : 'series';
+  return undefined;
 }
 
 function uniqueSearchQueries(primaryTitle: string, alternates: string[] = []): string[] {
@@ -506,16 +561,15 @@ async function maybeMergeTMDB(base: EnrichResponse): Promise<EnrichResponse> {
 }
 
 function mergeWithTMDB(base: EnrichResponse, tmdb: EnrichResponse): EnrichResponse {
-  const shouldAdoptTmdbPrimary = tmdb.matchConfidence !== 'low' || !base.title;
-
   return {
     ...base,
-    title: shouldAdoptTmdbPrimary ? tmdb.title : (base.title ?? tmdb.title),
-    description: shouldAdoptTmdbPrimary ? (tmdb.description ?? base.description) : (base.description ?? tmdb.description),
-    posterUrl: shouldAdoptTmdbPrimary ? (tmdb.posterUrl ?? base.posterUrl) : (base.posterUrl ?? tmdb.posterUrl),
-    backdropUrl: shouldAdoptTmdbPrimary ? (tmdb.backdropUrl ?? base.backdropUrl) : (base.backdropUrl ?? tmdb.backdropUrl),
+    title: tmdb.title ?? base.title,
+    description: tmdb.description ?? base.description,
+    posterUrl: tmdb.posterUrl ?? base.posterUrl,
+    backdropUrl: tmdb.backdropUrl ?? base.backdropUrl,
     runtimeMinutes: tmdb.runtimeMinutes ?? base.runtimeMinutes,
     releaseYear: tmdb.releaseYear ?? base.releaseYear,
+    contentType: tmdb.contentType ?? base.contentType,
     mediaType: tmdb.mediaType ?? base.mediaType,
     tmdbId: tmdb.tmdbId ?? base.tmdbId,
     genres: tmdb.genres ?? base.genres,
@@ -581,6 +635,7 @@ async function enrichYouTube(videoId: string): Promise<EnrichResponse> {
       backdropUrl: tmdbData.backdropUrl,
       runtimeMinutes: tmdbData.runtimeMinutes ?? runtimeMinutes,
       releaseYear: tmdbData.releaseYear,
+      contentType: tmdbData.contentType ?? 'video',
       mediaType: tmdbData.mediaType,
       tmdbId: tmdbData.tmdbId,
       genres: tmdbData.genres,
@@ -996,6 +1051,7 @@ async function resolveTmdbByImdbId(imdbId: string): Promise<EnrichResponse | nul
       posterUrl: posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : undefined,
       backdropUrl: backdropPath ? `https://image.tmdb.org/t/p/original${backdropPath}` : undefined,
       releaseYear,
+      contentType: toContentType(mediaType, false),
       mediaType,
       tmdbId: Math.trunc(tmdbId),
       runtimeMinutes,
@@ -1051,6 +1107,25 @@ async function resolveKnownSourceToTmdb(candidates: Array<string | undefined>): 
   return null;
 }
 
+/**
+ * When social post text is too noisy to search TMDB directly, try each hashtag
+ * as a potential movie/show title. Common junk tags are skipped via SOCIAL_JUNK_TAGS.
+ * Only adopts the result if confidence is medium or high.
+ */
+async function tryHashtagTmdbFallback(base: EnrichResponse): Promise<EnrichResponse> {
+  const hashtags = base.hashtags ?? [];
+  for (const tag of hashtags.slice(0, 10)) {
+    if (tag.length < 3 || SOCIAL_JUNK_TAGS.has(tag)) continue;
+    // Treat the hashtag as a potential title query
+    const tmdb = await enrichTMDB(tag, { preferredMediaType: 'unknown' });
+    if (tmdb.title && tmdb.matchConfidence !== 'low') {
+      logger.info('[enrich] hashtag TMDB fallback matched:', tag, '->', tmdb.title);
+      return mergeWithTMDB(base, tmdb);
+    }
+  }
+  return base;
+}
+
 async function enrichViaOG(url: string, provider: string): Promise<EnrichResponse> {
   const og = await fetchOpenGraph(url);
 
@@ -1072,7 +1147,17 @@ async function enrichViaOG(url: string, provider: string): Promise<EnrichRespons
     provider,
   };
 
-  if (provider === 'netflix' && result.title) {
+  const knownSourceCandidates = [
+    url,
+    og.canonicalUrl,
+    ...extractUrlsFromText(og.title, og.description),
+  ];
+  const sourceResolved = await resolveKnownSourceToTmdb(knownSourceCandidates);
+  if (sourceResolved?.title) {
+    result = mergeWithTMDB(result, sourceResolved);
+  }
+
+  if (!result.tmdbId && provider === 'netflix' && result.title) {
     const tmdb = await enrichTMDB(result.title, {
       description: result.description,
       preferredMediaType: 'movie',
@@ -1082,7 +1167,7 @@ async function enrichViaOG(url: string, provider: string): Promise<EnrichRespons
     if (tmdb.title) {
       result = mergeWithTMDB(result, tmdb);
     }
-  } else if (provider === 'generic' && result.title && isLikelyMediaTitle(result.title)) {
+  } else if (!result.tmdbId && provider === 'generic' && result.title && isLikelyMediaTitle(result.title)) {
     const tmdb = await enrichTMDB(result.title, {
       description: result.description,
       preferredMediaType: 'unknown',
@@ -1092,8 +1177,12 @@ async function enrichViaOG(url: string, provider: string): Promise<EnrichRespons
     if (tmdb.title) {
       result = mergeWithTMDB(result, tmdb);
     }
-  } else if (isSocialProvider) {
+  } else if (!result.tmdbId && isSocialProvider) {
     result = await maybeMergeTMDB(result);
+    // If TMDB search via post text failed, fall back to trying each hashtag as a title query
+    if (!result.tmdbId) {
+      result = await tryHashtagTmdbFallback(result);
+    }
   }
 
   result = await fillMissingWithMicrolink(result, url);
@@ -1151,6 +1240,7 @@ async function enrichIMDb(url: string): Promise<EnrichResponse> {
       posterUrl: result.poster_path ? `https://image.tmdb.org/t/p/w500${result.poster_path}` : undefined,
       backdropUrl: result.backdrop_path ? `https://image.tmdb.org/t/p/original${result.backdrop_path}` : undefined,
       releaseYear: rawDate ? parseInt(rawDate.slice(0, 4), 10) || undefined : undefined,
+      contentType: toContentType(isTV ? 'tv' : 'movie', false),
       mediaType: isTV ? 'tv' : 'movie',
       tmdbId: result.id,
       runtimeMinutes,
@@ -1365,6 +1455,58 @@ async function fetchTmdbSearchResults(
   return Array.from(deduped.values());
 }
 
+interface TmdbCandidateDetails {
+  runtimeMinutes?: number;
+  genres?: string[];
+  description?: string;
+}
+
+function candidateKey(item: { mediaType: 'movie' | 'tv'; tmdbId: number }): string {
+  return `${item.mediaType}:${item.tmdbId}`;
+}
+
+async function fetchTmdbCandidateDetails(
+  apiKey: string,
+  mediaType: 'movie' | 'tv',
+  tmdbId: number
+): Promise<TmdbCandidateDetails> {
+  try {
+    const detailRes = await fetchWithTimeout(
+      `https://api.themoviedb.org/3/${mediaType}/${tmdbId}?api_key=${apiKey}`
+    );
+    if (!detailRes.ok) return {};
+
+    const detail = (await detailRes.json()) as Record<string, unknown>;
+    let runtimeMinutes: number | undefined;
+    if (mediaType === 'tv') {
+      const runTimes = Array.isArray(detail.episode_run_time) ? detail.episode_run_time : [];
+      runtimeMinutes = runTimes
+        .map((value) => toFiniteNumber(value))
+        .find((value): value is number => typeof value === 'number' && value > 0);
+    } else {
+      runtimeMinutes = toFiniteNumber(detail.runtime);
+    }
+
+    const genres = Array.isArray(detail.genres)
+      ? detail.genres
+          .map((genre) => {
+            if (!genre || typeof genre !== 'object') return undefined;
+            const name = (genre as Record<string, unknown>).name;
+            return typeof name === 'string' ? normalizeText(name) : undefined;
+          })
+          .filter((name): name is string => !!name)
+      : undefined;
+
+    const description = typeof detail.overview === 'string'
+      ? normalizeText(detail.overview)
+      : undefined;
+
+    return { runtimeMinutes, genres, description };
+  } catch {
+    return {};
+  }
+}
+
 async function enrichTMDB(title: string, hint?: TmdbSearchHint): Promise<EnrichResponse> {
   const apiKey = tmdbApiKey.value();
   if (!apiKey || !title) return { provider: 'generic' };
@@ -1393,69 +1535,53 @@ async function enrichTMDB(title: string, hint?: TmdbSearchHint): Promise<EnrichR
       ? confidenceFromScores(best.score, Math.max(0, best.score - secondBest.score))
       : confidenceFromScores(best.score, 1);
 
-    let runtimeMinutes: number | undefined;
-    let genres: string[] | undefined;
-    try {
-      const detailRes = await fetchWithTimeout(
-        `https://api.themoviedb.org/3/${best.mediaType}/${best.tmdbId}?api_key=${apiKey}`
-      );
-      if (detailRes.ok) {
-        const detail = (await detailRes.json()) as Record<string, unknown>;
-        if (best.mediaType === 'tv') {
-          const runTimes = Array.isArray(detail.episode_run_time) ? detail.episode_run_time : [];
-          const firstRuntime = runTimes
-            .map((value) => toFiniteNumber(value))
-            .find((value): value is number => typeof value === 'number' && value > 0);
-          runtimeMinutes = firstRuntime;
-        } else {
-          runtimeMinutes = toFiniteNumber(detail.runtime);
-        }
+    const episodeHint = hasEpisodeSignal(...queryTitles, hint?.description);
+    const topCandidates = ranked.slice(0, 3);
+    const detailPairs = await Promise.all(
+      topCandidates.map(async (item) => {
+        const details = await fetchTmdbCandidateDetails(apiKey, item.mediaType, item.tmdbId);
+        return [candidateKey(item), details] as const;
+      })
+    );
+    const detailsByCandidate = new Map<string, TmdbCandidateDetails>(detailPairs);
+    const bestDetails = detailsByCandidate.get(candidateKey(best)) ?? {};
 
-        genres = Array.isArray(detail.genres)
-          ? detail.genres
-              .map((genre) => {
-                if (!genre || typeof genre !== 'object') return undefined;
-                const name = (genre as Record<string, unknown>).name;
-                return typeof name === 'string' ? normalizeText(name) : undefined;
-              })
-              .filter((name): name is string => !!name)
-          : undefined;
-      }
-    } catch {}
-
-    const candidates: TmdbMatchCandidate[] = ranked.slice(0, 5).map((item) => ({
-      tmdbId: item.tmdbId,
-      title: item.title,
-      mediaType: item.mediaType,
-      releaseYear: item.releaseYear,
-      posterUrl: item.posterUrl,
-      backdropUrl: item.backdropUrl,
-      description: item.description,
-      voteAverage: item.voteAverage,
-      ...(item.tmdbId === best.tmdbId ? {
-        runtimeMinutes,
-        genres,
-      } : {}),
-      score: Number(item.score.toFixed(3)),
-      scoreBreakdown: {
-        title: Number(item.scoreBreakdown.title.toFixed(3)),
-        year: Number(item.scoreBreakdown.year.toFixed(3)),
-        type: Number(item.scoreBreakdown.type.toFixed(3)),
-        overview: Number(item.scoreBreakdown.overview.toFixed(3)),
-        total: Number(item.scoreBreakdown.total.toFixed(3)),
-      },
-    }));
+    const candidates: TmdbMatchCandidate[] = topCandidates.map((item) => {
+      const details = detailsByCandidate.get(candidateKey(item)) ?? {};
+      return {
+        tmdbId: item.tmdbId,
+        title: item.title,
+        mediaType: item.mediaType,
+        contentType: toContentType(item.mediaType, episodeHint),
+        releaseYear: item.releaseYear,
+        posterUrl: item.posterUrl,
+        backdropUrl: item.backdropUrl,
+        description: details.description ?? item.description,
+        voteAverage: item.voteAverage,
+        runtimeMinutes: details.runtimeMinutes,
+        genres: details.genres,
+        score: Number(item.score.toFixed(3)),
+        scoreBreakdown: {
+          title: Number(item.scoreBreakdown.title.toFixed(3)),
+          year: Number(item.scoreBreakdown.year.toFixed(3)),
+          type: Number(item.scoreBreakdown.type.toFixed(3)),
+          overview: Number(item.scoreBreakdown.overview.toFixed(3)),
+          total: Number(item.scoreBreakdown.total.toFixed(3)),
+        },
+      };
+    });
 
     return {
       title: best.title,
-      description: best.description,
+      description: bestDetails.description ?? best.description,
       posterUrl: best.posterUrl,
       backdropUrl: best.backdropUrl,
       releaseYear: best.releaseYear,
+      contentType: toContentType(best.mediaType, episodeHint),
       mediaType: best.mediaType,
       tmdbId: best.tmdbId,
-      runtimeMinutes,
-      genres,
+      runtimeMinutes: bestDetails.runtimeMinutes,
+      genres: bestDetails.genres,
       voteAverage: best.voteAverage,
       matchConfidence: confidence,
       matchCandidates: candidates,

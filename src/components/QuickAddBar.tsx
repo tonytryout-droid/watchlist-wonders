@@ -44,6 +44,27 @@ const PROVIDER_STYLES: Record<string, { label: string; dot: string }> = {
   generic:   { label: "Website",    dot: "bg-muted-foreground" },
 };
 
+function resolveTypeFromEnrichment(
+  data: Record<string, unknown>,
+  fallbackProvider: Bookmark["provider"],
+): Bookmark["type"] {
+  const contentType = typeof data.contentType === "string" ? data.contentType : "";
+  if (contentType === "video") return "video";
+  if (contentType === "episode") return "episode";
+  if (contentType === "series") return "series";
+  if (contentType === "movie") return "movie";
+
+  const mediaType = typeof data.mediaType === "string" ? data.mediaType : "";
+  if (mediaType === "movie") return "movie";
+  if (mediaType === "tv") return "series";
+  
+  // Treat all video/social providers as video
+  const videoProviders: Bookmark["provider"][] = ["youtube", "instagram", "facebook", "x"];
+  if (videoProviders.includes(fallbackProvider)) return "video";
+  
+  return "movie";
+}
+
 interface QuickAddBarProps {
   className?: string;
   value?: string;
@@ -177,7 +198,7 @@ export function QuickAddBar({
         title: data.title,
         posterUrl: data.posterUrl,
         runtimeMinutes: data.runtimeMinutes ?? null,
-        type: dp === "youtube" ? "video" : "movie",
+        type: resolveTypeFromEnrichment(data, resolvedProvider),
         blocked: data.blocked,
         debugMessage:
           ambiguityHint ??
@@ -190,7 +211,7 @@ export function QuickAddBar({
       setConfirmInitial({
         url: trimmed,
         provider: dp,
-        type: dp === "youtube" ? "video" : "movie",
+        type: resolveTypeFromEnrichment({}, dp),
         blocked: false,
         debugMessage: getSafeErrorMessage(err, "Could not fetch details automatically."),
       });

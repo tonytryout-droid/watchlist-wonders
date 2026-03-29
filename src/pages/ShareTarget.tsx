@@ -41,6 +41,23 @@ const PROVIDER_MARKS: Record<string, string> = {
   generic: "WEB",
 };
 
+function resolveTypeFromEnrichment(
+  data: Record<string, unknown>,
+  fallbackProvider: Bookmark["provider"],
+): Bookmark["type"] {
+  const contentType = typeof data.contentType === "string" ? data.contentType : "";
+  if (contentType === "video") return "video";
+  if (contentType === "episode") return "episode";
+  if (contentType === "series") return "series";
+  if (contentType === "movie") return "movie";
+
+  const mediaType = typeof data.mediaType === "string" ? data.mediaType : "";
+  if (mediaType === "movie") return "movie";
+  if (mediaType === "tv") return "series";
+  if (fallbackProvider === "youtube") return "video";
+  return "movie";
+}
+
 function extractUrlFromText(text: string): string | null {
   const match = text.match(/https?:\/\/[^\s)]+/i);
   if (!match?.[0]) return null;
@@ -176,9 +193,7 @@ const ShareTarget = () => {
           ? data.provider
           : dp;
 
-      let type: Bookmark["type"] = dp === "youtube" ? "video" : "movie";
-      if (data.mediaType === "movie") type = "movie";
-      else if (data.mediaType === "tv") type = "series";
+      const type = resolveTypeFromEnrichment(data, resolvedProvider as Bookmark["provider"]);
 
       const resolvedTitle = typeof data.title === "string" ? data.title.trim() : "";
       const canAutoSave =
