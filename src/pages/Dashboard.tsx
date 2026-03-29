@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { DashboardShell } from "@/pages/dashboard/DashboardShell";
 import { DashboardDialogs } from "@/pages/dashboard/DashboardDialogs";
 import { buildDemoDataset } from "@/engine/demoData";
+import { resolveDashboardSurfaceForDemo } from "@/engine/demoFlow";
 import type { Bookmark, Schedule } from "@/types/database";
 
 type DecisionIntentSeed = "quick" | "deep" | "random" | "continue";
@@ -65,7 +66,7 @@ function parseIntentParam(intentParam: string | null): DecisionIntentSeed | null
 function buildDemoBookmark(): Bookmark {
   const now = new Date().toISOString();
   return {
-    id: "demo-1",
+    id: "demo-up-next",
     user_id: "demo",
     title: "Inception",
     type: "movie",
@@ -175,20 +176,42 @@ const Dashboard = () => {
 
   // ── Demo dataset ──────────────────────────────────────────────────────────
   const demoDataset = useMemo(() => buildDemoDataset(now), [now]);
-  const demoScheduleCards: ScheduleWithBookmark[] = useMemo(
+
+  const liveUpcomingSignals = useMemo(
     () =>
-      demoDataset.schedules.map((schedule) => ({
-        id: `demo-schedule-${schedule.bookmarkId}`,
-        bookmark_id: schedule.bookmarkId,
-        scheduled_for: schedule.scheduledFor,
-        bookmarks:
-          demoDataset.bookmarks.find((b) => b.id === schedule.bookmarkId) ?? null,
+      (upcomingSchedules as ScheduleWithBookmark[]).map((schedule) => ({
+        bookmarkId: schedule.bookmark_id,
+        scheduledFor: schedule.scheduled_for,
       })),
-    [demoDataset.bookmarks, demoDataset.schedules],
+    [upcomingSchedules],
   );
-  const upcomingSchedulesForDisplay: ScheduleWithBookmark[] = demoActive
-    ? demoScheduleCards
-    : (upcomingSchedules as ScheduleWithBookmark[]);
+
+  const surface = useMemo(
+    () =>
+      resolveDashboardSurfaceForDemo({
+        demoActive,
+        demoStep,
+        demoItem,
+        demoDataset,
+        liveBookmarks: bookmarksData,
+        liveUpcomingSchedules: liveUpcomingSignals,
+      }),
+    [bookmarksData, demoActive, demoDataset, demoItem, demoStep, liveUpcomingSignals],
+  );
+
+  const allBookmarks = surface.bookmarks;
+  const upcomingSignals = surface.upcomingSchedules;
+
+  const upcomingSchedulesForDisplay = useMemo((): ScheduleWithBookmark[] => {
+    if (!demoActive) return upcomingSchedules as ScheduleWithBookmark[];
+    if (demoStep < 4) return [];
+    return upcomingSignals.map((schedule) => ({
+      id: `demo-schedule-${schedule.bookmarkId}`,
+      bookmark_id: schedule.bookmarkId,
+      scheduled_for: schedule.scheduledFor,
+      bookmarks: allBookmarks.find((bookmark) => bookmark.id === schedule.bookmarkId) ?? null,
+    }));
+  }, [allBookmarks, demoActive, demoStep, upcomingSchedules, upcomingSignals]);
 
   const allScheduleMap = useMemo((): Record<string, Schedule> => {
     const map: Record<string, Schedule> = {};
@@ -198,29 +221,6 @@ const Dashboard = () => {
     return map;
   }, [upcomingSchedulesForDisplay]);
 
-  // ── Bookmark lists ────────────────────────────────────────────────────────
-  const allBookmarks = useMemo(() => {
-    if (demoActive) {
-      const base = demoDataset.bookmarks;
-      if (!demoItem) return base;
-      return [demoItem, ...base.filter((b) => b.id !== demoItem.id)];
-    }
-    return bookmarksData;
-  }, [demoActive, demoDataset.bookmarks, demoItem, bookmarksData]);
-
-  // ── View (decision engine) ────────────────────────────────────────────────
-  const upcomingSignals = useMemo(() => {
-    if (demoActive) {
-      return demoDataset.schedules.map((s) => ({
-        bookmarkId: s.bookmarkId,
-        scheduledFor: s.scheduledFor,
-      }));
-    }
-    return (upcomingSchedules as ScheduleWithBookmark[]).map((s) => ({
-      bookmarkId: s.bookmark_id,
-      scheduledFor: s.scheduled_for,
-    }));
-  }, [demoActive, demoDataset.schedules, upcomingSchedules]);
 
   const view = useDashboardView({
     allBookmarks,
@@ -603,7 +603,10 @@ const Dashboard = () => {
         upNextHighlightRef={upNextHighlightRef}
         onPlay={handlePlay}
         onHeroSchedule={() => view.heroBookmark && handleSchedule(view.heroBookmark)}
-        onHeroSkip={() => view.heroBookmark && mutations.handleSkip(view.heroBookmark)}
+        onHeroSkip={() => {
+          const pick = view.bestNextItem ?? view.heroBookmark;
+          if (pick) mutations.handleSkip(pick);
+        }}
         onMoreInfo={handleMoreInfo}
         onKeepStreak={handleKeepStreak}
         onSchedule={handleSchedule}
