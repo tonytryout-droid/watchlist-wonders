@@ -190,17 +190,17 @@ const Index = () => {
               {/* Left: words */}
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-white/50 font-semibold mb-5">
-                  Your personal watch list
+                  Never lose a recommendation again
                 </p>
                 <h1 className="text-4xl sm:text-5xl lg:text-[3.25rem] font-black leading-[1.06] mb-6">
-                  Save movies from anywhere.{" "}
-                  <span className="text-[#e50914]">We pick what you watch next.</span>
+                  Save it when you see it.{" "}
+                  <span className="text-[#e50914]">Find it instantly when you're ready.</span>
                 </h1>
                 <p className="text-lg text-white/75 leading-relaxed mb-3 max-w-lg">
-                  See something on TikTok or YouTube? Paste the link — WatchMarks finds the movie and saves it.
+                  See something on TikTok, YouTube, or Instagram? Paste the link — WatchMarks finds the movie and saves it in seconds. No forms, no typing.
                 </p>
                 <p className="text-lg text-white/75 leading-relaxed mb-10 max-w-lg">
-                  When you sit down to watch, we tell you exactly what to put on.
+                  When you want to watch, your whole list is searchable instantly — or we pick the best thing for right now.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3">
                   <Button
@@ -256,8 +256,8 @@ const Index = () => {
                 },
                 {
                   step: "3",
-                  headline: "We tell you what to watch",
-                  detail: "Sit down to watch tonight. We surface the best pick from your list based on your mood and time available.",
+                  headline: "Find it or let us pick",
+                  detail: "Search your list instantly, or let WatchMarks surface the best pick based on your mood and time available. No more scrolling from scratch.",
                   icon: "🎬",
                   color: "border-white/10",
                 },
@@ -294,15 +294,15 @@ const Index = () => {
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               <div>
                 <h2 className="text-3xl sm:text-4xl font-bold mb-6">
-                  Stop wasting 20 minutes deciding what to watch.
+                  Stop losing things you want to watch.
                 </h2>
                 <p className="text-white/65 text-lg leading-relaxed mb-8">
-                  You know the feeling. You sit down, open Netflix, scroll for 20 minutes, and end up watching nothing. WatchMarks solves exactly that.
+                  You see it on TikTok, save it somewhere, and never find it again. Or you sit down to watch, can't remember what you saved, and scroll Netflix for 20 minutes. WatchMarks solves both.
                 </p>
                 <ul className="space-y-4">
                   {[
-                    "Everything you want to watch is in one place — not scattered across your bookmarks, screenshots, and memory.",
-                    "We pick the best thing to watch right now, based on how much time you have.",
+                    "Everything you want to watch lives in one place — not scattered across TikTok saves, Instagram bookmarks, and screenshots you'll never find again.",
+                    "Search your saved list instantly, or let us pick the best thing based on how much time you have.",
                     "Your list actually gets used instead of growing forever and being ignored.",
                   ].map((item, i) => (
                     <li key={i} className="flex items-start gap-3">
