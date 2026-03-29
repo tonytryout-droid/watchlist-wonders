@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowUpDown } from "lucide-react";
 import { bookmarkService } from "@/services/bookmarks";
@@ -13,6 +13,8 @@ import { useWatchStreak } from "@/hooks/useWatchStreak";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDashboardView } from "@/hooks/useDashboardView";
 import { useDashboardMutations } from "@/hooks/useDashboardMutations";
+import { useSimilarTitles, type SimilarTitle } from "@/hooks/useSimilarTitles";
+import { useToast } from "@/hooks/use-toast";
 import { DashboardShell } from "@/pages/dashboard/DashboardShell";
 import { DashboardDialogs } from "@/pages/dashboard/DashboardDialogs";
 import { buildDemoDataset } from "@/engine/demoData";
@@ -31,6 +33,27 @@ type ScheduleWithBookmark = {
   scheduled_for: string;
   bookmarks: Bookmark | null;
 };
+
+function getMetadataTmdbId(bookmark: Bookmark | null): number | null {
+  if (!bookmark?.metadata || typeof bookmark.metadata !== "object") return null;
+  const metadata = bookmark.metadata as Record<string, unknown>;
+  const raw = metadata.tmdb_id ?? metadata.tmdbId;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string" && raw.trim()) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function toBookmarkType(mediaType: SimilarTitle["media_type"]): Bookmark["type"] {
+  return mediaType === "tv" ? "series" : "movie";
+}
+
+function toTmdbSourceUrl(item: SimilarTitle): string {
+  const media = item.media_type === "tv" ? "tv" : "movie";
+  return `https://www.themoviedb.org/${media}/${item.id}`;
+}
 
 function parseIntentParam(intentParam: string | null): DecisionIntentSeed | null {
   if (!intentParam) return null;
@@ -79,9 +102,14 @@ function DemoTooltip({ message }: { message: string }) {
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { showTour, dismissTour } = useDashboardTour();
+
+  // ── Mood filter ───────────────────────────────────────────────────────────
+  const [activeMood, setActiveMood] = useState<string | null>(null);
 
   // ── Dialog state ──────────────────────────────────────────────────────────
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -198,6 +226,67 @@ const Dashboard = () => {
     allBookmarks,
     upcomingSchedules: upcomingSignals,
     now,
+  });
+
+  const recommendationSeed = view.bestNextItem ?? view.heroBookmark;
+  const recommendationSeedTmdbId = getMetadataTmdbId(recommendationSeed);
+  const recommendationSeedType =
+    recommendationSeed?.type === "series" || recommendationSeed?.type === "episode"
+      ? "tv"
+      : "movie";
+
+  const { data: similarTitles = [] } = useSimilarTitles(
+    recommendationSeedTmdbId,
+    recommendationSeedType,
+  );
+
+  const recommendationCandidates = useMemo(() => {
+    const existingTmdbIds = new Set<number>();
+    const existingTitles = new Set<string>();
+
+    for (const bookmark of view.visibleBookmarks) {
+      const tmdbId = getMetadataTmdbId(bookmark);
+      if (tmdbId) existingTmdbIds.add(tmdbId);
+      existingTitles.add(bookmark.title.trim().toLowerCase());
+    }
+
+    return similarTitles
+      .filter((item) => !existingTmdbIds.has(item.id))
+      .filter((item) => !existingTitles.has(item.title.trim().toLowerCase()))
+      .slice(0, 10);
+  }, [similarTitles, view.visibleBookmarks]);
+
+  const saveRecommendationMutation = useMutation({
+    mutationFn: async (item: SimilarTitle) =>
+      bookmarkService.createBookmark({
+        title: item.title,
+        type: toBookmarkType(item.media_type),
+        provider: "generic",
+        source_url: toTmdbSourceUrl(item),
+        canonical_url: toTmdbSourceUrl(item),
+        poster_url: item.posterUrl ?? null,
+        release_year: item.release_year ?? null,
+        status: "backlog",
+        tags: ["recommendation"],
+        mood_tags: [],
+        metadata: {
+          tmdb_id: item.id,
+          recommendation_source: "tmdb_similar_titles",
+          vote_average: item.vote_average,
+          media_type: item.media_type,
+        },
+      }),
+    onSuccess: (saved) => {
+      queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
+      toast({ title: "Saved", description: `"${saved.title}" added to your list.` });
+    },
+    onError: () => {
+      toast({
+        title: "Save failed",
+        description: "Couldn't save recommendation right now.",
+        variant: "destructive",
+      });
+    },
   });
 
   // ── Mutations ─────────────────────────────────────────────────────────────
@@ -495,6 +584,17 @@ const Dashboard = () => {
         streakCount={streak}
         highlightBookmarkId={highlightBookmarkId}
         dismissedMissedBanner={dismissedMissedBanner}
+        activeMood={activeMood}
+        onMoodSelect={setActiveMood}
+        recommendationItems={recommendationCandidates}
+        recommendationSavingItemId={
+          saveRecommendationMutation.isPending && saveRecommendationMutation.variables
+            ? `${saveRecommendationMutation.variables.media_type}-${saveRecommendationMutation.variables.id}`
+            : null
+        }
+        onSaveRecommendation={(item) => {
+          saveRecommendationMutation.mutate(item);
+        }}
         demoActive={demoActive}
         demoLoading={demoLoading}
         demoInputValue={demoInputValue}

@@ -18,7 +18,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Mail, Lock, Loader2, Eye, EyeOff, ArrowLeft, Check, X as XIcon } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -60,6 +60,13 @@ const authSchema = z.object({
     .max(72, { message: "Password must be less than 72 characters" }),
 });
 
+function getSafeRedirectPath(rawRedirect: string | null): string {
+  if (!rawRedirect) return "/";
+  if (!rawRedirect.startsWith("/")) return "/";
+  if (rawRedirect.startsWith("//")) return "/";
+  return rawRedirect;
+}
+
 const Auth = () => {
   const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
@@ -70,17 +77,34 @@ const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string; confirmPassword?: string; form?: string }>({});
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const { user, loading, signIn, signUp, signInWithGoogle } = useAuth();
   const isMobile = useIsMobile();
+  const redirectPath = getSafeRedirectPath(searchParams.get("redirect"));
+
+  const resolvePostAuthDestination = () => {
+    const pendingUrl = sessionStorage.getItem("pendingShareUrl");
+    const pendingTitle = sessionStorage.getItem("pendingShareTitle");
+    if (pendingUrl) {
+      sessionStorage.removeItem("pendingShareUrl");
+      sessionStorage.removeItem("pendingShareTitle");
+      const shareParams = new URLSearchParams({ url: pendingUrl });
+      if (pendingTitle) {
+        shareParams.set("title", pendingTitle);
+      }
+      return `/share-target?${shareParams.toString()}`;
+    }
+    return redirectPath;
+  };
 
   // Redirect if already logged in
   useEffect(() => {
     if (!loading && user) {
-      navigate("/");
+      navigate(resolvePostAuthDestination(), { replace: true });
     }
-  }, [user, loading, navigate]);
+  }, [user, loading, navigate, redirectPath]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const switchMode = (next: AuthMode) => {
     setMode(next);
@@ -165,7 +189,7 @@ const Auth = () => {
           title: "Welcome back!",
           description: "Successfully signed in.",
         });
-        navigate("/");
+        navigate(resolvePostAuthDestination(), { replace: true });
       } else {
         await signUp(email.trim(), password);
         toast({
@@ -206,7 +230,7 @@ const Auth = () => {
     try {
       await signInWithGoogle();
       toast({ title: "Welcome!", description: "Successfully signed in with Google." });
-      navigate("/");
+      navigate(resolvePostAuthDestination(), { replace: true });
     } catch (error: any) {
       if (error.code !== "auth/popup-closed-by-user") {
         setErrors({ form: "Google sign in failed. Please try again." });
