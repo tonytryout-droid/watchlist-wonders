@@ -1,6 +1,6 @@
 import { useState, type RefObject } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Play, SkipForward } from "lucide-react";
+import { Play, Search, SkipForward } from "lucide-react";
 import { HeroBanner } from "@/components/layout/HeroBanner";
 import { Rail } from "@/components/bookmarks/Rail";
 import { PosterCard } from "@/components/bookmarks/PosterCard";
@@ -307,9 +307,30 @@ export function DashboardShell({
         <div className="flex-1 min-w-0 relative z-10 pb-16">
           <div className="animate-fade-in">
 
+            {/* ── Search bar — surfaces the "find it instantly" promise ── */}
+            {!isEmpty && !demoActive && (
+              <div className="px-4 sm:px-6 lg:px-8 pt-4 pb-1">
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent("wm:open-search"))}
+                  className="w-full flex items-center gap-3 bg-muted/50 hover:bg-muted/80 border border-border/50 rounded-xl px-4 py-2.5 text-left transition-colors group"
+                  aria-label="Search your saved titles"
+                >
+                  <Search className="w-4 h-4 text-muted-foreground shrink-0 group-hover:text-foreground transition-colors" />
+                  <span className="text-sm text-muted-foreground group-hover:text-foreground/70 transition-colors">
+                    Search your saved titles...
+                  </span>
+                  <span className="ml-auto hidden sm:flex items-center gap-1 text-[11px] text-muted-foreground/60 font-mono">
+                    <kbd className="px-1.5 py-0.5 rounded border border-border/50 bg-background/40">⌘</kbd>
+                    <kbd className="px-1.5 py-0.5 rounded border border-border/50 bg-background/40">K</kbd>
+                  </span>
+                </button>
+              </div>
+            )}
+
             {/* ── Mood Picker — ALWAYS first, intent-first entry ── */}
             {!isEmpty && !demoActive && (
-              <div className="px-4 sm:px-6 lg:px-8 pt-4 pb-3">
+              <div className="px-4 sm:px-6 lg:px-8 pt-3 pb-3">
                 <MoodPicker
                   activeMood={activeMood}
                   onMoodSelect={onMoodSelect}

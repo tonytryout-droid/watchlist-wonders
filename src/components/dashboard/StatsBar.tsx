@@ -129,7 +129,7 @@ export function StatsBar({
                 onFilter={onFilter}
               />
               <StatButton
-                label="Backlog"
+                label="Saved"
                 tooltip="Filter: saved but not started"
                 value={backlog}
                 icon={ListTodo}
@@ -168,7 +168,7 @@ export function StatsBar({
             <div
               className="flex rounded-full overflow-hidden h-2 bg-muted"
               role="img"
-              aria-label={`${backlogPct.toFixed(0)}% backlog, ${watchingPct.toFixed(0)}% watching, ${donePct.toFixed(0)}% done`}
+              aria-label={`${backlogPct.toFixed(0)}% saved, ${watchingPct.toFixed(0)}% watching, ${donePct.toFixed(0)}% done`}
             >
               {backlogPct > 0 && (
                 <div className="h-full bg-chart-4 transition-all duration-500" style={{ width: `${backlogPct}%` }} />

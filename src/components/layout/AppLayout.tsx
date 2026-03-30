@@ -44,6 +44,12 @@ export function AppLayout() {
     };
   }, []);
 
+  useEffect(() => {
+    const handleOpenSearch = () => openSearch();
+    window.addEventListener("wm:open-search", handleOpenSearch);
+    return () => window.removeEventListener("wm:open-search", handleOpenSearch);
+  }, [openSearch]);
+
   return (
     <div className="min-h-screen bg-background" id="main-scroll-container">
       <TopNav
