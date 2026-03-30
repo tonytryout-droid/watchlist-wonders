@@ -5,13 +5,9 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { getAuth } from 'firebase-admin/auth';
-import * as nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
-const smtpHost = defineSecret('SMTP_HOST');
-const smtpPort = defineSecret('SMTP_PORT');
-const smtpUser = defineSecret('SMTP_USER');
-const smtpPass = defineSecret('SMTP_PASS');
-const smtpFrom = defineSecret('SMTP_FROM');
+const resendApiKey = defineSecret('RESEND_API_KEY');
 
 let firestoreDb: Firestore | null = null;
 
@@ -46,18 +42,6 @@ interface ScheduleData {
 interface BookmarkData {
   title?: string;
   type?: string;
-}
-
-function createMailTransport() {
-  return nodemailer.createTransport({
-    host: smtpHost.value(),
-    port: Number(smtpPort.value()) || 587,
-    secure: Number(smtpPort.value()) === 465,
-    auth: {
-      user: smtpUser.value(),
-      pass: smtpPass.value(),
-    },
-  });
 }
 
 function escapeHtml(str: string): string {
@@ -96,7 +80,7 @@ export const sendReminders = onSchedule(
     timeZone: 'UTC',
     memory: '256MiB',
     timeoutSeconds: 300,
-    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, smtpFrom],
+    secrets: [resendApiKey],
   },
   async () => {
     ensureInit();
@@ -202,18 +186,12 @@ export const sendReminders = onSchedule(
       }),
     );
 
-    // Build mail transport (only if needed)
+    // Build Resend client (only if needed)
     const emailEnabled = due.some(({ uid }) => profileMap.get(uid)?.email_reminders_enabled);
-    let mailer: nodemailer.Transporter | null = null;
-    if (emailEnabled && smtpHost.value() && smtpUser.value() && smtpPass.value()) {
-      try {
-        mailer = createMailTransport();
-      } catch (err) {
-        logger.warn('[reminders] Could not create mail transport', { error: String(err) });
-      }
+    let resend: Resend | null = null;
+    if (emailEnabled && resendApiKey.value()) {
+      resend = new Resend(resendApiKey.value());
     }
-
-    const fromAddress = smtpFrom.value() || smtpUser.value() || 'noreply@watchlist-wonders.app';
 
     let sent = 0;
     let failed = 0;
@@ -257,21 +235,21 @@ export const sendReminders = onSchedule(
           );
         }
 
-        // Email
-        if (profile.email_reminders_enabled && email && mailer) {
+        // Email via Resend
+        if (profile.email_reminders_enabled && email && resend) {
           tasks.push(
-            mailer
-              .sendMail({
-                from: fromAddress,
+            resend.emails
+              .send({
+                from: 'WatchMarks <noreply@watchlist-wonders.app>',
                 to: email,
                 subject: notifTitle,
                 html: buildEmailHtml(title, scheduledFor, offsetMinutes),
               })
               .then(() => {
-                logger.info('[reminders] Email sent', { uid });
+                logger.info('[reminders] Email sent via Resend', { uid });
               })
               .catch((err: unknown) => {
-                logger.warn('[reminders] Email failed', { uid, error: String(err) });
+                logger.warn('[reminders] Email failed via Resend', { uid, error: String(err) });
               }),
           );
         }
