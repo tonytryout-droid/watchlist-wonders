@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { ArrowRight, Check, Sparkles, X } from "lucide-react";
+import { ArrowRight, Check, Link2, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { getSafeErrorMessage } from "@/lib/errorMessage";
 import { toast } from "sonner";
@@ -68,6 +69,7 @@ interface WelcomeFlowProps {
 }
 
 export function WelcomeFlow({ open, onDismiss, onAddSuggestion, onComplete }: WelcomeFlowProps) {
+  const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [genres, setGenres] = useState<string[]>([]);
   const [providers, setProviders] = useState<string[]>([]);
@@ -235,6 +237,23 @@ export function WelcomeFlow({ open, onDismiss, onAddSuggestion, onComplete }: We
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="mt-5 flex items-center gap-3 rounded-xl border border-dashed border-primary/30 bg-primary/5 px-4 py-3">
+            <Link2 className="w-4 h-4 text-primary shrink-0" />
+            <p className="text-sm text-muted-foreground flex-1">
+              See something on TikTok or YouTube?{" "}
+              <button
+                type="button"
+                onClick={() => { onDismiss(); navigate("/new"); }}
+                className="text-primary underline underline-offset-2 hover:text-primary/80 font-medium"
+              >
+                Paste the link
+              </button>{" "}
+              — we'll find the movie automatically.
+            </p>
           </div>
         )}
 

@@ -35,6 +35,10 @@ const FAQ_ITEMS = [
     q: "Does it work on my phone?",
     a: "Yes. Your list syncs across phone, tablet, and desktop. Save on your phone while scrolling TikTok, watch later on your TV.",
   },
+  {
+    q: "How do reminders work?",
+    a: "Once something is in your list, you can schedule it for a specific night. WatchMarks will remind you when it's time — so you don't forget you saved it.",
+  },
 ];
 
 /* ─── Main page ──────────────────────────────────────────────── */
