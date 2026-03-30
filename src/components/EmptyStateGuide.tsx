@@ -111,10 +111,10 @@ export function EmptyStateGuide({
       <PosterStackPreview />
 
       <h2 className="text-2xl font-bold text-foreground mb-2">
-        Save your first movie
+        Saw something worth watching?
       </h2>
       <p className="text-muted-foreground max-w-sm mx-auto mb-2 leading-relaxed text-sm">
-        Paste any link — YouTube, TikTok, Instagram, IMDb — and we find the movie automatically. Takes 5 seconds.
+        Paste the link — from TikTok, YouTube, Instagram, IMDb — and we find the movie automatically. No more losing recommendations.
       </p>
 
       {/* Try an example — guided first success */}
@@ -147,7 +147,7 @@ export function EmptyStateGuide({
       </div>
 
       <p className="text-xs text-muted-foreground mt-3">
-        Then we'll suggest what to watch tonight
+        Saved instantly — find it when you're ready to watch
       </p>
 
       {/* Feature hints with consistent icon sizing */}
