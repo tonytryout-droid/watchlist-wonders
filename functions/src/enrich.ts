@@ -609,22 +609,25 @@ async function enrichYouTube(videoId: string): Promise<EnrichResponse> {
     const thumbs = snippet.thumbnails ?? {};
     const posterUrl = thumbs.maxres?.url ?? thumbs.high?.url ?? thumbs.medium?.url;
 
-    const durationMatch = (item.contentDetails?.duration ?? '').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-    let runtimeMinutes: number | undefined;
-    if (durationMatch) {
-      const h = parseInt(durationMatch[1] || '0', 10);
-      const m = parseInt(durationMatch[2] || '0', 10);
-      const s = parseInt(durationMatch[3] || '0', 10);
-      runtimeMinutes = h * 60 + m + (s > 0 ? 1 : 0);
-    }
-
-    // Cross-enrich: use cleaned YouTube title to get TMDB metadata
+    // Get TMDB data FIRST (provides actual content runtime)
     const tmdbData = await enrichTMDB(snippet.title ?? '', {
       description: snippet.description,
       preferredMediaType: 'unknown',
       alternateTitles: [cleanTitleForTMDB(snippet.title ?? '')],
       sourceYear: extractYearHint(snippet.title, snippet.description),
     });
+
+    // Extract video clip duration as FALLBACK ONLY
+    const durationMatch = (item.contentDetails?.duration ?? '').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+    let videoDurationMinutes: number | undefined;
+    if (durationMatch) {
+      const h = parseInt(durationMatch[1] || '0', 10);
+      const m = parseInt(durationMatch[2] || '0', 10);
+      const s = parseInt(durationMatch[3] || '0', 10);
+      videoDurationMinutes = h * 60 + m + (s > 0 ? 1 : 0);
+    }
+
+    logger.info('[enrichYouTube] tmdb runtime:', tmdbData.runtimeMinutes, 'video duration fallback:', videoDurationMinutes);
 
     const hashtags = extractHashtags(snippet.title, snippet.description);
 
@@ -633,7 +636,8 @@ async function enrichYouTube(videoId: string): Promise<EnrichResponse> {
       description: tmdbData.description ?? snippet.description,
       posterUrl: tmdbData.posterUrl ?? posterUrl,
       backdropUrl: tmdbData.backdropUrl,
-      runtimeMinutes: tmdbData.runtimeMinutes ?? runtimeMinutes,
+      // TMDB runtime is primary, video duration is fallback
+      runtimeMinutes: tmdbData.runtimeMinutes ?? videoDurationMinutes,
       releaseYear: tmdbData.releaseYear,
       contentType: tmdbData.contentType ?? 'video',
       mediaType: tmdbData.mediaType,
@@ -1130,23 +1134,44 @@ async function enrichViaOG(url: string, provider: string): Promise<EnrichRespons
   const og = await fetchOpenGraph(url);
 
   const isSocialProvider = provider === 'instagram' || provider === 'facebook';
-  const social = isSocialProvider
-    ? getSocialTitleAndDescription(og.title, og.description)
-    : undefined;
-  const title = isSocialProvider ? social?.title : og.title;
-  const description = isSocialProvider ? social?.description : og.description;
-  const hashtags = isSocialProvider ? social?.hashtags : extractHashtags(og.title, og.description);
+
+  // Extract candidates from OG metadata (SIGNAL ONLY, not final data)
+  let titleCandidates: string[] = [];
+  let primaryDescription: string | undefined;
+  let hashtags: string[] = [];
+
+  if (isSocialProvider) {
+    // For Instagram/Facebook: extract signal from OG metadata to search TMDB
+    // Do NOT trust social metadata as-is (it's noisy)
+    const social = getSocialTitleAndDescription(og.title, og.description);
+    if (social.title) titleCandidates.push(social.title);
+    if (og.title && og.title !== social.title) titleCandidates.push(og.title);
+    if (og.description && og.description !== social.description) titleCandidates.push(og.description);
+    primaryDescription = social.description;
+    hashtags = social.hashtags ?? [];
+
+    logger.info('[enrichViaOG] social provider - extracted candidates:', titleCandidates.length);
+  } else {
+    // Non-social: trust title/description more
+    if (og.title) titleCandidates.push(og.title);
+    hashtags = extractHashtags(og.title, og.description);
+  }
+
+  // Deduplicate and clean candidate titles
+  titleCandidates = Array.from(new Set(
+    titleCandidates
+      .map((t) => cleanTitleForTMDB(t))
+      .filter((t) => t && isLikelyMediaTitle(t))
+  ));
 
   let result: EnrichResponse = {
-    title,
-    description,
-    posterUrl: og.image,
     canonicalUrl: og.canonicalUrl,
-    hashtags: hashtags && hashtags.length ? hashtags : undefined,
+    posterUrl: og.image,
     matchedBy: 'metadata',
     provider,
   };
 
+  // PHASE 1: Try known sources (IMDb links, Letterboxd, Rotten Tomatoes, etc.)
   const knownSourceCandidates = [
     url,
     og.canonicalUrl,
@@ -1155,38 +1180,79 @@ async function enrichViaOG(url: string, provider: string): Promise<EnrichRespons
   const sourceResolved = await resolveKnownSourceToTmdb(knownSourceCandidates);
   if (sourceResolved?.title) {
     result = mergeWithTMDB(result, sourceResolved);
+    result.hashtags = hashtags.length ? hashtags : undefined;
+    return result;
   }
 
-  if (!result.tmdbId && provider === 'netflix' && result.title) {
-    const tmdb = await enrichTMDB(result.title, {
-      description: result.description,
-      preferredMediaType: 'movie',
-      alternateTitles: [og.title ?? '', cleanTitleForTMDB(result.title)],
-      sourceYear: extractYearHint(og.title, og.description, result.description),
-    });
-    if (tmdb.title) {
-      result = mergeWithTMDB(result, tmdb);
-    }
-  } else if (!result.tmdbId && provider === 'generic' && result.title && isLikelyMediaTitle(result.title)) {
-    const tmdb = await enrichTMDB(result.title, {
-      description: result.description,
-      preferredMediaType: 'unknown',
-      alternateTitles: [og.title ?? '', cleanTitleForTMDB(result.title)],
-      sourceYear: extractYearHint(og.title, og.description, result.description),
-    });
-    if (tmdb.title) {
-      result = mergeWithTMDB(result, tmdb);
-    }
-  } else if (!result.tmdbId && isSocialProvider) {
-    result = await maybeMergeTMDB(result);
-    // If TMDB search via post text failed, fall back to trying each hashtag as a title query
-    if (!result.tmdbId) {
-      result = await tryHashtagTmdbFallback(result);
+  // PHASE 2: TMDB-FIRST search for social + generic providers
+  if (titleCandidates.length > 0) {
+    let preferredMediaType: 'movie' | 'tv' | 'unknown' = 'unknown';
+    if (provider === 'netflix') preferredMediaType = 'movie';
+
+    // Try each cleaned title candidate
+    for (const titleCandidate of titleCandidates.slice(0, 3)) {
+      const tmdbResult = await enrichTMDB(titleCandidate, {
+        description: primaryDescription,
+        preferredMediaType,
+        alternateTitles: titleCandidates,
+        sourceYear: extractYearHint(og.title, og.description, primaryDescription),
+      });
+
+      if (tmdbResult.title) {
+        // Got a TMDB match!
+        if (tmdbResult.matchConfidence === 'high') {
+          // HIGH confidence: return TMDB result (ignore social metadata)
+          logger.info('[enrichViaOG] high confidence TMDB match for provider:', provider);
+          result = {
+            ...tmdbResult,
+            posterUrl: tmdbResult.posterUrl ?? og.image,
+            canonicalUrl: og.canonicalUrl ?? tmdbResult.canonicalUrl,
+            hashtags: hashtags.length ? hashtags : tmdbResult.hashtags,
+            provider,
+          };
+          return result;
+        } else if (tmdbResult.matchConfidence === 'medium' && tmdbResult.matchCandidates && tmdbResult.matchCandidates.length > 0) {
+          // MEDIUM confidence: include candidates for user to pick
+          logger.info('[enrichViaOG] medium confidence TMDB match - returning candidates');
+          result = {
+            ...tmdbResult,
+            posterUrl: tmdbResult.posterUrl ?? og.image,
+            canonicalUrl: og.canonicalUrl ?? tmdbResult.canonicalUrl,
+            hashtags: hashtags.length ? hashtags : tmdbResult.hashtags,
+            matchCandidates: tmdbResult.matchCandidates,
+            provider,
+          };
+          return result;
+        }
+        // Low confidence: try next candidate
+        logger.info('[enrichViaOG] low confidence TMDB match - trying next candidate');
+        continue;
+      }
     }
   }
 
+  // PHASE 3: Hashtag fallback for social providers
+  if (isSocialProvider && titleCandidates.length === 0) {
+    logger.info('[enrichViaOG] no title candidates, trying hashtag fallback');
+    const hashtagResult = await tryHashtagTmdbFallback({
+      title: undefined,
+      hashtags,
+      provider,
+    } as EnrichResponse);
+    if (hashtagResult.tmdbId) {
+      result = mergeWithTMDB(result, hashtagResult);
+      return result;
+    }
+  }
+
+  // PHASE 4: Microlink + OG fallback
+  logger.info('[enrichViaOG] no TMDB match found, falling back to OG + Microlink');
   result = await fillMissingWithMicrolink(result, url);
-  if (result.title || result.description || result.posterUrl) return result;
+
+  if (result.title || result.description || result.posterUrl) {
+    result.hashtags = hashtags.length ? hashtags : result.hashtags;
+    return result;
+  }
 
   return { provider };
 }

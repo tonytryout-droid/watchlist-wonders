@@ -63,15 +63,121 @@ function buildEmailHtml(title: string, scheduledFor: Date, reminderOffsetMinutes
     minute: '2-digit',
     timeZoneName: 'short',
   });
-  return `
-    <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
-      <h2 style="margin:0 0 8px">Time to watch!</h2>
-      <p style="margin:0 0 16px;font-size:16px">
-        <strong>${escapedTitle}</strong> starts in ${reminderOffsetMinutes} minute${reminderOffsetMinutes === 1 ? '' : 's'}.
-      </p>
-      <p style="color:#666;font-size:14px;margin:0">Scheduled for: ${watchTime}</p>
-    </div>
-  `;
+  const countdown =
+    reminderOffsetMinutes === 0
+      ? 'Starting now'
+      : `Starts in ${reminderOffsetMinutes} minute${reminderOffsetMinutes === 1 ? '' : 's'}`;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <title>${escapedTitle} — WatchMarks Reminder</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0a0a0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+  <!-- Preheader (hidden preview text) -->
+  <span style="display:none;font-size:1px;color:#0a0a0a;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
+    ${countdown} — ${escapedTitle}
+  </span>
+
+  <!-- Outer wrapper -->
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0a0a0a;min-height:100vh;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+
+        <!-- Email card -->
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;background-color:#141414;border-radius:8px;overflow:hidden;border:1px solid #2a2a2a;">
+
+          <!-- Red accent bar -->
+          <tr>
+            <td style="background-color:#E50914;height:4px;font-size:0;line-height:0;">&nbsp;</td>
+          </tr>
+
+          <!-- Header -->
+          <tr>
+            <td style="padding:32px 36px 24px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td>
+                    <!-- Wordmark -->
+                    <span style="font-size:20px;font-weight:800;letter-spacing:-0.5px;color:#ffffff;">
+                      Watch<span style="color:#E50914;">Marks</span>
+                    </span>
+                  </td>
+                  <td align="right">
+                    <!-- Badge -->
+                    <span style="display:inline-block;background-color:#E50914;color:#ffffff;font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;padding:4px 10px;border-radius:4px;">
+                      Reminder
+                    </span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Divider -->
+          <tr>
+            <td style="padding:0 36px;">
+              <div style="height:1px;background-color:#2a2a2a;font-size:0;line-height:0;">&nbsp;</div>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:32px 36px;">
+
+              <!-- Countdown pill -->
+              <div style="display:inline-block;background-color:#1f1f1f;border:1px solid #333;border-radius:100px;padding:6px 16px;margin-bottom:20px;">
+                <span style="font-size:13px;font-weight:600;color:#E50914;letter-spacing:0.3px;">
+                  &#9200; ${escapeHtml(countdown)}
+                </span>
+              </div>
+
+              <!-- Title -->
+              <h1 style="margin:0 0 12px;font-size:26px;font-weight:800;color:#ffffff;line-height:1.2;letter-spacing:-0.3px;">
+                ${escapedTitle}
+              </h1>
+
+              <!-- Scheduled time -->
+              <p style="margin:0 0 28px;font-size:14px;color:#888888;line-height:1.5;">
+                Scheduled for&nbsp;&nbsp;<span style="color:#cccccc;font-weight:600;">${escapeHtml(watchTime)}</span>
+              </p>
+
+              <!-- CTA button -->
+              <table cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="background-color:#E50914;border-radius:4px;">
+                    <a href="https://watchlist-wonders.app" target="_blank"
+                       style="display:inline-block;padding:14px 28px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;letter-spacing:0.2px;">
+                      Open WatchMarks &rarr;
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:20px 36px 28px;border-top:1px solid #1f1f1f;">
+              <p style="margin:0;font-size:12px;color:#555555;line-height:1.6;">
+                You're receiving this because email reminders are enabled in your WatchMarks account.
+                You can turn them off in&nbsp;<a href="https://watchlist-wonders.app/settings" target="_blank" style="color:#888888;text-decoration:underline;">Settings</a>.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+        <!-- / Email card -->
+
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 }
 
 export const sendReminders = onSchedule(
