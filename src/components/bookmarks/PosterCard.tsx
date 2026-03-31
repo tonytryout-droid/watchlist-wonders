@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
-import { cn, extractYouTubeVideoId } from "@/lib/utils";
+import { cn, extractYouTubeVideoId, openSafe } from "@/lib/utils";
 import { getNextStatus } from "@/engine/lifecycle";
 import { fetchTrailerEmbedUrlViaProxy } from "@/services/tmdbProxy";
 import { QuickScheduleSheet } from "@/components/schedules/QuickScheduleSheet";
@@ -283,12 +283,12 @@ export function PosterCard({
     }
 
     if (bookmark.source_url) {
-      window.open(bookmark.source_url, "_blank", "noopener");
+      openSafe(bookmark.source_url);
       return;
     }
     const trailerWatchUrl = trailerUrl ? toYouTubeWatchUrl(trailerUrl) ?? trailerUrl : null;
     if (trailerWatchUrl) {
-      window.open(trailerWatchUrl, "_blank", "noopener");
+      openSafe(trailerWatchUrl);
       return;
     }
     setIsHovered(true);
@@ -298,7 +298,7 @@ export function PosterCard({
   const handleOpenSource = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (bookmark.source_url) window.open(bookmark.source_url, "_blank");
+    openSafe(bookmark.source_url);
   };
 
   const handleScheduleClick = (e: React.MouseEvent) => {

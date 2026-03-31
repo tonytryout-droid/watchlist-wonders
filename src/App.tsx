@@ -4,7 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import PageTransition from "@/components/layout/PageTransition";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -46,9 +46,32 @@ const PageLoader = () => (
   </div>
 );
 
+function AuthErrorGate({ children }: { children: React.ReactNode }) {
+  const { authError } = useAuth();
+  if (authError) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <div className="max-w-sm text-center space-y-4">
+          <p className="text-destructive font-semibold">Authentication Error</p>
+          <p className="text-muted-foreground text-sm">{authError}</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="text-sm text-primary underline underline-offset-4"
+          >
+            Reload page
+          </button>
+        </div>
+      </div>
+    );
+  }
+  return <>{children}</>;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
+      <AuthErrorGate>
       <TooltipProvider>
         <Toaster />
         <Sonner />
@@ -88,6 +111,7 @@ const App = () => (
           </div>
         </BrowserRouter>
       </TooltipProvider>
+      </AuthErrorGate>
     </AuthProvider>
   </QueryClientProvider>
 );

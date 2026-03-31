@@ -37,7 +37,7 @@ function bookmarksCol(uid: string) {
   return collection(db, 'users', uid, 'bookmarks');
 }
 
-function docToBookmark(snap: any): Bookmark {
+function docToBookmark(snap: { id: string; data(): Record<string, unknown> }): Bookmark {
   return normalizeBookmark(snap.id, snap.data());
 }
 

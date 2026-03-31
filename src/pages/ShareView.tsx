@@ -27,7 +27,7 @@ import { sharingService } from "@/services/sharing";
 import { bookmarkService } from "@/services/bookmarks";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { formatRuntime, getMoodEmoji } from "@/lib/utils";
+import { formatRuntime, getMoodEmoji, openSafe } from "@/lib/utils";
 
 const ShareView = () => {
   const { token } = useParams<{ token: string }>();
@@ -181,7 +181,7 @@ const ShareView = () => {
         {/* Actions */}
         <div className="flex flex-wrap gap-3 mb-8">
           {bookmark.source_url && (
-            <Button onClick={() => window.open(bookmark.source_url!, "_blank")}>
+            <Button onClick={() => openSafe(bookmark.source_url)}>
               <Play className="w-4 h-4 mr-2 fill-current" />
               Watch Now
             </Button>

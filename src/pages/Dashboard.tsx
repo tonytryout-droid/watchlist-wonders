@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowUpDown } from "lucide-react";
+import { openSafe } from "@/lib/utils";
 import { bookmarkService } from "@/services/bookmarks";
 import { scheduleService } from "@/services/schedules";
 import { watchPlanService } from "@/services/watchPlans";
@@ -387,11 +388,11 @@ const Dashboard = () => {
   }, [view.bestNextItem]);
 
   const handlePlay = useCallback(() => {
-    if (view.heroBookmark?.source_url) window.open(view.heroBookmark.source_url, "_blank");
+    openSafe(view.heroBookmark?.source_url);
   }, [view.heroBookmark]);
 
   const handlePlayNext = useCallback(() => {
-    if (view.bestNextItem?.source_url) window.open(view.bestNextItem.source_url, "_blank");
+    openSafe(view.bestNextItem?.source_url);
   }, [view.bestNextItem]);
 
   const handleMoreInfo = useCallback(() => {

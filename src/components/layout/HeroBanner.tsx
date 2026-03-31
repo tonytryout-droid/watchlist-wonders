@@ -178,9 +178,9 @@ export function HeroBanner({
         <div className="absolute inset-0">
           <img
             src={backdropUrl}
-            alt={bookmark.title}
+            alt={[bookmark.title, TYPE_LABEL[bookmark.type] || bookmark.type, bookmark.release_year].filter(Boolean).join(" — ")}
             loading="eager"
-            // @ts-ignore — fetchpriority is valid but not in all TS lib typings
+            // @ts-expect-error — fetchpriority is valid but not in all TS lib typings
             fetchpriority="high"
             onError={() => setImgError(true)}
             className="w-full h-full object-cover object-center"
