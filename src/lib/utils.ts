@@ -76,7 +76,7 @@ export function extractYouTubeVideoId(url: string): string | null {
     if (urlObj.hostname.includes("youtube.com")) {
       return urlObj.searchParams.get("v");
     }
-  } catch {}
+  } catch { /* invalid URL — return null */ }
   return null;
 }
 
@@ -126,4 +126,14 @@ export function getMoodEmoji(mood: string): string {
     educational: "📖",
   };
   return moods[mood.toLowerCase()] || "🎬";
+}
+
+export function openSafe(url: string | null | undefined): void {
+  if (!url) return;
+  try {
+    const { protocol } = new URL(url);
+    if (protocol === "https:" || protocol === "http:") {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  } catch { /* invalid URL — do nothing */ }
 }

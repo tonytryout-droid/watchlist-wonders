@@ -9,7 +9,7 @@ import { MissedSchedulesBanner } from "@/components/schedules/MissedSchedulesBan
 import { MoodPicker } from "@/components/dashboard/MoodPicker";
 import { RecommendationRail } from "@/components/recommendations/RecommendationRail";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, openSafe } from "@/lib/utils";
 import type { Bookmark, Schedule } from "@/types/database";
 import type { DecisionRail, RecommendationInsights } from "@/engine/decisionEngine";
 import type { SimilarTitle } from "@/hooks/useSimilarTitles";
@@ -172,7 +172,7 @@ function TonightPickCard({
             className="h-8 gap-1.5 text-xs"
             disabled={!bookmark.source_url}
             onClick={() => {
-              if (bookmark.source_url) window.open(bookmark.source_url, "_blank");
+              openSafe(bookmark.source_url);
             }}
           >
             <Play className="w-3 h-3 fill-current" />

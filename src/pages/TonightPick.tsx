@@ -6,7 +6,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ToastAction } from "@/components/ui/toast";
-import { cn, formatRuntime, getMoodEmoji } from "@/lib/utils";
+import { cn, formatRuntime, getMoodEmoji, openSafe } from "@/lib/utils";
 import { bookmarkService } from "@/services/bookmarks";
 import { useToast } from "@/hooks/use-toast";
 import type { Bookmark } from "@/types/database";
@@ -99,9 +99,7 @@ const TonightPick = () => {
   };
 
   const handleWatch = (bookmark: Bookmark) => {
-    if (bookmark.source_url) {
-      window.open(bookmark.source_url, "_blank");
-    }
+    openSafe(bookmark.source_url);
   };
 
   const handleMarkDone = (bookmark: Bookmark) => {
