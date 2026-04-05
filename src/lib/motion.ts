@@ -22,5 +22,5 @@ export const motionEasing = 'cubic-bezier(0.4, 0, 0.2, 1)';
  * Hover intent delays prevent accidental triggers during cursor travel.
  * Close delay < open delay so reveals feel intentional but dismissal is snappy.
  */
-export const hoverOpenDelayMs = 170;
+export const hoverOpenDelayMs = 120;
 export const hoverCloseDelayMs = 140;

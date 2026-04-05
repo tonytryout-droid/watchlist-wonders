@@ -2,6 +2,7 @@ import { useState, type RefObject } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Play, Search, SkipForward } from "lucide-react";
 import { HeroBanner } from "@/components/layout/HeroBanner";
+import { QuickAddBar } from "@/components/QuickAddBar";
 import { Rail } from "@/components/bookmarks/Rail";
 import { PosterCard } from "@/components/bookmarks/PosterCard";
 import { EmptyStateGuide } from "@/components/EmptyStateGuide";
@@ -307,9 +308,16 @@ export function DashboardShell({
         <div className="flex-1 min-w-0 relative z-10 pb-16">
           <div className="animate-fade-in">
 
+            {/* ── Quick Add Bar — primary action, always reachable ── */}
+            {!isEmpty && !demoActive && (
+              <div className="px-4 sm:px-6 lg:px-8 pt-4 pb-2">
+                <QuickAddBar />
+              </div>
+            )}
+
             {/* ── Search bar — surfaces the "find it instantly" promise ── */}
             {!isEmpty && !demoActive && (
-              <div className="px-4 sm:px-6 lg:px-8 pt-4 pb-1">
+              <div className="px-4 sm:px-6 lg:px-8 pt-1 pb-1">
                 <button
                   type="button"
                   onClick={() => window.dispatchEvent(new CustomEvent("wm:open-search"))}
@@ -385,14 +393,8 @@ export function DashboardShell({
 
             {/* ── Default view (no mood selected) ── */}
             {!activeMood && (
-              <div className="space-y-3">
-                {!isDemoPickStep && (
-                  <div className="px-4 sm:px-6 lg:px-8 pt-1 pb-0.5">
-                    <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                      From your list
-                    </h2>
-                  </div>
-                )}
+              <div className="space-y-6">
+                {/* Section label removed — individual rail titles are sufficient */}
 
                 {isDemoPickStep && demoPickBookmark && (
                   <div className="px-4 sm:px-6 lg:px-8" ref={upNextHighlightRef}>
