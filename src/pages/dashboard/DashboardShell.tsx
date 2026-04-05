@@ -393,7 +393,7 @@ export function DashboardShell({
 
             {/* ── Default view (no mood selected) ── */}
             {!activeMood && (
-              <div className="space-y-3">
+              <div className="space-y-6">
                 {/* Section label removed — individual rail titles are sufficient */}
 
                 {isDemoPickStep && demoPickBookmark && (
