@@ -182,7 +182,7 @@ export function Rail({
     <section className={cn("relative py-4 group/rail overflow-visible", className)}>
       {/* Row header */}
       <div className="px-4 sm:px-6 lg:px-8 mb-3 flex items-baseline gap-3">
-        <h2 className="text-base md:text-lg font-semibold text-white tracking-tight hover:text-white/85 cursor-default transition-colors">
+        <h2 className="text-lg md:text-xl font-bold text-white tracking-tight hover:text-white/85 cursor-default transition-colors">
           {title}
         </h2>
         {subtitle && (

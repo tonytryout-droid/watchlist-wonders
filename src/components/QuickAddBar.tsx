@@ -19,7 +19,7 @@
  * - Von Restorff: Provider pill below input is visually distinct from input chrome
  */
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link as LinkIcon, Loader2, X } from "lucide-react";
@@ -105,6 +105,8 @@ export function QuickAddBar({
 
   const [internalUrl, setInternalUrl] = useState("");
   const [isEnriching, setIsEnriching] = useState(false);
+  const [isAutoFetching, setIsAutoFetching] = useState(false);
+  const autofetchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmInitial, setConfirmInitial] = useState<ConfirmMetadataPayload>({ url: "" });
   const [smartFill, setSmartFill] = useState<SmartFillData>(EMPTY_SMART_FILL);
@@ -160,8 +162,8 @@ export function QuickAddBar({
     });
   };
 
-  const handleFetch = async () => {
-    const trimmed = url.trim();
+  const handleFetch = async (urlOverride?: string) => {
+    const trimmed = (urlOverride ?? url).trim();
     if (!trimmed) return;
 
     if (onSubmit) {
@@ -228,6 +230,11 @@ export function QuickAddBar({
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && url.trim()) {
+      // Cancel any pending auto-fetch before manual trigger
+      if (autofetchDebounceRef.current) {
+        clearTimeout(autofetchDebounceRef.current);
+        autofetchDebounceRef.current = null;
+      }
       void handleFetch();
     }
     if (e.key === "Escape") {
@@ -235,14 +242,33 @@ export function QuickAddBar({
     }
   };
 
-  const canSave = Boolean(url.trim()) && !isBusy && !createMutation.isPending && !disableSubmit;
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pasted = e.clipboardData.getData("text").trim();
+    if (!pasted.startsWith("http://") && !pasted.startsWith("https://")) return;
+    if (autofetchDebounceRef.current) clearTimeout(autofetchDebounceRef.current);
+    autofetchDebounceRef.current = setTimeout(() => {
+      autofetchDebounceRef.current = null;
+      setIsAutoFetching(true);
+      void handleFetch(pasted).finally(() => setIsAutoFetching(false));
+    }, 500);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (autofetchDebounceRef.current) clearTimeout(autofetchDebounceRef.current);
+    };
+  }, []);
+
+  const canSave = Boolean(url.trim()) && !isBusy && !isAutoFetching && !createMutation.isPending && !disableSubmit;
 
   return (
     <>
       <div className={cn("w-full", className)}>
         <div className="relative flex items-center gap-2 bg-wm-surface border border-border rounded-xl px-4 py-3 focus-within:border-primary/60 focus-within:ring-1 focus-within:ring-primary/30 transition-all">
-          {/* Provider dot or default link icon */}
-          {providerInfo ? (
+          {/* Provider dot, auto-fetch spinner, or default link icon */}
+          {isAutoFetching ? (
+            <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
+          ) : providerInfo ? (
             <div className={cn("w-2.5 h-2.5 rounded-full shrink-0 transition-colors", providerInfo.dot)} />
           ) : (
             <LinkIcon className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -254,6 +280,7 @@ export function QuickAddBar({
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder="Paste any streaming or video link to save…"
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none min-w-0"
             aria-label="Paste URL to save"
