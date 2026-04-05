@@ -154,7 +154,7 @@ export function ConfirmMetadataDialog({ open, onOpenChange, initial, onConfirm }
         title: "Image uploaded",
         description: "Poster image has been uploaded successfully.",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Upload error:", error);
       toast({
         title: "Upload failed",

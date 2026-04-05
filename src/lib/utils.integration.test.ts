@@ -180,7 +180,7 @@ describe('Social Media Integration Tests', () => {
 
       platforms.forEach((platform) => {
         const detected = detectProvider(testUrls[platform]);
-        expect(detected).toBe(platform as any);
+        expect(detected).toBe(platform as ReturnType<typeof detectProvider>);
       });
     });
   });

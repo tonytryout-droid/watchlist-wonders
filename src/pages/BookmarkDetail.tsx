@@ -136,10 +136,10 @@ const BookmarkDetail = () => {
       await attachmentService.createAttachment(file, id);
       refetchAttachments();
       toast({ title: "File uploaded", description: file.name });
-    } catch (err: any) {
+      if (attachFileRef.current) attachFileRef.current.value = "";
+    } catch {
       toast({ title: "Upload failed", description: "Could not upload the file. Please try again.", variant: "destructive" });
     }
-    if (attachFileRef.current) attachFileRef.current.value = "";
   };
 
   const updateMutation = useMutation({

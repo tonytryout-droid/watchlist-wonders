@@ -6,6 +6,7 @@ import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { getAuth } from 'firebase-admin/auth';
 import { Resend } from 'resend';
+import { resolveAppUrl } from './config';
 
 const resendApiKey = defineSecret('RESEND_API_KEY');
 
@@ -53,8 +54,14 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function buildEmailHtml(title: string, scheduledFor: Date, reminderOffsetMinutes: number): string {
+function buildEmailHtml(
+  title: string,
+  scheduledFor: Date,
+  reminderOffsetMinutes: number,
+  appUrl: string,
+): string {
   const escapedTitle = escapeHtml(title);
+  const escapedAppUrl = escapeHtml(appUrl);
   const watchTime = scheduledFor.toLocaleString('en-US', {
     weekday: 'long',
     month: 'long',
@@ -149,7 +156,7 @@ function buildEmailHtml(title: string, scheduledFor: Date, reminderOffsetMinutes
               <table cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td style="background-color:#E50914;border-radius:4px;">
-                    <a href="https://watchlist-wonders.app" target="_blank"
+                    <a href="${escapedAppUrl}" target="_blank"
                        style="display:inline-block;padding:14px 28px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;letter-spacing:0.2px;">
                       Open WatchMarks &rarr;
                     </a>
@@ -165,7 +172,7 @@ function buildEmailHtml(title: string, scheduledFor: Date, reminderOffsetMinutes
             <td style="padding:20px 36px 28px;border-top:1px solid #1f1f1f;">
               <p style="margin:0;font-size:12px;color:#555555;line-height:1.6;">
                 You're receiving this because email reminders are enabled in your WatchMarks account.
-                You can turn them off in&nbsp;<a href="https://watchlist-wonders.app/settings" target="_blank" style="color:#888888;text-decoration:underline;">Settings</a>.
+                You can turn them off in&nbsp;<a href="${escapedAppUrl}/settings" target="_blank" style="color:#888888;text-decoration:underline;">Settings</a>.
               </p>
             </td>
           </tr>
@@ -193,6 +200,7 @@ export const sendReminders = onSchedule(
     const db = getDb();
     const messaging = getMessaging();
     const auth = getAuth();
+    const appUrl = resolveAppUrl();
     const now = new Date();
 
     // Upper bound: only fetch schedules that could have a reminder due now.
@@ -349,7 +357,7 @@ export const sendReminders = onSchedule(
                 from: 'WatchMarks <noreply@watchlist-wonders.app>',
                 to: email,
                 subject: notifTitle,
-                html: buildEmailHtml(title, scheduledFor, offsetMinutes),
+                html: buildEmailHtml(title, scheduledFor, offsetMinutes, appUrl),
               })
               .then(() => {
                 logger.info('[reminders] Email sent via Resend', { uid });

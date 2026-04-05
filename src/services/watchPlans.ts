@@ -12,6 +12,9 @@ import {
   writeBatch,
   documentId,
   deleteField,
+  type DocumentData,
+  type QueryDocumentSnapshot,
+  type DocumentSnapshot,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { WatchPlan, Bookmark } from '@/types/database';
@@ -39,7 +42,9 @@ function planBookmarksCol(uid: string, planId: string) {
   return collection(db, 'users', uid, 'watchPlans', planId, 'bookmarks');
 }
 
-function docToWatchPlan(snap: any): WatchPlan {
+function docToWatchPlan(
+  snap: QueryDocumentSnapshot<DocumentData> | DocumentSnapshot<DocumentData>,
+): WatchPlan {
   return { id: snap.id, ...snap.data() } as WatchPlan;
 }
 
@@ -93,6 +98,7 @@ export const watchPlanService = {
     const ref = doc(db, 'users', uid, 'watchPlans', id);
     await updateDoc(ref, { ...updates, updated_at: new Date().toISOString() });
     const snap = await getDoc(ref);
+    if (!snap.exists()) throw new Error(`WatchPlan ${id} not found after update`);
     return docToWatchPlan(snap);
   },
 

@@ -59,7 +59,14 @@ export function useDashboardView({
   const bestNextItem = decisionSnapshot.bestNext;
 
   const continueWatching = useMemo(
-    () => visibleBookmarks.filter((b) => b.status === "watching"),
+    () =>
+      visibleBookmarks
+        .filter((b) => b.status === "watching" || (b.progress_percent ?? 0) > 0)
+        .sort((a, b) => {
+          const progressDelta = (b.progress_percent ?? 0) - (a.progress_percent ?? 0);
+          if (progressDelta !== 0) return progressDelta;
+          return b.updated_at.localeCompare(a.updated_at);
+        }),
     [visibleBookmarks],
   );
 

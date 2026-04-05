@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Check,
   ChevronDown,
@@ -302,6 +302,18 @@ const Index = () => {
               Get started — it's free
             </Button>
             <p className="mt-5 text-sm text-white/35">No card. No download. Works on any device.</p>
+            <div className="mt-4 text-xs text-white/45 space-y-1">
+              <p>Privacy-first by default. Export your data any time from Settings.</p>
+              <p>
+                <Link to="/terms" className="underline underline-offset-2 hover:text-white">
+                  Terms
+                </Link>{" "}
+                ·{" "}
+                <Link to="/privacy" className="underline underline-offset-2 hover:text-white">
+                  Privacy
+                </Link>
+              </p>
+            </div>
           </div>
         </section>
 

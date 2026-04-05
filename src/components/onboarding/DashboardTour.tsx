@@ -407,7 +407,14 @@ function SurpriseIllustration() {
           { top: "50%", right: "-8px", rotate: "90deg", offset: "-50%" },
           { bottom: "-8px", left: "50%", rotate: "180deg", offset: "-50%" },
           { top: "50%", left: "-8px", rotate: "270deg", offset: "-50%" },
-        ].map((pos, i) => (
+        ].map((pos: {
+          top?: string;
+          bottom?: string;
+          left?: string;
+          right?: string;
+          rotate: string;
+          offset?: string;
+        }, i) => (
           <div
             key={i}
             className={cn(
@@ -416,10 +423,10 @@ function SurpriseIllustration() {
             )}
             style={{
               top: pos.top,
-              bottom: (pos as any).bottom,
+              bottom: pos.bottom,
               left: pos.left,
-              right: (pos as any).right,
-              transform: `translate(${(pos as any).offset ?? "0"}, -50%)`,
+              right: pos.right,
+              transform: `translate(${pos.offset ?? "0"}, -50%)`,
             }}
           />
         ))}
