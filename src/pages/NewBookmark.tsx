@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Link as LinkIcon, Loader2, Upload, X, Plus, Clock,
-  Tag, FileText, Film, Tv, Play, ChevronRight, Sparkles,
+  Tag, FileText, Film, Tv, Play, ChevronRight, Sparkles, Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -268,6 +268,13 @@ const NewBookmark = () => {
       const result = await enrichCallable({ url: trimmed });
       const data = (result.data ?? {}) as Record<string, unknown>;
       const smartFill = buildSmartFillData(data);
+      const rawTitle = typeof data.title === "string" ? data.title.trim() : "";
+
+      if (import.meta.env.DEV) {
+        console.log("RAW META:", data);
+        console.log("CLEAN TITLE:", rawTitle);
+        console.log("TMDB RESULT:", smartFill.matchCandidates[0] ?? null);
+      }
 
       const resolvedProvider =
         typeof data.provider === "string" && data.provider !== "unknown"
@@ -276,13 +283,43 @@ const NewBookmark = () => {
       const fallbackProvider = (resolvedProvider as Bookmark["provider"]) || "generic";
       setProvider(fallbackProvider);
 
-      if (!data.title) {
+      if (!rawTitle) {
+        // If TMDB returned candidates, move to step 2 instead of forcing manual dialog.
+        if (smartFill.matchCandidates.length > 0) {
+          const resolvedConfidence =
+            smartFill.matchConfidence === "unknown" ? "low" : smartFill.matchConfidence;
+          const shouldAutoSelectTopCandidate =
+            resolvedConfidence === "high" ||
+            (resolvedConfidence === "medium" && smartFill.matchCandidates.length === 1);
+          const topCandidate = smartFill.matchCandidates[0];
+
+          if (topCandidate) {
+            applyMatchCandidate(topCandidate);
+            if (!shouldAutoSelectTopCandidate) {
+              setSelectedCandidateId(null);
+            }
+          } else {
+            setType(resolveTypeFromEnrichment(data, fallbackProvider));
+          }
+
+          setMatchCandidates(smartFill.matchCandidates);
+          setMatchConfidence(resolvedConfidence);
+
+          const metadataFromSmartFill = { ...smartFill.metadata };
+          if (!shouldAutoSelectTopCandidate) {
+            delete metadataFromSmartFill.tmdb_id;
+          }
+          setMetadata((prev) => ({ ...prev, ...metadataFromSmartFill }));
+          setStep("confirm");
+          return;
+        }
+        // Truly nothing found - fall back to manual entry dialog.
         setConfirmInitial({
           url: trimmed,
           provider: fallbackProvider,
-          title: data.title,
-          posterUrl: data.posterUrl,
-          runtimeMinutes: data.runtimeMinutes,
+          title: rawTitle || undefined,
+          posterUrl: typeof data.posterUrl === "string" ? data.posterUrl : undefined,
+          runtimeMinutes: typeof data.runtimeMinutes === "number" ? data.runtimeMinutes : null,
           type: resolveTypeFromEnrichment(data, fallbackProvider),
           debugMessage: data.error ? "Could not fetch details for this link." : undefined,
         });
@@ -290,7 +327,7 @@ const NewBookmark = () => {
         return;
       }
 
-      setTitle(typeof data.title === "string" ? data.title : "");
+      setTitle(rawTitle);
       if (typeof data.posterUrl === "string") setPosterUrl(data.posterUrl);
       if (typeof data.runtimeMinutes === "number") setRuntimeMinutes(data.runtimeMinutes);
       if (smartFill.releaseYear) setReleaseYear(smartFill.releaseYear);
@@ -563,14 +600,23 @@ const NewBookmark = () => {
           </div>
         )}
         {matchCandidates.length > 0 && (matchConfidence !== "high" || matchCandidates.length > 1) && (
-          <div className="mb-6 rounded-lg border border-border bg-wm-surface p-3">
-            <p className="text-sm font-medium text-foreground">
-              {matchCandidates.length === 1 ? "Is this the right title?" : "Choose the best match"}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Select the correct title to auto-fill synopsis, runtime, and genre.
-            </p>
-            <div className="grid sm:grid-cols-2 gap-2 mt-3">
+          <div className="mb-6 rounded-xl border border-border bg-wm-surface p-4">
+            {/* Header — differentiate "pick one" (no title) vs "confirm this" (title found) */}
+            <div className="mb-4">
+              <p className="text-sm font-semibold text-foreground">
+                {!title && matchConfidence === "low"
+                  ? "We couldn't find an exact match"
+                  : matchCandidates.length === 1 ? "Is this the right title?" : "Choose the best match"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {!title && matchConfidence === "low"
+                  ? "Pick the closest result — we'll fill in title, synopsis, runtime, and genre."
+                  : "Select to auto-fill synopsis, runtime, and genre."}
+              </p>
+            </div>
+
+            {/* Candidate grid — poster-dominant layout */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {matchCandidates.slice(0, 4).map((candidate) => {
                 const isActive = selectedCandidateId === candidate.tmdbId;
                 return (
@@ -579,13 +625,14 @@ const NewBookmark = () => {
                     type="button"
                     onClick={() => applyMatchCandidate(candidate)}
                     className={cn(
-                      "flex items-center gap-3 rounded-md border p-2 text-left transition-colors",
+                      "flex flex-col rounded-lg border overflow-hidden text-left transition-all duration-150",
                       isActive
-                        ? "border-primary bg-primary/10"
-                        : "border-border hover:border-primary/40 hover:bg-muted/40"
+                        ? "border-primary ring-1 ring-primary"
+                        : "border-border hover:border-primary/50"
                     )}
                   >
-                    <div className="w-10 h-14 rounded overflow-hidden bg-muted flex-shrink-0">
+                    {/* Poster — 2:3 ratio, fills the width */}
+                    <div className="aspect-[2/3] w-full bg-muted relative overflow-hidden">
                       {candidate.posterUrl ? (
                         <img
                           src={candidate.posterUrl}
@@ -593,17 +640,22 @@ const NewBookmark = () => {
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
-                          ?
+                        <div className="w-full h-full flex items-center justify-center text-2xl font-bold text-muted-foreground/20">
+                          {candidate.title.charAt(0)}
+                        </div>
+                      )}
+                      {isActive && (
+                        <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                          <Check className="w-6 h-6 text-white drop-shadow" />
                         </div>
                       )}
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{candidate.title}</p>
-                      <p className="text-xs text-muted-foreground">
+                    {/* Meta */}
+                    <div className="p-2">
+                      <p className="text-xs font-medium text-foreground line-clamp-2 leading-tight">{candidate.title}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
                         {candidate.mediaType === "tv" ? "Series" : "Movie"}
-                        {candidate.releaseYear ? ` • ${candidate.releaseYear}` : ""}
-                        {candidate.runtimeMinutes ? ` • ${candidate.runtimeMinutes}m` : ""}
+                        {candidate.releaseYear ? ` · ${candidate.releaseYear}` : ""}
                       </p>
                     </div>
                   </button>

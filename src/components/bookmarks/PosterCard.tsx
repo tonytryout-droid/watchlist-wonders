@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import { cn, extractYouTubeVideoId, openSafe } from "@/lib/utils";
+import { motionDuration, motionEasing, hoverOpenDelayMs, hoverCloseDelayMs } from "@/lib/motion";
 import { getNextStatus } from "@/engine/lifecycle";
 import { fetchTrailerEmbedUrlViaProxy } from "@/services/tmdbProxy";
 import { QuickScheduleSheet } from "@/components/schedules/QuickScheduleSheet";
@@ -354,7 +355,7 @@ export function PosterCard({
     clearHoverOpenTimer();
     hoverOpenRef.current = setTimeout(() => {
       setIsHovered(true);
-    }, 140);
+    }, hoverOpenDelayMs);
   };
 
   const scheduleHoverClose = () => {
@@ -363,7 +364,7 @@ export function PosterCard({
     hoverCloseRef.current = setTimeout(() => {
       setIsHovered(false);
       setIsTouched(false);
-    }, 170);
+    }, hoverCloseDelayMs);
   };
 
   useEffect(() => {
@@ -456,7 +457,8 @@ export function PosterCard({
         style={{
           transform: shouldElevate ? elevatedTransform : "translateY(0) scale(1)",
           transformOrigin: "bottom center",
-          transitionDuration: "250ms",
+          transitionDuration: `${motionDuration.card}ms`,
+          transitionTimingFunction: motionEasing,
         }}
         onMouseEnter={() => !isMobile && scheduleHoverOpen()}
         onMouseLeave={() => !isMobile && scheduleHoverClose()}
@@ -494,7 +496,7 @@ export function PosterCard({
               aspectRatio,
               showExpanded && "rounded-t-sm rounded-b-none shadow-[0_20px_40px_rgba(0,0,0,0.4)]"
             )}
-            style={{ transitionDuration: "250ms" }}
+            style={{ transitionDuration: `${motionDuration.card}ms`, transitionTimingFunction: motionEasing }}
           >
             {imageUrl && !imageError ? (
               <img
