@@ -458,7 +458,7 @@ export function PosterCard({
           transform: shouldElevate ? elevatedTransform : "translateY(0) scale(1)",
           transformOrigin: "bottom center",
           transitionDuration: `${motionDuration.card}ms`,
-          transitionTimingFunction: motionEasing,
+          transitionTimingFunction: "var(--wm-ease-fluid, cubic-bezier(0.16, 1, 0.3, 1))",
         }}
         onMouseEnter={() => !isMobile && scheduleHoverOpen()}
         onMouseLeave={() => !isMobile && scheduleHoverClose()}
@@ -504,7 +504,7 @@ export function PosterCard({
                 alt={bookmark.title}
                 className={cn(
                   "w-full h-full object-cover transition-transform duration-300 ease-out",
-                  showExpanded && "scale-105"
+                  showExpanded && "scale-[1.02]"
                 )}
                 onError={() => setImageError(true)}
                 loading="lazy"
