@@ -432,7 +432,7 @@ export function PosterCard({
   const showExpanded = (isHovered || isTouched) && !isSelectable;
   const shouldElevate = showExpanded && !isMobile;
   const elevatedTransform =
-    variant === "poster" ? "translateY(-4px) scale(1.08)" : "translateY(-4px) scale(1.05)";
+    variant === "poster" ? "translateY(-2px) scale(1.04)" : "translateY(-1px) scale(1.02)";
 
   return (
     <>
@@ -778,9 +778,13 @@ export function PosterCard({
         {/* Netflix-style expanded info panel Ã¢â‚¬â€ appears below on hover */}
         {!isSelectable && (
           <div
+            className="grid transition-[grid-template-rows] duration-300 ease-out"
+            style={{ gridTemplateRows: showExpanded ? "1fr" : "0fr" }}
+          >
+          <div
             className={cn(
-              "overflow-hidden transition-all duration-300 ease-out bg-card rounded-b-sm",
-              showExpanded ? "max-h-48 opacity-100" : "max-h-0 opacity-0"
+              "overflow-hidden bg-card rounded-b-sm transition-opacity duration-200",
+              showExpanded ? "opacity-100" : "opacity-0"
             )}
           >
             <div className="p-2.5">
@@ -922,12 +926,13 @@ export function PosterCard({
               )}
             </div>
           </div>
+          </div>
         )}
 
         {/* Non-hover title (always visible when not expanded) */}
         {!showExpanded && (
           <div className="pt-1.5 px-0.5">
-            <p className="text-[11px] font-medium text-white/80 truncate leading-tight">
+            <p className="text-xs font-medium text-white/90 truncate leading-tight">
               {bookmark.title}
             </p>
             {recommendationReason && (
