@@ -18,7 +18,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Mail, Lock, Loader2, Eye, EyeOff, ArrowLeft, Check, X as XIcon } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -28,44 +28,28 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { authService } from "@/services/auth";
-import { z } from "zod";
+import {
+  getPasswordStrength,
+  getSafeRedirectPath,
+  type AuthMode,
+  validateAuthFormInput,
+  validateEmailForReset,
+} from "@/pages/authValidation";
 
-type AuthMode = "login" | "signup" | "forgot";
+function getErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : null;
+}
 
-function getPasswordStrength(pw: string): 0 | 1 | 2 | 3 {
-  if (pw.length === 0) return 0;
-  if (pw.length < 6) return 1;
-  const hasUpper = /[A-Z]/.test(pw);
-  const hasNumber = /[0-9]/.test(pw);
-  const hasSpecial = /[^A-Za-z0-9]/.test(pw);
-  const extras = [hasUpper, hasNumber, hasSpecial].filter(Boolean).length;
-  if (pw.length >= 12 && extras >= 2) return 3;
-  if (pw.length >= 8 && extras >= 1) return 2;
-  return 1;
+function getErrorMessage(error: unknown): string {
+  if (!error || typeof error !== "object") return "";
+  const message = (error as { message?: unknown }).message;
+  return typeof message === "string" ? message : "";
 }
 
 const STRENGTH_LABELS = ["", "Weak", "Fair", "Strong"];
 const STRENGTH_COLORS = ["", "bg-destructive", "bg-yellow-400", "bg-emerald-500"];
-
-const authSchema = z.object({
-  email: z
-    .string()
-    .trim()
-    .min(1, { message: "Email is required" })
-    .email({ message: "Please enter a valid email address" })
-    .max(255, { message: "Email must be less than 255 characters" }),
-  password: z
-    .string()
-    .min(6, { message: "Password must be at least 6 characters" })
-    .max(72, { message: "Password must be less than 72 characters" }),
-});
-
-function getSafeRedirectPath(rawRedirect: string | null): string {
-  if (!rawRedirect) return "/";
-  if (!rawRedirect.startsWith("/")) return "/";
-  if (rawRedirect.startsWith("//")) return "/";
-  return rawRedirect;
-}
 
 const Auth = () => {
   const [mode, setMode] = useState<AuthMode>("login");
@@ -114,21 +98,12 @@ const Auth = () => {
   };
 
   const validateForm = () => {
-    const result = authSchema.safeParse({ email, password });
-    const fieldErrors: { email?: string; password?: string; confirmPassword?: string } = {};
-
-    if (!result.success) {
-      result.error.errors.forEach((err) => {
-        if (err.path[0] === "email") fieldErrors.email = err.message;
-        if (err.path[0] === "password") fieldErrors.password = err.message;
-      });
-    }
-
-    if (mode === "signup" && !fieldErrors.password) {
-      if (password !== confirmPassword) {
-        fieldErrors.confirmPassword = "Passwords do not match";
-      }
-    }
+    const fieldErrors = validateAuthFormInput({
+      mode,
+      email,
+      password,
+      confirmPassword,
+    });
 
     if (Object.keys(fieldErrors).length > 0) {
       setErrors(fieldErrors);
@@ -144,9 +119,9 @@ const Auth = () => {
       setErrors({ email: "Email is required" });
       return;
     }
-    const emailResult = authSchema.shape.email.safeParse(email.trim());
-    if (!emailResult.success) {
-      setErrors({ email: emailResult.error.errors[0]?.message || "Please enter a valid email address" });
+    const emailError = validateEmailForReset(email);
+    if (emailError) {
+      setErrors({ email: emailError });
       return;
     }
     setIsLoading(true);
@@ -157,11 +132,12 @@ const Auth = () => {
         description: "Check your inbox for a password reset link.",
       });
       setMode("login");
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const code = getErrorCode(error);
       const msg =
-        error.code === "auth/invalid-email" ? "Please enter a valid email address." :
-        error.code === "auth/too-many-requests" ? "Too many attempts. Please wait a moment and try again." :
-        error.code === "auth/user-not-found" ? "If an account exists with that email, you'll receive a password reset link." :
+        code === "auth/invalid-email" ? "Please enter a valid email address." :
+        code === "auth/too-many-requests" ? "Too many attempts. Please wait a moment and try again." :
+        code === "auth/user-not-found" ? "If an account exists with that email, you'll receive a password reset link." :
         "Something went wrong. Please try again.";
       setErrors({ form: msg });
     } finally {
@@ -198,7 +174,7 @@ const Auth = () => {
         });
         // Navigation will happen automatically via useEffect when user state changes
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       const firebaseAuthErrors: Record<string, string> = {
         "auth/invalid-credential": "Invalid email or password. Please try again.",
         "auth/invalid-email": "Please enter a valid email address.",
@@ -213,9 +189,11 @@ const Auth = () => {
         "auth/unverified-email": "Please verify your email before signing in.",
       };
 
+      const code = getErrorCode(error);
+      const message = getErrorMessage(error);
       const errorMessage =
-        firebaseAuthErrors[error.code] ??
-        (error.message?.includes("Invalid login credentials")
+        (code ? firebaseAuthErrors[code] : undefined) ??
+        (message.includes("Invalid login credentials")
           ? "Invalid email or password. Please try again."
           : "Something went wrong. Please try again.");
 
@@ -231,8 +209,8 @@ const Auth = () => {
       await signInWithGoogle();
       toast({ title: "Welcome!", description: "Successfully signed in with Google." });
       navigate(resolvePostAuthDestination(), { replace: true });
-    } catch (error: any) {
-      if (error.code !== "auth/popup-closed-by-user") {
+    } catch (error: unknown) {
+      if (getErrorCode(error) !== "auth/popup-closed-by-user") {
         setErrors({ form: "Google sign in failed. Please try again." });
       }
     } finally {
@@ -535,7 +513,15 @@ const Auth = () => {
 
         {/* Footer */}
         <p className="mt-8 text-center text-xs text-white/30">
-          By continuing, you agree to our Terms of Service and Privacy Policy.
+          By continuing, you agree to our{" "}
+          <Link to="/terms" className="underline underline-offset-2 hover:text-white">
+            Terms of Service
+          </Link>{" "}
+          and{" "}
+          <Link to="/privacy" className="underline underline-offset-2 hover:text-white">
+            Privacy Policy
+          </Link>
+          .
         </p>
       </div>
     </div>

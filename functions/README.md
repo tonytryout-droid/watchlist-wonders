@@ -34,7 +34,13 @@ firebase functions:secrets:set YOUTUBE_API_KEY
 firebase functions:secrets:set TMDB_API_KEY
 ```
 
-4. Deploy:
+4. Configure canonical app URL used in outgoing function emails and links:
+
+```bash
+firebase functions:params:set APP_URL="https://your-app.web.app"
+```
+
+5. Deploy:
 
 ```bash
 firebase deploy --only functions

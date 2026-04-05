@@ -185,7 +185,7 @@ const NewBookmark = () => {
       setSavedBookmark(bookmark);
       setScheduleOpen(true);
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       setUploadProgress(0);
       toast({
         title: "Error saving",
@@ -266,29 +266,33 @@ const NewBookmark = () => {
     try {
       const enrichCallable = httpsCallable(fbFunctions, 'enrich');
       const result = await enrichCallable({ url: trimmed });
-      const data = result.data as any;
+      const data = (result.data ?? {}) as Record<string, unknown>;
       const smartFill = buildSmartFillData(data);
 
-      const resolvedProvider = (data.provider && data.provider !== "unknown") ? data.provider : dp;
-      setProvider(resolvedProvider);
+      const resolvedProvider =
+        typeof data.provider === "string" && data.provider !== "unknown"
+          ? data.provider
+          : dp;
+      const fallbackProvider = (resolvedProvider as Bookmark["provider"]) || "generic";
+      setProvider(fallbackProvider);
 
       if (!data.title) {
         setConfirmInitial({
           url: trimmed,
-          provider: resolvedProvider,
+          provider: fallbackProvider,
           title: data.title,
           posterUrl: data.posterUrl,
           runtimeMinutes: data.runtimeMinutes,
-          type: resolveTypeFromEnrichment(data, resolvedProvider),
+          type: resolveTypeFromEnrichment(data, fallbackProvider),
           debugMessage: data.error ? "Could not fetch details for this link." : undefined,
         });
         setConfirmOpen(true);
         return;
       }
 
-      setTitle(data.title);
-      if (data.posterUrl) setPosterUrl(data.posterUrl);
-      if (data.runtimeMinutes) setRuntimeMinutes(data.runtimeMinutes);
+      setTitle(typeof data.title === "string" ? data.title : "");
+      if (typeof data.posterUrl === "string") setPosterUrl(data.posterUrl);
+      if (typeof data.runtimeMinutes === "number") setRuntimeMinutes(data.runtimeMinutes);
       if (smartFill.releaseYear) setReleaseYear(smartFill.releaseYear);
       if (smartFill.description !== null) setDescription(smartFill.description);
       if (smartFill.canonicalUrl) setCanonicalUrl(smartFill.canonicalUrl);
@@ -305,7 +309,7 @@ const NewBookmark = () => {
         : toNumericId(smartFill.metadata.tmdb_id);
       setSelectedCandidateId(selectedTmdb);
 
-      setType(resolveTypeFromEnrichment(data, resolvedProvider));
+      setType(resolveTypeFromEnrichment(data, fallbackProvider));
 
       // Store TMDB metadata
       const metadataFromSmartFill = { ...smartFill.metadata };
@@ -316,7 +320,7 @@ const NewBookmark = () => {
 
       // Advance to step 2
       setStep("confirm");
-    } catch (error: any) {
+    } catch (error: unknown) {
       setMatchCandidates([]);
       setMatchConfidence("unknown");
       setSelectedCandidateId(null);

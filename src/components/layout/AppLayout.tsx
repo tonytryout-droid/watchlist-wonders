@@ -8,6 +8,7 @@ import { useSearchShortcut } from "@/hooks/useSearchShortcut";
 import { useAuth } from "@/contexts/AuthContext";
 import { bookmarkService } from "@/services/bookmarks";
 import { notificationService } from "@/services/notifications";
+import { fetchUnreadNotificationCount } from "@/components/layout/appLayoutQueries";
 
 export function AppLayout() {
   const { user } = useAuth();
@@ -23,10 +24,7 @@ export function AppLayout() {
 
   const { data: unreadCount = 0 } = useQuery({
     queryKey: ["notifications-count"],
-    queryFn: async () => {
-      const notifs = await notificationService.getNotifications();
-      return notifs.filter((n) => !n.read_at).length;
-    },
+    queryFn: () => fetchUnreadNotificationCount(notificationService),
     enabled: !!user,
     staleTime: 60 * 1000,
   });

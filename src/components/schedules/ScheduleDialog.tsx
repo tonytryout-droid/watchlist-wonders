@@ -179,7 +179,7 @@ export function ScheduleDialog({ bookmark, open, onOpenChange, onScheduled }: Sc
           : "Scheduled successfully.",
       });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       const msg = getSafeErrorMessage(
         error,
         "Could not create the schedule. Please try again.",

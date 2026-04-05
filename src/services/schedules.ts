@@ -11,6 +11,9 @@ import {
   orderBy,
   limit,
   documentId,
+  type DocumentData,
+  type QueryDocumentSnapshot,
+  type DocumentSnapshot,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { Schedule, Bookmark } from '@/types/database';
@@ -56,7 +59,9 @@ async function batchAttachBookmarks(uid: string, schedules: Schedule[]): Promise
     .map((s) => ({ ...s, bookmarks: bookmarkMap.get(s.bookmark_id)! }));
 }
 
-function docToSchedule(snap: any): Schedule {
+function docToSchedule(
+  snap: QueryDocumentSnapshot<DocumentData> | DocumentSnapshot<DocumentData>,
+): Schedule {
   return { id: snap.id, ...snap.data() } as Schedule;
 }
 
@@ -131,6 +136,7 @@ export const scheduleService = {
     const ref = doc(db, 'users', uid, 'schedules', id);
     await updateDoc(ref, { ...updates, updated_at: new Date().toISOString() });
     const snap = await getDoc(ref);
+    if (!snap.exists()) throw new Error(`Schedule ${id} not found after update`);
     return docToSchedule(snap);
   },
 

@@ -28,6 +28,7 @@ const secondaryLinks = [
   { href: "/vault", label: "Vault" },
   { href: "/tonight", label: "Tonight's Pick" },
   { href: "/stats", label: "Stats" },
+  { href: "/activity", label: "Activity" },
   { href: "/calendar", label: "Calendar" },
   { href: "/notifications", label: "Notifications" },
 ];

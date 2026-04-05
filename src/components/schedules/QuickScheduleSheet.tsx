@@ -132,7 +132,7 @@ export function QuickScheduleSheet({
       setSelectedQuick(null);
       setShowCustom(false);
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       toast.error(getSafeErrorMessage(err, "Could not create schedule."));
     },
   });

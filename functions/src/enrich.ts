@@ -223,7 +223,7 @@ function cleanTitleForTMDB(raw: string): string {
     .replace(/\(?\d{4}\)?/g, '') // remove years
     .replace(/official\s*(trailer|teaser|clip|video)/gi, '')
     .replace(/\|\s*.+$/i, '') // strip "| Netflix" suffixes
-    .replace(/[\-\u2013]\s*(trailer|teaser|season\s*\d+).*/gi, '')
+    .replace(/[-\u2013]\s*(trailer|teaser|season\s*\d+).*/gi, '')
     .replace(/[^\w\s']/g, ' ') // strip emoji/symbols
     .replace(/\s+/g, ' ')
     .trim();
@@ -588,7 +588,9 @@ function extractYouTubeVideoId(url: string): string | null {
     const u = new URL(url);
     if (u.hostname.includes('youtu.be')) return u.pathname.slice(1).split('?')[0];
     if (u.hostname.includes('youtube.com')) return u.searchParams.get('v');
-  } catch {}
+  } catch {
+    return null;
+  }
   return null;
 }
 
@@ -601,7 +603,12 @@ async function enrichYouTube(videoId: string): Promise<EnrichResponse> {
     const res = await fetchWithTimeout(`https://www.googleapis.com/youtube/v3/videos?${params}`);
     if (!res.ok) return { provider: 'youtube' };
 
-    const data = (await res.json()) as any;
+    const data = (await res.json()) as {
+      items?: Array<{
+        snippet?: Record<string, unknown>;
+        contentDetails?: Record<string, unknown>;
+      }>;
+    };
     const item = data.items?.[0];
     if (!item) return { provider: 'youtube' };
 
@@ -934,7 +941,16 @@ async function enrichWithMicrolink(url: string): Promise<Partial<EnrichResponse>
     const endpoint = `https://api.microlink.io?url=${encodeURIComponent(url)}&meta=true`;
     const res = await fetchWithTimeout(endpoint);
     if (!res.ok) return {};
-    const json = (await res.json()) as any;
+    const json = (await res.json()) as {
+      status?: string;
+      data?: {
+        title?: string;
+        description?: string;
+        image?: { url?: string };
+        date?: string;
+        url?: string;
+      };
+    };
     if (json.status !== 'success' || !json.data?.title) return {};
     const d = json.data;
     const year = d.date ? new Date(d.date).getFullYear() : undefined;
@@ -1276,7 +1292,10 @@ async function enrichIMDb(url: string): Promise<EnrichResponse> {
     );
     if (!res.ok) return enrichViaOG(url, 'imdb');
 
-    const data = (await res.json()) as any;
+    const data = (await res.json()) as {
+      tv_results?: Array<Record<string, unknown>>;
+      movie_results?: Array<Record<string, unknown>>;
+    };
     const isTV = !!data.tv_results?.[0];
     const result = isTV ? data.tv_results[0] : data.movie_results?.[0];
     if (!result) return enrichViaOG(url, 'imdb');
@@ -1290,15 +1309,21 @@ async function enrichIMDb(url: string): Promise<EnrichResponse> {
         `https://api.themoviedb.org/3/${mediaType}/${result.id}?api_key=${apiKey}`
       );
       if (detailRes.ok) {
-        const detail = (await detailRes.json()) as any;
+        const detail = (await detailRes.json()) as {
+          episode_run_time?: number[];
+          runtime?: number;
+          genres?: Array<{ name?: string }>;
+        };
         runtimeMinutes = isTV ? detail.episode_run_time?.[0] : detail.runtime ?? undefined;
         genres = Array.isArray(detail.genres)
           ? detail.genres
-              .map((genre: any) => (typeof genre?.name === 'string' ? normalizeText(genre.name) : undefined))
+              .map((genre) => (typeof genre?.name === 'string' ? normalizeText(genre.name) : undefined))
               .filter((name: string | undefined): name is string => !!name)
           : undefined;
       }
-    } catch {}
+    } catch (error) {
+      logger.debug('[imdb] detail fetch failed', error);
+    }
 
     return {
       title: result.title ?? result.name,
@@ -1335,7 +1360,9 @@ async function enrichLetterboxd(url: string): Promise<EnrichResponse> {
       sourceYear: extractYearHint(title),
     });
     if (tmdb.title) return { ...tmdb, provider: 'letterboxd' };
-  } catch {}
+  } catch (error) {
+    logger.debug('[letterboxd] fallback to OG', error);
+  }
   return enrichViaOG(url, 'letterboxd');
 }
 
@@ -1354,7 +1381,9 @@ async function enrichRottenTomatoes(url: string): Promise<EnrichResponse> {
       sourceYear: extractYearHint(title),
     });
     if (tmdb.title) return { ...tmdb, provider: 'rottentomatoes' };
-  } catch {}
+  } catch (error) {
+    logger.debug('[rottentomatoes] fallback to OG', error);
+  }
   return enrichViaOG(url, 'rottentomatoes');
 }
 
@@ -1368,7 +1397,20 @@ async function enrichReddit(url: string): Promise<EnrichResponse> {
     }, 6000);
     if (!res.ok) return { provider: 'reddit' };
 
-    const data = (await res.json()) as any;
+    const data = (await res.json()) as Array<{
+      data?: {
+        children?: Array<{
+          data?: {
+            title?: string;
+            selftext?: string;
+            thumbnail?: string;
+            preview?: {
+              images?: Array<{ source?: { url?: string } }>;
+            };
+          };
+        }>;
+      };
+    }>;
     const post = data?.[0]?.data?.children?.[0]?.data;
     const og = await fetchOpenGraph(url);
 
@@ -1664,7 +1706,7 @@ async function enrichTMDB(title: string, hint?: TmdbSearchHint): Promise<EnrichR
 
 export const enrich = onCall(
   { memory: '256MiB', timeoutSeconds: 30, secrets: [youtubeApiKey, tmdbApiKey] },
-  async (request: any) => {
+  async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Authentication required.');
     }

@@ -18,6 +18,12 @@ import { authService } from "@/services/auth";
 import { socialService } from "@/services/social";
 import { fcmService } from "@/services/fcm";
 
+function getErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : null;
+}
+
 const Settings = () => {
   const { user, signOut } = useAuth();
   const { avatarUrl, uploading, uploadAvatar, deleteAvatar } = useAvatar();
@@ -141,8 +147,10 @@ const Settings = () => {
       toast({ title: "Password updated", description: "Your password has been changed successfully." });
       setNewPassword("");
       setConfirmPassword("");
-    } catch (error: any) {
-      const msg = error.code === "auth/requires-recent-login" ? "Please sign out and sign back in before changing your password." : "Failed to update password. Please try again.";
+    } catch (error: unknown) {
+      const msg = getErrorCode(error) === "auth/requires-recent-login"
+        ? "Please sign out and sign back in before changing your password."
+        : "Failed to update password. Please try again.";
       toast({ title: "Failed to update password", description: msg, variant: "destructive" });
     } finally {
       setPasswordLoading(false);
@@ -165,7 +173,7 @@ const Settings = () => {
         setPushEnabled(false);
         toast({ title: "Push notifications disabled" });
       }
-    } catch (err: any) {
+    } catch {
       toast({ title: "Failed to update notifications", description: "Could not update notification settings. Please try again.", variant: "destructive" });
     } finally {
       setPushLoading(false);
@@ -191,7 +199,7 @@ const Settings = () => {
     try {
       await socialService.savePublicProfile({ display_name: displayName || null, bio: bio || null });
       toast({ title: "Profile saved", description: "Your public profile has been updated." });
-    } catch (error: any) {
+    } catch {
       toast({ title: "Failed to save profile", description: "Could not save your profile. Please try again.", variant: "destructive" });
     } finally {
       setProfileLoading(false);
@@ -203,7 +211,7 @@ const Settings = () => {
     try {
       await authService.resetPassword(user.email);
       toast({ title: "Reset email sent", description: "Check your inbox for a password reset link." });
-    } catch (error: any) {
+    } catch {
       toast({ title: "Failed to send reset email", description: "Could not send the reset email. Please try again.", variant: "destructive" });
     }
   };

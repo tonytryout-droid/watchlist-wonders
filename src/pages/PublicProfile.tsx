@@ -73,7 +73,7 @@ const PublicProfile = () => {
       queryClient.invalidateQueries({ queryKey: ["follower-count", uid] });
       toast({ title: "Following!" });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       toast({
         title: "Failed to follow",
         description: getSafeErrorMessage(error, "Something went wrong."),
@@ -89,7 +89,7 @@ const PublicProfile = () => {
       queryClient.invalidateQueries({ queryKey: ["follower-count", uid] });
       toast({ title: "Unfollowed" });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       toast({
         title: "Failed to unfollow",
         description: getSafeErrorMessage(error, "Something went wrong."),

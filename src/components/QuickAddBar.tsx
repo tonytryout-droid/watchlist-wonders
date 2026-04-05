@@ -130,7 +130,7 @@ export function QuickAddBar({
       setSmartFill(EMPTY_SMART_FILL);
       toast.success(`"${bookmark.title}" saved to your watchlist!`);
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       toast.error(getSafeErrorMessage(err, "Could not save bookmark."));
     },
   });
@@ -175,7 +175,7 @@ export function QuickAddBar({
     try {
       const enrichCallable = httpsCallable(fbFunctions, 'enrich');
       const result = await enrichCallable({ url: trimmed });
-      const data = result.data as any;
+      const data = (result.data ?? {}) as Record<string, unknown>;
       const fill = buildSmartFillData(data);
       const { tmdb_id: _tmdbId, ...metadataWithoutTmdb } = fill.metadata;
       const guardedFill = fill.matchConfidence === "low"
@@ -187,7 +187,12 @@ export function QuickAddBar({
         : fill;
       setSmartFill(guardedFill);
 
-      const resolvedProvider = data.provider === "unknown" ? dp : data.provider;
+      const resolvedProvider =
+        typeof data.provider === "string" && data.provider !== "unknown"
+          ? data.provider
+          : dp;
+      const fallbackProvider =
+        (resolvedProvider as Bookmark["provider"]) || "generic";
       const ambiguityHint = fill.matchConfidence === "low" && fill.matchCandidates.length > 1
         ? "Multiple TMDB matches were found. Check title/type before saving, or use Add manually for exact matching."
         : undefined;
@@ -195,11 +200,11 @@ export function QuickAddBar({
       setConfirmInitial({
         url: trimmed,
         provider: resolvedProvider,
-        title: data.title,
-        posterUrl: data.posterUrl,
-        runtimeMinutes: data.runtimeMinutes ?? null,
-        type: resolveTypeFromEnrichment(data, resolvedProvider),
-        blocked: data.blocked,
+        title: typeof data.title === "string" ? data.title : "",
+        posterUrl: typeof data.posterUrl === "string" ? data.posterUrl : undefined,
+        runtimeMinutes: typeof data.runtimeMinutes === "number" ? data.runtimeMinutes : null,
+        type: resolveTypeFromEnrichment(data, fallbackProvider),
+        blocked: Boolean(data.blocked),
         debugMessage:
           ambiguityHint ??
           (data.error ? "Could not fetch details for this link." : undefined),

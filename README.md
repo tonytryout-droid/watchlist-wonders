@@ -47,6 +47,7 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=
 VITE_FIREBASE_APP_ID=
 VITE_FIREBASE_MEASUREMENT_ID=
 VITE_FIREBASE_VAPID_KEY=
+VITE_APP_URL=
 ```
 
 5. Start the app:
@@ -77,7 +78,13 @@ firebase functions:secrets:set YOUTUBE_API_KEY
 firebase functions:secrets:set TMDB_API_KEY
 ```
 
-4. Deploy infrastructure and app:
+4. Set canonical app URL for function emails/links:
+
+```bash
+firebase functions:params:set APP_URL="https://your-app.web.app"
+```
+
+5. Deploy infrastructure and app:
 
 ```bash
 firebase deploy --only firestore:rules,firestore:indexes,storage

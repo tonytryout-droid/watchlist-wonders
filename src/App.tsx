@@ -29,6 +29,9 @@ const ShareView = lazy(() => import("./pages/ShareView"));
 const Stats = lazy(() => import("./pages/Stats"));
 const Vault = lazy(() => import("./pages/Vault"));
 const ShareTarget = lazy(() => import("./pages/ShareTarget"));
+const Terms = lazy(() => import("./pages/Terms"));
+const Privacy = lazy(() => import("./pages/Privacy"));
+const Activity = lazy(() => import("./pages/Activity"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -83,6 +86,8 @@ const App = () => (
                 <Routes>
                   <Route path="/" element={<ErrorBoundary><Index /></ErrorBoundary>} />
                   <Route path="/auth" element={<ErrorBoundary><Auth /></ErrorBoundary>} />
+                  <Route path="/terms" element={<ErrorBoundary><Terms /></ErrorBoundary>} />
+                  <Route path="/privacy" element={<ErrorBoundary><Privacy /></ErrorBoundary>} />
                   {/* Public routes */}
                   <Route path="/u/:uid" element={<ErrorBoundary><PublicProfile /></ErrorBoundary>} />
                   <Route path="/share/:token" element={<ErrorBoundary><ShareView /></ErrorBoundary>} />
@@ -101,6 +106,7 @@ const App = () => (
                       <Route path="/b/:id" element={<ErrorBoundary><BookmarkDetail /></ErrorBoundary>} />
                       <Route path="/settings" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
                       <Route path="/stats" element={<ErrorBoundary><Stats /></ErrorBoundary>} />
+                      <Route path="/activity" element={<ErrorBoundary><Activity /></ErrorBoundary>} />
                     </Route>
                   </Route>
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
