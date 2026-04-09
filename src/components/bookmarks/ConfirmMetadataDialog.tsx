@@ -49,6 +49,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { getSafeErrorMessage } from "@/lib/errorMessage";
 import type { Bookmark } from "@/types/database";
+import type { MatchConfidence } from "@/lib/enrichmentSmartFill";
 
 export type ConfirmMetadataPayload = {
   url: string;
@@ -59,6 +60,11 @@ export type ConfirmMetadataPayload = {
   type?: Bookmark["type"];
   blocked?: boolean;
   debugMessage?: string;
+  // Read-only TMDB-matched preview fields
+  releaseYear?: number | null;
+  description?: string | null;
+  genres?: string[];
+  matchConfidence?: MatchConfidence;
 };
 
 type Props = {
@@ -73,6 +79,8 @@ type Props = {
     runtimeMinutes: number | null;
     type: Bookmark["type"];
   }) => void;
+  /** Called when user taps "Wrong match?" — use to re-open the candidate picker */
+  onWrongMatch?: () => void;
 };
 
 const TYPE_OPTIONS: { value: Bookmark["type"]; label: string; icon: React.ElementType }[] = [
@@ -100,7 +108,7 @@ const PROVIDER_DOTS: Record<string, string> = {
   generic: "bg-muted-foreground",
 };
 
-export function ConfirmMetadataDialog({ open, onOpenChange, initial, onConfirm }: Props) {
+export function ConfirmMetadataDialog({ open, onOpenChange, initial, onConfirm, onWrongMatch }: Props) {
   const { toast } = useToast();
   const [title, setTitle] = React.useState(initial.title ?? "");
   const [posterUrl, setPosterUrl] = React.useState(initial.posterUrl ?? "");
@@ -235,6 +243,49 @@ export function ConfirmMetadataDialog({ open, onOpenChange, initial, onConfirm }
             )}
           </div>
         </div>
+
+        {/* Matched TMDB details — read-only preview, shown when data is available */}
+        {(initial.releaseYear || initial.description || (initial.genres && initial.genres.length > 0)) && (
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                Matched from TMDB
+              </p>
+              {onWrongMatch && (
+                <button
+                  type="button"
+                  onClick={onWrongMatch}
+                  className="text-[11px] text-primary hover:underline shrink-0"
+                >
+                  Wrong match?
+                </button>
+              )}
+            </div>
+            {initial.releaseYear && (
+              <p className="text-xs text-foreground">
+                <span className="text-muted-foreground">Year: </span>
+                {initial.releaseYear}
+              </p>
+            )}
+            {initial.description && (
+              <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
+                {initial.description}
+              </p>
+            )}
+            {initial.genres && initial.genres.length > 0 && (
+              <div className="flex flex-wrap gap-1 pt-0.5">
+                {initial.genres.slice(0, 5).map((g) => (
+                  <span
+                    key={g}
+                    className="inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium capitalize"
+                  >
+                    {g}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Form — required field legend */}
         <p className="text-[11px] text-muted-foreground -mb-2">
