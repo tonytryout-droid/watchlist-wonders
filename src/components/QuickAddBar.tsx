@@ -29,7 +29,8 @@ import { fbFunctions } from "@/lib/firebase";
 import { httpsCallable } from "firebase/functions";
 import { bookmarkService } from "@/services/bookmarks";
 import { ConfirmMetadataDialog, type ConfirmMetadataPayload } from "@/components/bookmarks/ConfirmMetadataDialog";
-import { buildSmartFillData, type SmartFillData } from "@/lib/enrichmentSmartFill";
+import { TmdbCandidatePicker } from "@/components/bookmarks/TmdbCandidatePicker";
+import { buildSmartFillData, type SmartFillData, type EnrichmentMatchCandidate } from "@/lib/enrichmentSmartFill";
 import { getSafeErrorMessage } from "@/lib/errorMessage";
 import { toast } from "sonner";
 import type { Bookmark } from "@/types/database";
@@ -102,6 +103,7 @@ export function QuickAddBar({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
+  const pendingEnrichDataRef = useRef<Record<string, unknown>>({});
 
   const [internalUrl, setInternalUrl] = useState("");
   const [isEnriching, setIsEnriching] = useState(false);
@@ -110,6 +112,10 @@ export function QuickAddBar({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmInitial, setConfirmInitial] = useState<ConfirmMetadataPayload>({ url: "" });
   const [smartFill, setSmartFill] = useState<SmartFillData>(EMPTY_SMART_FILL);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerCandidates, setPickerCandidates] = useState<EnrichmentMatchCandidate[]>([]);
+  const [pendingUrl, setPendingUrl] = useState("");
+  const [pendingProvider, setPendingProvider] = useState("");
 
   const url = value ?? internalUrl;
   const setUrl = (nextValue: string) => {
@@ -162,6 +168,69 @@ export function QuickAddBar({
     });
   };
 
+  /** Build and open the ConfirmMetadataDialog using current smartFill + raw enrichment data */
+  const openConfirmDialog = (
+    trimmed: string,
+    resolvedProvider: string,
+    data: Record<string, unknown>,
+    fill: SmartFillData,
+  ) => {
+    const fallbackProvider = (resolvedProvider as Bookmark["provider"]) || "generic";
+    setConfirmInitial({
+      url: trimmed,
+      provider: resolvedProvider,
+      title: typeof data.title === "string" ? data.title : "",
+      posterUrl: typeof data.posterUrl === "string" ? data.posterUrl : undefined,
+      runtimeMinutes: typeof data.runtimeMinutes === "number" ? data.runtimeMinutes : null,
+      type: resolveTypeFromEnrichment(data, fallbackProvider),
+      blocked: Boolean(data.blocked),
+      debugMessage: data.error ? "Could not fetch details for this link." : undefined,
+      // Read-only TMDB preview
+      releaseYear: fill.releaseYear,
+      description: fill.description,
+      genres: fill.metadata.genres as string[] | undefined,
+      matchConfidence: fill.matchConfidence,
+    });
+    setConfirmOpen(true);
+  };
+
+  /** Apply a selected TMDB candidate into smartFill state, then open confirm dialog */
+  const applyCandidate = (
+    candidate: EnrichmentMatchCandidate,
+    trimmed: string,
+    resolvedProvider: string,
+    baseData: Record<string, unknown>,
+  ) => {
+    const updatedFill: SmartFillData = {
+      ...smartFill,
+      description: candidate.description ?? smartFill.description,
+      releaseYear: candidate.releaseYear ?? smartFill.releaseYear,
+      moodTags: candidate.genres
+        ? candidate.genres.map((g) => g.toLowerCase().replace(/\s+/g, ""))
+        : smartFill.moodTags,
+      metadata: {
+        ...smartFill.metadata,
+        tmdb_id: candidate.tmdbId,
+        match_confidence: "high",
+        ...(candidate.backdropUrl ? { backdrop_url: candidate.backdropUrl } : {}),
+        ...(candidate.description ? { overview: candidate.description } : {}),
+        ...(candidate.voteAverage !== undefined ? { vote_average: candidate.voteAverage } : {}),
+        ...(candidate.genres && candidate.genres.length ? { genres: candidate.genres } : {}),
+      },
+    };
+    setSmartFill(updatedFill);
+
+    const enrichedData: Record<string, unknown> = {
+      ...baseData,
+      title: candidate.title,
+      posterUrl: candidate.posterUrl,
+      runtimeMinutes: candidate.runtimeMinutes ?? baseData.runtimeMinutes,
+      contentType: candidate.contentType ?? baseData.contentType,
+      mediaType: candidate.mediaType,
+    };
+    openConfirmDialog(trimmed, resolvedProvider, enrichedData, updatedFill);
+  };
+
   const handleFetch = async (urlOverride?: string) => {
     const trimmed = (urlOverride ?? url).trim();
     if (!trimmed) return;
@@ -179,39 +248,29 @@ export function QuickAddBar({
       const result = await enrichCallable({ url: trimmed });
       const data = (result.data ?? {}) as Record<string, unknown>;
       const fill = buildSmartFillData(data);
-      const { tmdb_id: _tmdbId, ...metadataWithoutTmdb } = fill.metadata;
-      const guardedFill = fill.matchConfidence === "low"
-        ? {
-            ...fill,
-            moodTags: [],
-            metadata: metadataWithoutTmdb,
-          }
-        : fill;
-      setSmartFill(guardedFill);
 
       const resolvedProvider =
         typeof data.provider === "string" && data.provider !== "unknown"
           ? data.provider
           : dp;
-      const fallbackProvider =
-        (resolvedProvider as Bookmark["provider"]) || "generic";
-      const ambiguityHint = fill.matchConfidence === "low" && fill.matchCandidates.length > 1
-        ? "Multiple TMDB matches were found. Check title/type before saving, or use Add manually for exact matching."
-        : undefined;
 
-      setConfirmInitial({
-        url: trimmed,
-        provider: resolvedProvider,
-        title: typeof data.title === "string" ? data.title : "",
-        posterUrl: typeof data.posterUrl === "string" ? data.posterUrl : undefined,
-        runtimeMinutes: typeof data.runtimeMinutes === "number" ? data.runtimeMinutes : null,
-        type: resolveTypeFromEnrichment(data, fallbackProvider),
-        blocked: Boolean(data.blocked),
-        debugMessage:
-          ambiguityHint ??
-          (data.error ? "Could not fetch details for this link." : undefined),
-      });
-      setConfirmOpen(true);
+      // When multiple candidates exist and confidence isn't high, show the picker first
+      const needsPicker =
+        fill.matchCandidates.length > 1 && fill.matchConfidence !== "high";
+
+      if (needsPicker) {
+        // Store context so picker callbacks can build the confirm dialog
+        setSmartFill(fill);
+        setPendingUrl(trimmed);
+        setPendingProvider(resolvedProvider);
+        setPickerCandidates(fill.matchCandidates);
+        // Store raw data for use in picker callbacks via a ref
+        pendingEnrichDataRef.current = data;
+        setPickerOpen(true);
+      } else {
+        setSmartFill(fill);
+        openConfirmDialog(trimmed, resolvedProvider, data, fill);
+      }
     } catch (err) {
       console.warn("Enrichment failed:", err);
       setSmartFill(EMPTY_SMART_FILL);
@@ -347,11 +406,48 @@ export function QuickAddBar({
         </p>
       </div>
 
+      <TmdbCandidatePicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        candidates={pickerCandidates}
+        extractedTitle={
+          typeof pendingEnrichDataRef.current.title === "string"
+            ? pendingEnrichDataRef.current.title
+            : ""
+        }
+        onSelect={(candidate) => {
+          applyCandidate(candidate, pendingUrl, pendingProvider, pendingEnrichDataRef.current);
+        }}
+        onSkip={() => {
+          // Skip TMDB data — open confirm with just the extracted title
+          const fallbackFill: SmartFillData = {
+            ...EMPTY_SMART_FILL,
+            canonicalUrl: smartFill.canonicalUrl,
+            tags: smartFill.tags,
+          };
+          setSmartFill(fallbackFill);
+          openConfirmDialog(
+            pendingUrl,
+            pendingProvider,
+            { ...pendingEnrichDataRef.current, matchConfidence: undefined },
+            fallbackFill,
+          );
+        }}
+      />
+
       <ConfirmMetadataDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         initial={confirmInitial}
         onConfirm={handleConfirmMetadata}
+        onWrongMatch={
+          pickerCandidates.length > 1
+            ? () => {
+                setConfirmOpen(false);
+                setPickerOpen(true);
+              }
+            : undefined
+        }
       />
     </>
   );
