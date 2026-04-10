@@ -381,6 +381,18 @@ const BookmarkDetail = () => {
   const fallbackSearch = buildFallbackSearchUrls(bookmark.title);
   const noTmdbMatch = currentAvailability?.status === "no_tmdb_match" || (!effectiveTmdbId && resolvedTmdbId === null);
 
+  const scoreRingColor = voteAverage == null || voteAverage === 0
+    ? "border-muted"
+    : voteAverage >= 7 ? "border-green-500"
+    : voteAverage >= 5 ? "border-yellow-500"
+    : "border-red-500";
+  const scoreTextColor = voteAverage == null || voteAverage === 0
+    ? "text-muted-foreground"
+    : voteAverage >= 7 ? "text-green-400"
+    : voteAverage >= 5 ? "text-yellow-400"
+    : "text-red-400";
+  const trailerUrl = bookmark.metadata?.trailer_url as string | undefined;
+
   const openSafeLink = (url: string) => {
     if (!isSafeUrl(url)) return;
     window.open(url, "_blank", "noopener,noreferrer");
@@ -565,538 +577,577 @@ const BookmarkDetail = () => {
             </div>
           </div>
         ) : (
-          <div className="flex gap-6 items-start">
-            {/* Poster thumbnail — desktop only */}
-            {bookmark.poster_url && (
-              <div className="hidden md:block shrink-0 w-44 -mt-2">
-                <div className="aspect-[2/3] rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10">
-                  <img
-                    src={bookmark.poster_url}
-                    alt={bookmark.title}
-                    className="w-full h-full object-cover"
-                  />
+          <>
+            {/* ── HERO INFO: poster + details ── */}
+            <div className="flex gap-6 items-end mb-10">
+              {/* Poster — larger on desktop */}
+              {bookmark.poster_url && (
+                <div className="hidden md:block shrink-0 w-44 lg:w-52">
+                  <div className="aspect-[2/3] rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10">
+                    <img
+                      src={bookmark.poster_url}
+                      alt={bookmark.title}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Main info */}
-            <div className="flex-1 min-w-0">
+              {/* Info column */}
+              <div className="flex-1 min-w-0">
+                <h1 className="text-2xl sm:text-4xl font-bold text-foreground mb-3 leading-tight">
+                  {bookmark.title}
+                </h1>
 
-              {/* ── LEVEL 1: DECISION LAYER ── */}
-
-              {/* Title */}
-              <h1 className="text-2xl sm:text-4xl font-bold text-foreground mb-3 leading-tight">
-                {bookmark.title}
-              </h1>
-
-              {/* Meta row */}
-              <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mb-5">
-                {bookmark.release_year && <span>{bookmark.release_year}</span>}
-                {bookmark.release_year && <span>•</span>}
-                <span className="capitalize">{bookmark.type}</span>
-                {bookmark.runtime_minutes && (
-                  <>
-                    <span>•</span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" />
-                      {formatRuntime(bookmark.runtime_minutes)}
-                    </span>
-                  </>
-                )}
-                {voteAverage != null && voteAverage > 0 && (
-                  <>
-                    <span>•</span>
-                    <span className="flex items-center gap-1 text-yellow-400 font-semibold">
-                      <Star className="w-3.5 h-3.5 fill-yellow-400" />
-                      {voteAverage.toFixed(1)}
-                    </span>
-                  </>
-                )}
-              </div>
-
-              {/* Status selector — colored left border per status */}
-              <div className="mb-5">
-                <Select value={bookmark.status} onValueChange={handleStatusChange}>
-                  <SelectTrigger
-                    className={`w-[200px] border-l-4 pl-3 ${STATUS_CONFIG[bookmark.status].borderClass}`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`w-2 h-2 rounded-full shrink-0 ${STATUS_CONFIG[bookmark.status].dotClass}`}
-                      />
-                      <SelectValue />
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STATUS_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`w-2 h-2 rounded-full ${STATUS_CONFIG[opt.value].dotClass}`}
-                          />
-                          {opt.label}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Primary actions */}
-              <div className="flex flex-wrap gap-3 mb-6">
-                <Button
-                  size="lg"
-                  className="bg-red-600 hover:bg-red-700 text-white gap-2 px-6"
-                  onClick={openWatchFlow}
-                  disabled={isOpeningWatch}
-                >
-                  {isOpeningWatch ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <Play className="w-5 h-5 fill-current" />
-                  )}
-                  {isOpeningWatch ? "Loading options" : "Watch Now"}
-                </Button>
-                <Button
-                  size="lg"
-                  variant="secondary"
-                  onClick={() => handleStatusChange("done")}
-                  disabled={bookmark.status === "done"}
-                  className="gap-2"
-                >
-                  <Check className="w-4 h-4" />
-                  {bookmark.status === "done" ? "Already Watched" : "Mark as Watched"}
-                </Button>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  onClick={() => vaultMutation.mutate(!bookmark.is_vaulted)}
-                  disabled={vaultMutation.isPending}
-                  className="gap-2"
-                >
-                  {bookmark.is_vaulted ? (
+                {/* Meta strip: year · type · runtime · genre pills */}
+                <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mb-5">
+                  {bookmark.release_year && <span>{bookmark.release_year}</span>}
+                  {bookmark.release_year && <span>•</span>}
+                  <span className="capitalize">{bookmark.type}</span>
+                  {bookmark.runtime_minutes && (
                     <>
-                      <Unlock className="w-4 h-4" />
-                      Remove from Vault
-                    </>
-                  ) : (
-                    <>
-                      <Lock className="w-4 h-4" />
-                      Move to Vault
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {/* My Rating — visible at a glance */}
-              <div className="flex items-center gap-3 mb-5">
-                <div className="flex items-center gap-1">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() =>
-                        rateMutation.mutate({
-                          rating: bookmark.user_rating === star ? null : star,
-                        })
-                      }
-                      className="p-1 hover:scale-110 transition-transform"
-                      aria-label={`Rate ${star} star${star !== 1 ? "s" : ""}`}
-                    >
-                      <Star
-                        className={`w-5 h-5 ${
-                          (bookmark.user_rating || 0) >= star
-                            ? "fill-yellow-400 text-yellow-400"
-                            : "text-muted-foreground/50 hover:text-yellow-400/60"
-                        }`}
-                      />
-                    </button>
-                  ))}
-                </div>
-                {bookmark.user_rating ? (
-                  <span className="text-sm text-muted-foreground">
-                    {bookmark.user_rating}/5
-                  </span>
-                ) : (
-                  <span className="text-xs text-muted-foreground/50 italic">
-                    Rate this
-                  </span>
-                )}
-              </div>
-
-              {/* User review — displayed when present (was never rendered before) */}
-              {bookmark.user_review && (
-                <blockquote className="mb-5 border-l-2 border-primary/40 pl-4 max-w-xl">
-                  <p className="text-sm text-muted-foreground italic leading-relaxed">
-                    {bookmark.user_review}
-                  </p>
-                </blockquote>
-              )}
-
-              {/* Watched date — shown for completed bookmarks */}
-              {bookmark.status === "done" && bookmark.watched_at && (
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-5">
-                  <CalendarCheck className="w-3.5 h-3.5 text-green-500" />
-                  <span>
-                    Watched on{" "}
-                    <span className="text-foreground font-medium">
-                      {format(new Date(bookmark.watched_at), "MMMM d, yyyy")}
-                    </span>
-                  </span>
-                </div>
-              )}
-
-              {/* Synopsis */}
-              {overview && (
-                <div className="mb-6 max-w-xl">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">About</p>
-                  <p
-                    className={`text-muted-foreground text-sm leading-relaxed ${
-                      synopsisExpanded ? "" : "line-clamp-4"
-                    }`}
-                  >
-                    {overview}
-                  </p>
-                  {overview.length > 200 && (
-                    <button
-                      type="button"
-                      onClick={() => setSynopsisExpanded((prev) => !prev)}
-                      className="mt-1 text-xs text-primary hover:underline focus-visible:outline-none"
-                    >
-                      {synopsisExpanded ? "Show less" : "Show more"}
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* WHERE TO WATCH — decision layer */}
-              <div className="mb-6 rounded-xl bg-muted/30 border border-border p-4">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
-                  Where You Can Watch ({currentAvailability?.region ?? preferredRegion})
-                </p>
-
-                {availableNowProviders.length > 0 ? (
-                  <div className="space-y-2">
-                    {availableNowProviders.slice(0, 4).map((provider) => (
-                      <div
-                        key={`${provider.providerId}-${provider.type}`}
-                        className="flex items-center justify-between rounded-lg bg-background/70 border border-border px-3 py-2"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          {provider.logoUrl && (
-                            <img src={provider.logoUrl} alt={provider.name} className="w-5 h-5 rounded-sm" />
-                          )}
-                          <span className="text-sm font-medium truncate">{provider.name}</span>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => openSafeLink(provider.url)}
-                          className="gap-1"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          Watch
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Not available on subscription platforms right now.</p>
-                )}
-
-                {rentOrBuyProviders.length > 0 && (
-                  <div className="mt-4 space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Rent or Buy</p>
-                    {rentOrBuyProviders.slice(0, 4).map((provider) => (
-                      <div
-                        key={`${provider.providerId}-${provider.type}`}
-                        className="flex items-center justify-between rounded-lg bg-background/70 border border-border px-3 py-2"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          {provider.logoUrl && (
-                            <img src={provider.logoUrl} alt={provider.name} className="w-5 h-5 rounded-sm" />
-                          )}
-                          <span className="text-sm font-medium truncate">{provider.name}</span>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => openSafeLink(provider.url)}
-                          className="gap-1"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          {provider.type === "rent" ? "Rent" : "Buy"}
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div className="mt-4">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Search Elsewhere</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" onClick={() => openSafeLink(fallbackSearch.google)}>Search on Google</Button>
-                    <Button variant="outline" size="sm" onClick={() => openSafeLink(fallbackSearch.youtube)}>Search on YouTube</Button>
-                    <Button variant="outline" size="sm" onClick={() => openSafeLink(fallbackSearch.web)}>Search on Web</Button>
-                  </div>
-                </div>
-              </div>
-
-              {/* ── LEVEL 2: MID LAYER ── */}
-
-              {/* Genre chips */}
-              {tmdbDetails?.genres && tmdbDetails.genres.length > 0 && (
-                <div className="mb-4 flex flex-wrap gap-2">
-                  {tmdbDetails.genres.map((g) => (
-                    <span
-                      key={g.id}
-                      className="text-xs bg-white/10 text-foreground rounded-full px-3 py-1"
-                    >
-                      {g.name}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Cast row */}
-              {tmdbDetails?.cast && tmdbDetails.cast.length > 0 && (
-                <div className="mb-6">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
-                    Top Cast
-                  </p>
-                  <div className="flex gap-4 overflow-x-auto pb-1 hide-scrollbar">
-                    {tmdbDetails.cast.map((actor) => (
-                      <div
-                        key={actor.name}
-                        className="shrink-0 flex flex-col items-center w-16 text-center"
-                      >
-                        <div className="w-12 h-12 rounded-full overflow-hidden bg-muted mb-1.5 ring-1 ring-white/10">
-                          {actor.profileUrl ? (
-                            <img
-                              src={actor.profileUrl}
-                              alt={actor.name}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-lg font-bold text-muted-foreground">
-                              {actor.name.charAt(0)}
-                            </div>
-                          )}
-                        </div>
-                        <p className="text-[10px] font-medium leading-tight truncate w-full">
-                          {actor.name}
-                        </p>
-                        <p className="text-[9px] text-muted-foreground leading-tight truncate w-full">
-                          {actor.character}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                  {tmdbDetails.director && (
-                    <p className="text-xs text-muted-foreground mt-3">
-                      Directed by{' '}
-                      <span className="text-foreground font-medium">
-                        {tmdbDetails.director}
+                      <span>•</span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5" />
+                        {formatRuntime(bookmark.runtime_minutes)}
                       </span>
-                    </p>
+                    </>
                   )}
-                </div>
-              )}
-
-              {/* Personal content — mood tags, tags, notes (moved from collapsible) */}
-              {(bookmark.mood_tags?.length > 0 ||
-                bookmark.tags?.length > 0 ||
-                bookmark.notes) && (
-                <div className="mb-6 space-y-4">
-                  {bookmark.mood_tags && bookmark.mood_tags.length > 0 && (
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                        Mood
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {bookmark.mood_tags.map((mood) => (
-                          <Badge key={mood} variant="outline">
-                            {getMoodEmoji(mood)} {mood}
-                          </Badge>
+                  {tmdbDetails?.genres && tmdbDetails.genres.length > 0 && (
+                    <>
+                      <span>•</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {tmdbDetails.genres.slice(0, 3).map((g) => (
+                          <span
+                            key={g.id}
+                            className="text-xs bg-white/10 text-foreground rounded-full px-2.5 py-0.5"
+                          >
+                            {g.name}
+                          </span>
                         ))}
                       </div>
-                    </div>
-                  )}
-
-                  {bookmark.tags && bookmark.tags.length > 0 && (
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                        Tags
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {bookmark.tags.map((tag) => (
-                          <Badge key={tag} variant="secondary">
-                            <Tag className="w-3 h-3 mr-1" />
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {bookmark.notes && (
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                        My Notes
-                      </p>
-                      <p className="text-foreground text-sm whitespace-pre-wrap leading-relaxed">
-                        {bookmark.notes}
-                      </p>
-                    </div>
+                    </>
                   )}
                 </div>
-              )}
 
-              {/* Source */}
-              {bookmark.source_url && (
-                <div className="mb-6">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Source</p>
-                  {isSafeUrl(bookmark.source_url) ? (
-                    <a
-                      href={bookmark.source_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline flex items-center gap-1 text-sm"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      {bookmark.source_url}
-                    </a>
-                  ) : (
-                    <span
-                      className="text-muted-foreground flex items-center gap-1 text-sm opacity-70 cursor-not-allowed"
-                      aria-disabled="true"
-                      title="Invalid or unsafe source URL"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      {bookmark.source_url}
+                {/* Ratings row: TMDB circular badge + user stars */}
+                <div className="flex items-center gap-5 mb-5">
+                  {voteAverage != null && voteAverage > 0 && (
+                    <>
+                      <div className="flex flex-col items-center gap-1">
+                        <div className={`w-14 h-14 rounded-full border-4 ${scoreRingColor} flex items-center justify-center bg-background/80`}>
+                          <span className={`text-sm font-bold ${scoreTextColor}`}>
+                            {voteAverage.toFixed(1)}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground uppercase tracking-wide">TMDB</span>
+                      </div>
+                      <div className="w-px h-10 bg-border" />
+                    </>
+                  )}
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() =>
+                            rateMutation.mutate({
+                              rating: bookmark.user_rating === star ? null : star,
+                            })
+                          }
+                          className="p-0.5 hover:scale-110 transition-transform"
+                          aria-label={`Rate ${star} star${star !== 1 ? "s" : ""}`}
+                        >
+                          <Star
+                            className={`w-5 h-5 ${
+                              (bookmark.user_rating || 0) >= star
+                                ? "fill-yellow-400 text-yellow-400"
+                                : "text-muted-foreground/50 hover:text-yellow-400/60"
+                            }`}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                      {bookmark.user_rating ? `Your Rating: ${bookmark.user_rating}/5` : "My Rating"}
                     </span>
+                  </div>
+                </div>
+
+                {/* Status selector */}
+                <div className="mb-5">
+                  <Select value={bookmark.status} onValueChange={handleStatusChange}>
+                    <SelectTrigger
+                      className={`w-[200px] border-l-4 pl-3 ${STATUS_CONFIG[bookmark.status].borderClass}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`w-2 h-2 rounded-full shrink-0 ${STATUS_CONFIG[bookmark.status].dotClass}`}
+                        />
+                        <SelectValue />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STATUS_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`w-2 h-2 rounded-full ${STATUS_CONFIG[opt.value].dotClass}`}
+                            />
+                            {opt.label}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Primary actions */}
+                <div className="flex flex-wrap gap-3 mb-4">
+                  <Button
+                    size="lg"
+                    className="bg-red-600 hover:bg-red-700 text-white gap-2 px-6"
+                    onClick={openWatchFlow}
+                    disabled={isOpeningWatch}
+                  >
+                    {isOpeningWatch ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Play className="w-5 h-5 fill-current" />
+                    )}
+                    {isOpeningWatch ? "Loading options" : "Watch Now"}
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="secondary"
+                    onClick={() => handleStatusChange("done")}
+                    disabled={bookmark.status === "done"}
+                    className="gap-2"
+                  >
+                    <Check className="w-4 h-4" />
+                    {bookmark.status === "done" ? "Already Watched" : "Mark as Watched"}
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={() => vaultMutation.mutate(!bookmark.is_vaulted)}
+                    disabled={vaultMutation.isPending}
+                    className="gap-2"
+                  >
+                    {bookmark.is_vaulted ? (
+                      <>
+                        <Unlock className="w-4 h-4" />
+                        Remove from Vault
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="w-4 h-4" />
+                        Move to Vault
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {/* Watched date */}
+                {bookmark.status === "done" && bookmark.watched_at && (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <CalendarCheck className="w-3.5 h-3.5 text-green-500" />
+                    <span>
+                      Watched on{" "}
+                      <span className="text-foreground font-medium">
+                        {format(new Date(bookmark.watched_at), "MMMM d, yyyy")}
+                      </span>
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ── BODY: main column + sidebar ── */}
+            <div className="flex flex-col md:flex-row gap-8 items-start">
+
+              {/* ── MAIN COLUMN ── */}
+              <div className="flex-1 min-w-0 space-y-8">
+
+                {/* Synopsis */}
+                {overview && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">About</p>
+                    <p
+                      className={`text-muted-foreground text-sm leading-relaxed ${
+                        synopsisExpanded ? "" : "line-clamp-4"
+                      }`}
+                    >
+                      {overview}
+                    </p>
+                    {overview.length > 200 && (
+                      <button
+                        type="button"
+                        onClick={() => setSynopsisExpanded((prev) => !prev)}
+                        className="mt-1 text-xs text-primary hover:underline focus-visible:outline-none"
+                      >
+                        {synopsisExpanded ? "Show less" : "Show more"}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Trailer button */}
+                {trailerUrl && isSafeUrl(trailerUrl) && (
+                  <div>
+                    <Button
+                      variant="outline"
+                      className="gap-2"
+                      onClick={() => openSafeLink(trailerUrl)}
+                    >
+                      <Play className="w-4 h-4" />
+                      Watch Trailer
+                    </Button>
+                  </div>
+                )}
+
+                {/* Top Cast — portrait cards */}
+                {tmdbDetails?.cast && tmdbDetails.cast.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
+                      Top Cast
+                    </p>
+                    <div className="flex gap-3 overflow-x-auto pb-2 hide-scrollbar">
+                      {tmdbDetails.cast.slice(0, 8).map((actor) => (
+                        <div key={actor.name} className="shrink-0 w-[100px]">
+                          <div className="aspect-[2/3] rounded-lg overflow-hidden bg-muted mb-2 ring-1 ring-white/10">
+                            {actor.profileUrl ? (
+                              <img
+                                src={actor.profileUrl}
+                                alt={actor.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-2xl font-bold text-muted-foreground">
+                                {actor.name.charAt(0)}
+                              </div>
+                            )}
+                          </div>
+                          <p className="text-xs font-semibold leading-tight truncate">{actor.name}</p>
+                          <p className="text-[10px] text-muted-foreground leading-tight truncate">{actor.character}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {tmdbDetails.director && (
+                      <p className="text-xs text-muted-foreground mt-3">
+                        Directed by{" "}
+                        <span className="text-foreground font-medium">{tmdbDetails.director}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* You Might Also Like */}
+                {similarTitles.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-1">
+                      <Shuffle className="w-4 h-4" />
+                      You Might Also Like
+                    </h3>
+                    <div className="flex gap-3 overflow-x-auto pb-2 hide-scrollbar">
+                      {similarTitles.map((item) => {
+                        const alreadyOwned = ownedTmdbIds.has(item.id);
+                        return (
+                          <div key={item.id} className="shrink-0 w-28 group">
+                            <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-secondary mb-1.5">
+                              {item.posterUrl ? (
+                                <img
+                                  src={item.posterUrl}
+                                  alt={item.title}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <span className="text-2xl font-bold text-muted-foreground">{item.title.charAt(0)}</span>
+                                </div>
+                              )}
+                              {!alreadyOwned && (
+                                <button
+                                  type="button"
+                                  onClick={() => addSimilarMutation.mutate(item)}
+                                  disabled={addSimilarMutation.isPending}
+                                  className="absolute inset-0 bg-background/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                                  aria-label={`Add ${item.title} to your list`}
+                                >
+                                  <Plus className="w-6 h-6 text-primary" />
+                                </button>
+                              )}
+                              {alreadyOwned && (
+                                <div className="absolute top-1 right-1 bg-primary rounded-full p-0.5">
+                                  <Check className="w-3 h-3 text-primary-foreground" />
+                                </div>
+                              )}
+                            </div>
+                            <p className="text-xs text-foreground truncate">{item.title}</p>
+                            {item.release_year && (
+                              <p className="text-[10px] text-muted-foreground">{item.release_year}</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ── SIDEBAR ── */}
+              <div className="w-full md:w-72 lg:w-80 shrink-0 space-y-6">
+
+                {/* Where You Can Watch */}
+                <div className="rounded-xl bg-muted/30 border border-border p-4">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
+                    Where You Can Watch ({currentAvailability?.region ?? preferredRegion})
+                  </p>
+                  {availableNowProviders.length > 0 ? (
+                    <div className="space-y-2">
+                      {availableNowProviders.slice(0, 4).map((provider) => (
+                        <div
+                          key={`${provider.providerId}-${provider.type}`}
+                          className="flex items-center justify-between rounded-lg bg-background/70 border border-border px-3 py-2"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            {provider.logoUrl && (
+                              <img src={provider.logoUrl} alt={provider.name} className="w-5 h-5 rounded-sm" />
+                            )}
+                            <span className="text-sm font-medium truncate">{provider.name}</span>
+                          </div>
+                          <Button size="sm" variant="secondary" onClick={() => openSafeLink(provider.url)} className="gap-1">
+                            <ExternalLink className="w-3 h-3" />
+                            Watch
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Not available on subscription platforms right now.</p>
+                  )}
+                  {rentOrBuyProviders.length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Rent or Buy</p>
+                      {rentOrBuyProviders.slice(0, 4).map((provider) => (
+                        <div
+                          key={`${provider.providerId}-${provider.type}`}
+                          className="flex items-center justify-between rounded-lg bg-background/70 border border-border px-3 py-2"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            {provider.logoUrl && (
+                              <img src={provider.logoUrl} alt={provider.name} className="w-5 h-5 rounded-sm" />
+                            )}
+                            <span className="text-sm font-medium truncate">{provider.name}</span>
+                          </div>
+                          <Button size="sm" variant="outline" onClick={() => openSafeLink(provider.url)} className="gap-1">
+                            <ExternalLink className="w-3 h-3" />
+                            {provider.type === "rent" ? "Rent" : "Buy"}
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-4">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Search Elsewhere</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" size="sm" onClick={() => openSafeLink(fallbackSearch.google)}>Search on Google</Button>
+                      <Button variant="outline" size="sm" onClick={() => openSafeLink(fallbackSearch.youtube)}>Search on YouTube</Button>
+                      <Button variant="outline" size="sm" onClick={() => openSafeLink(fallbackSearch.web)}>Search on Web</Button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* User review */}
+                {bookmark.user_review && (
+                  <blockquote className="border-l-2 border-primary/40 pl-4">
+                    <p className="text-sm text-muted-foreground italic leading-relaxed">{bookmark.user_review}</p>
+                  </blockquote>
+                )}
+
+                {/* Personal: mood, tags, notes */}
+                {(bookmark.mood_tags?.length > 0 || bookmark.tags?.length > 0 || bookmark.notes) && (
+                  <div className="space-y-4">
+                    {bookmark.mood_tags && bookmark.mood_tags.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Mood</p>
+                        <div className="flex flex-wrap gap-2">
+                          {bookmark.mood_tags.map((mood) => (
+                            <Badge key={mood} variant="outline">
+                              {getMoodEmoji(mood)} {mood}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {bookmark.tags && bookmark.tags.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Tags</p>
+                        <div className="flex flex-wrap gap-2">
+                          {bookmark.tags.map((tag) => (
+                            <Badge key={tag} variant="secondary">
+                              <Tag className="w-3 h-3 mr-1" />
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {bookmark.notes && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">My Notes</p>
+                        <p className="text-foreground text-sm whitespace-pre-wrap leading-relaxed">{bookmark.notes}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Source */}
+                {bookmark.source_url && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Source</p>
+                    {isSafeUrl(bookmark.source_url) ? (
+                      <a
+                        href={bookmark.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline flex items-center gap-1 text-sm"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        {bookmark.source_url}
+                      </a>
+                    ) : (
+                      <span
+                        className="text-muted-foreground flex items-center gap-1 text-sm opacity-70 cursor-not-allowed"
+                        aria-disabled="true"
+                        title="Invalid or unsafe source URL"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        {bookmark.source_url}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Sharing */}
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Sharing</p>
+                  {bookmark.is_public && bookmark.share_token ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="secondary" className="gap-1">
+                        <Globe className="w-3 h-3" />
+                        Anyone with the link can view
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          const url = `${window.location.origin}/share/${bookmark.share_token}`;
+                          navigator.clipboard.writeText(url).catch(() => {});
+                          toast({ title: "Link copied!" });
+                        }}
+                      >
+                        <Copy className="w-3 h-3 mr-1" />
+                        Copy link
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-muted-foreground"
+                        onClick={() => makePrivateMutation.mutate()}
+                        disabled={makePrivateMutation.isPending}
+                      >
+                        <Lock className="w-3 h-3 mr-1" />
+                        Make private
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => makePublicMutation.mutate()}
+                      disabled={makePublicMutation.isPending}
+                    >
+                      <Globe className="w-4 h-4 mr-2" />
+                      Share & copy link
+                    </Button>
                   )}
                 </div>
-              )}
 
-              {/* Sharing */}
-              <div className="mb-6">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Sharing</p>
-                {bookmark.is_public && bookmark.share_token ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="secondary" className="gap-1">
-                      <Globe className="w-3 h-3" />
-                      Anyone with the link can view
-                    </Badge>
+                {/* Files */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Files {attachments.length > 0 && `(${attachments.length})`}
+                    </p>
                     <Button
                       variant="ghost"
                       size="sm"
                       className="h-7 text-xs"
-                      onClick={() => {
-                        const url = `${window.location.origin}/share/${bookmark.share_token}`;
-                        navigator.clipboard.writeText(url).catch(() => {});
-                        toast({ title: "Link copied!" });
-                      }}
+                      onClick={() => attachFileRef.current?.click()}
                     >
-                      <Copy className="w-3 h-3 mr-1" />
-                      Copy link
+                      <Upload className="w-3 h-3 mr-1" />
+                      Add
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs text-muted-foreground"
-                      onClick={() => makePrivateMutation.mutate()}
-                      disabled={makePrivateMutation.isPending}
-                    >
-                      <Lock className="w-3 h-3 mr-1" />
-                      Make private
-                    </Button>
+                    <input
+                      ref={attachFileRef}
+                      type="file"
+                      accept="image/*,.pdf"
+                      className="hidden"
+                      onChange={handleAttachFile}
+                    />
                   </div>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => makePublicMutation.mutate()}
-                    disabled={makePublicMutation.isPending}
-                  >
-                    <Globe className="w-4 h-4 mr-2" />
-                    Share & copy link
-                  </Button>
-                )}
-              </div>
-
-              {/* Files */}
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Files {attachments.length > 0 && `(${attachments.length})`}
-                  </p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => attachFileRef.current?.click()}
-                  >
-                    <Upload className="w-3 h-3 mr-1" />
-                    Add
-                  </Button>
-                  <input
-                    ref={attachFileRef}
-                    type="file"
-                    accept="image/*,.pdf"
-                    className="hidden"
-                    onChange={handleAttachFile}
-                  />
-                </div>
-                {attachments.length === 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => attachFileRef.current?.click()}
-                    className="w-full border border-dashed border-border rounded-lg p-4 text-center text-sm text-muted-foreground hover:border-primary/50 transition-colors"
-                  >
-                    No files yet — click to upload
-                  </button>
-                ) : (
-                  <div className="space-y-2">
-                    {attachments.map((att) => (
-                      <div
-                        key={att.id}
-                        className="flex items-center gap-3 p-3 bg-secondary rounded-lg"
-                      >
-                        {att.file_type?.startsWith("image/") ? (
-                          <img
-                            src={att.file_url}
-                            alt={att.file_name}
-                            className="w-10 h-10 object-cover rounded"
-                          />
-                        ) : (
-                          <FileText className="w-8 h-8 text-muted-foreground shrink-0" />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{att.file_name}</p>
-                          {att.size && (
-                            <p className="text-xs text-muted-foreground">
-                              {(att.size / 1024).toFixed(1)} KB
-                            </p>
+                  {attachments.length === 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => attachFileRef.current?.click()}
+                      className="w-full border border-dashed border-border rounded-lg p-4 text-center text-sm text-muted-foreground hover:border-primary/50 transition-colors"
+                    >
+                      No files yet — click to upload
+                    </button>
+                  ) : (
+                    <div className="space-y-2">
+                      {attachments.map((att) => (
+                        <div
+                          key={att.id}
+                          className="flex items-center gap-3 p-3 bg-secondary rounded-lg"
+                        >
+                          {att.file_type?.startsWith("image/") ? (
+                            <img
+                              src={att.file_url}
+                              alt={att.file_name}
+                              className="w-10 h-10 object-cover rounded"
+                            />
+                          ) : (
+                            <FileText className="w-8 h-8 text-muted-foreground shrink-0" />
                           )}
-                        </div>
-                        {isSafeUrl(att.file_url) ? (
-                          <a
-                            href={att.file_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-1.5 hover:bg-background rounded transition-colors"
-                            title="Download"
-                          >
-                            <Download className="w-4 h-4 text-muted-foreground" />
-                          </a>
-                        ) : (
-                          <span
-                            className="p-1.5 rounded text-muted-foreground/50 cursor-not-allowed"
-                            aria-disabled="true"
-                            aria-label="Invalid or unsafe attachment URL"
-                            title="Invalid or unsafe attachment URL"
-                          >
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{att.file_name}</p>
+                            {att.size && (
+                              <p className="text-xs text-muted-foreground">
+                                {(att.size / 1024).toFixed(1)} KB
+                              </p>
+                            )}
+                          </div>
+                          {isSafeUrl(att.file_url) ? (
+                            <a
+                              href={att.file_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1.5 hover:bg-background rounded transition-colors"
+                              title="Download"
+                            >
+                              <Download className="w-4 h-4 text-muted-foreground" />
+                            </a>
+                          ) : (
+                            <span
+                              className="p-1.5 rounded text-muted-foreground/50 cursor-not-allowed"
+                              aria-disabled="true"
+                              aria-label="Invalid or unsafe attachment URL"
+                              title="Invalid or unsafe attachment URL"
+                            >
                             <Download className="w-4 h-4 text-muted-foreground" />
                           </span>
                         )}
@@ -1118,60 +1169,9 @@ const BookmarkDetail = () => {
                   </div>
                 )}
               </div>
-
-              {/* ── LEVEL 4: SIMILAR TITLES ── */}
-              {similarTitles.length > 0 && (
-                <div className="mb-6">
-                  <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-1">
-                    <Shuffle className="w-4 h-4" />
-                    You Might Also Like
-                  </h3>
-                  <div className="flex gap-3 overflow-x-auto pb-2 hide-scrollbar">
-                    {similarTitles.map((item) => {
-                      const alreadyOwned = ownedTmdbIds.has(item.id);
-                      return (
-                        <div key={item.id} className="shrink-0 w-28 group">
-                          <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-secondary mb-1.5">
-                            {item.posterUrl ? (
-                              <img
-                                src={item.posterUrl}
-                                alt={item.title}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <span className="text-2xl font-bold text-muted-foreground">{item.title.charAt(0)}</span>
-                              </div>
-                            )}
-                            {!alreadyOwned && (
-                              <button
-                                type="button"
-                                onClick={() => addSimilarMutation.mutate(item)}
-                                disabled={addSimilarMutation.isPending}
-                                className="absolute inset-0 bg-background/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                                aria-label={`Add ${item.title} to your list`}
-                              >
-                                <Plus className="w-6 h-6 text-primary" />
-                              </button>
-                            )}
-                            {alreadyOwned && (
-                              <div className="absolute top-1 right-1 bg-primary rounded-full p-0.5">
-                                <Check className="w-3 h-3 text-primary-foreground" />
-                              </div>
-                            )}
-                          </div>
-                          <p className="text-xs text-foreground truncate">{item.title}</p>
-                          {item.release_year && (
-                            <p className="text-[10px] text-muted-foreground">{item.release_year}</p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
+        </>
         )}
       </div>
 
