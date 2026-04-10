@@ -772,20 +772,32 @@ export function PosterCard({
                 </DropdownMenu>
               </div>
             )}
+
+            {/* Gradient blending image into expanded panel */}
+            {showExpanded && (
+              <div
+                className="absolute bottom-0 left-0 right-0 h-10 pointer-events-none z-[2]"
+                style={{ background: "linear-gradient(to bottom, transparent, hsl(var(--card)))" }}
+              />
+            )}
           </div>
         </Link>
 
         {/* Netflix-style expanded info panel Ã¢â‚¬â€ appears below on hover */}
         {!isSelectable && (
           <div
-            className="grid transition-[grid-template-rows] duration-300 ease-out"
-            style={{ gridTemplateRows: showExpanded ? "1fr" : "0fr" }}
-          >
-          <div
-            className={cn(
-              "overflow-hidden bg-card rounded-b-sm transition-opacity duration-200",
-              showExpanded ? "opacity-100" : "opacity-0"
-            )}
+            aria-hidden={!showExpanded}
+            className="absolute left-0 right-0 bg-card rounded-b-sm shadow-[0_20px_40px_rgba(0,0,0,0.5)]"
+            style={{
+              top: "100%",
+              zIndex: 30,
+              opacity: showExpanded ? 1 : 0,
+              transform: showExpanded ? "translateY(0)" : "translateY(-4px)",
+              pointerEvents: showExpanded ? "auto" : "none",
+              transitionProperty: "opacity, transform",
+              transitionDuration: `${motionDuration.card}ms`,
+              transitionTimingFunction: "var(--wm-ease-fluid, cubic-bezier(0.16, 1, 0.3, 1))",
+            }}
           >
             <div className="p-2.5">
               {/* Action row */}
@@ -925,7 +937,6 @@ export function PosterCard({
                 </div>
               )}
             </div>
-          </div>
           </div>
         )}
 
