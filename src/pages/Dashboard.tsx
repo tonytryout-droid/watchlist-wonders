@@ -3,6 +3,25 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowUpDown } from "lucide-react";
 import { openSafe } from "@/lib/utils";
+import type { AdvancedFilters } from "@/components/dashboard/FilterPanel";
+
+const FILTER_STORAGE_KEY = "wm_dashboard_filters";
+
+function loadStoredAdvancedFilters(): AdvancedFilters {
+  try {
+    const raw = localStorage.getItem(FILTER_STORAGE_KEY);
+    if (!raw) return { providers: [], moods: [], runtimeMin: null, runtimeMax: null };
+    const parsed = JSON.parse(raw) as Partial<AdvancedFilters>;
+    return {
+      providers: parsed.providers ?? [],
+      moods: parsed.moods ?? [],
+      runtimeMin: parsed.runtimeMin ?? null,
+      runtimeMax: parsed.runtimeMax ?? null,
+    };
+  } catch {
+    return { providers: [], moods: [], runtimeMin: null, runtimeMax: null };
+  }
+}
 import { bookmarkService } from "@/services/bookmarks";
 import { scheduleService } from "@/services/schedules";
 import { watchPlanService } from "@/services/watchPlans";
@@ -15,6 +34,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useDashboardView } from "@/hooks/useDashboardView";
 import { useDashboardMutations } from "@/hooks/useDashboardMutations";
 import { useSimilarTitles, type SimilarTitle } from "@/hooks/useSimilarTitles";
+import { useTmdbTrending } from "@/hooks/useTmdbTrending";
 import { useToast } from "@/hooks/use-toast";
 import { DashboardShell } from "@/pages/dashboard/DashboardShell";
 import { DashboardDialogs } from "@/pages/dashboard/DashboardDialogs";
@@ -112,6 +132,10 @@ const Dashboard = () => {
 
   // ── Mood filter ───────────────────────────────────────────────────────────
   const [activeMood, setActiveMood] = useState<string | null>(null);
+
+  // ── Advanced filters (persisted to localStorage via FilterPanel) ──────────
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>(loadStoredAdvancedFilters);
 
   // ── Dialog state ──────────────────────────────────────────────────────────
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -227,6 +251,7 @@ const Dashboard = () => {
     allBookmarks,
     upcomingSchedules: upcomingSignals,
     now,
+    advancedFilters,
   });
 
   const recommendationSeed = view.bestNextItem ?? view.heroBookmark;
@@ -256,6 +281,23 @@ const Dashboard = () => {
       .filter((item) => !existingTitles.has(item.title.trim().toLowerCase()))
       .slice(0, 10);
   }, [similarTitles, view.visibleBookmarks]);
+
+  // ── Trending discovery (shown to new users with < 10 bookmarks) ──────────
+  const { data: trendingTitles = [] } = useTmdbTrending(allBookmarks.length);
+
+  const trendingCandidates = useMemo(() => {
+    const existingTmdbIds = new Set<number>();
+    const existingTitles = new Set<string>();
+    for (const bookmark of view.visibleBookmarks) {
+      const tmdbId = getMetadataTmdbId(bookmark);
+      if (tmdbId) existingTmdbIds.add(tmdbId);
+      existingTitles.add(bookmark.title.trim().toLowerCase());
+    }
+    return trendingTitles
+      .filter((item) => !existingTmdbIds.has(item.id))
+      .filter((item) => !existingTitles.has(item.title.trim().toLowerCase()))
+      .slice(0, 10);
+  }, [trendingTitles, view.visibleBookmarks]);
 
   const saveRecommendationMutation = useMutation({
     mutationFn: async (item: SimilarTitle) =>
@@ -552,6 +594,12 @@ const Dashboard = () => {
     );
   }
 
+  // ── Filter helpers ────────────────────────────────────────────────────────
+  const advancedFilterCount =
+    advancedFilters.providers.length +
+    advancedFilters.moods.length +
+    (advancedFilters.runtimeMin !== null || advancedFilters.runtimeMax !== null ? 1 : 0);
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
@@ -628,6 +676,24 @@ const Dashboard = () => {
         onDismissMissedBanner={() => setDismissedMissedBanner(true)}
         onDemoInputChange={setDemoInputValue}
         onStartDemo={() => { void startDemo(); }}
+        advancedFilters={advancedFilters}
+        showFilterPanel={showFilterPanel}
+        onFilterToggle={() => setShowFilterPanel((v) => !v)}
+        advancedFilterCount={advancedFilterCount}
+        onFilterApply={(filters) => setAdvancedFilters(filters)}
+        onFilterReset={() =>
+          setAdvancedFilters({ providers: [], moods: [], runtimeMin: null, runtimeMax: null })
+        }
+        filterResultCount={view.visibleBookmarks.length}
+        trendingCandidates={trendingCandidates}
+        trendingRailSavingItemId={
+          saveRecommendationMutation.isPending && saveRecommendationMutation.variables
+            ? `${saveRecommendationMutation.variables.media_type}-${saveRecommendationMutation.variables.id}`
+            : null
+        }
+        onSaveTrendingItem={(item) => {
+          saveRecommendationMutation.mutate(item);
+        }}
       />
 
       <DashboardDialogs

@@ -32,6 +32,7 @@ const ShareTarget = lazy(() => import("./pages/ShareTarget"));
 const Terms = lazy(() => import("./pages/Terms"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Activity = lazy(() => import("./pages/Activity"));
+const Import = lazy(() => import("./pages/Import"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -107,6 +108,7 @@ const App = () => (
                       <Route path="/settings" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
                       <Route path="/stats" element={<ErrorBoundary><Stats /></ErrorBoundary>} />
                       <Route path="/activity" element={<ErrorBoundary><Activity /></ErrorBoundary>} />
+                      <Route path="/import" element={<ErrorBoundary><Import /></ErrorBoundary>} />
                     </Route>
                   </Route>
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

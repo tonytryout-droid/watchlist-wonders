@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Sparkles, RefreshCw, Play, Check, X, Clock, Shuffle } from "lucide-react";
@@ -10,6 +10,60 @@ import { cn, formatRuntime, getMoodEmoji, openSafe } from "@/lib/utils";
 import { bookmarkService } from "@/services/bookmarks";
 import { useToast } from "@/hooks/use-toast";
 import type { Bookmark } from "@/types/database";
+
+const REJECTION_STORAGE_KEY = "wm_tonight_rejections";
+const FILTER_STORAGE_KEY = "wm_dashboard_filters";
+const REJECTION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const RECENCY_BONUS_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+interface RejectionRecord {
+  id: string;
+  rejectedAt: number; // timestamp
+}
+
+function loadRejections(): RejectionRecord[] {
+  try {
+    const raw = localStorage.getItem(REJECTION_STORAGE_KEY);
+    if (!raw) return [];
+    const all = JSON.parse(raw) as RejectionRecord[];
+    // Prune expired
+    const cutoff = Date.now() - REJECTION_TTL_MS;
+    return all.filter((r) => r.rejectedAt > cutoff);
+  } catch {
+    return [];
+  }
+}
+
+function saveRejection(id: string) {
+  try {
+    const existing = loadRejections().filter((r) => r.id !== id);
+    existing.push({ id, rejectedAt: Date.now() });
+    localStorage.setItem(REJECTION_STORAGE_KEY, JSON.stringify(existing));
+  } catch { /* ignore */ }
+}
+
+function loadActiveMoodFromFilters(): string | null {
+  try {
+    const raw = localStorage.getItem(FILTER_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { moods?: string[] };
+    return parsed.moods?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function scoreCandidate(b: Bookmark, rejectedIds: Set<string>): number {
+  if (rejectedIds.has(b.id)) return -10;
+  let score = 0;
+  const ageMs = Date.now() - new Date(b.created_at).getTime();
+  if (ageMs < RECENCY_BONUS_MS) score += 2; // recently added
+  if ((b.metadata as Record<string, unknown>)?.vote_average) {
+    score += 0.5; // has TMDB rating
+  }
+  score -= (b.shown_count ?? 0) * 0.3; // penalise items shown many times
+  return score;
+}
 
 function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array];
@@ -25,20 +79,37 @@ const TonightPick = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [picks, setPicks] = useState<Bookmark[]>([]);
-  // Use a ref so initialization only fires once without being a useEffect dependency
   const hasInitializedRef = useRef(false);
 
+  // Read mood from persisted dashboard filters
+  const activeMood = useMemo(() => loadActiveMoodFromFilters(), []);
+
   // Fetch backlog items under 90 minutes
-  const { data: candidates = [], isLoading, error } = useQuery({
+  const { data: rawCandidates = [], isLoading, error } = useQuery({
     queryKey: ['tonight-candidates'],
     queryFn: () => bookmarkService.getTonightCandidates(),
   });
+
+  // Apply mood filter + smart scoring
+  const candidates = useMemo(() => {
+    const rejections = loadRejections();
+    const rejectedIds = new Set(rejections.map((r) => r.id));
+
+    let pool = rawCandidates;
+    if (activeMood) {
+      const moodFiltered = pool.filter((b) => b.mood_tags?.includes(activeMood));
+      // Fall back to full pool if mood filter leaves nothing
+      if (moodFiltered.length >= 3) pool = moodFiltered;
+    }
+
+    return [...pool].sort((a, b) => scoreCandidate(b, rejectedIds) - scoreCandidate(a, rejectedIds));
+  }, [rawCandidates, activeMood]);
 
   // Initialize picks exactly once when candidates first arrive
   useEffect(() => {
     if (candidates.length > 0 && !hasInitializedRef.current) {
       hasInitializedRef.current = true;
-      setPicks(shuffleArray(candidates).slice(0, 3));
+      setPicks(candidates.slice(0, 3));
     }
   }, [candidates]);
 
@@ -69,6 +140,9 @@ const TonightPick = () => {
 
   const handleSwapOne = (index: number) => {
     const swapped = picks[index];
+    // Record rejection so this item is deprioritised for 7 days
+    saveRejection(swapped.id);
+
     const currentIds = new Set(picks.map((p) => p.id));
     const available = candidates.filter((b) => !currentIds.has(b.id));
     if (available.length === 0) return;
@@ -80,7 +154,7 @@ const TonightPick = () => {
 
     toast({
       title: "Swapped out",
-      description: `"${swapped.title}" removed from tonight's picks.`,
+      description: `"${swapped.title}" won't show up again for a week.`,
       action: (
         <ToastAction
           altText="Undo"
@@ -158,6 +232,12 @@ const TonightPick = () => {
         <p className="text-sm md:text-base text-muted-foreground">
           Quick decisions for busy nights. Under 90 minutes, perfectly curated.
         </p>
+        {activeMood && (
+          <p className="text-xs text-muted-foreground/70 mt-1.5 italic">
+            Based on your mood: {getMoodEmoji(activeMood)}{" "}
+            <span className="capitalize">{activeMood}</span> · Under 90 min
+          </p>
+        )}
       </div>
 
       {/* Cards */}

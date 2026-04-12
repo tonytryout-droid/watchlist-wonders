@@ -18,8 +18,8 @@
  * - Aesthetic-Usability Effect: Animated poster + layered glow feels polished → perceived easier to use
  */
 
-import { Bookmark, Link2, Bell, Sparkles } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Bookmark, Link2, Bell, Sparkles, FileDown } from "lucide-react";
+import { useNavigate, Link } from "react-router-dom";
 import { QuickAddBar } from "@/components/QuickAddBar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -149,6 +149,18 @@ export function EmptyStateGuide({
       <p className="text-xs text-muted-foreground mt-3">
         Saved instantly — find it when you're ready to watch
       </p>
+
+      {/* Import shortcut — reduces empty shelf friction */}
+      <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+        <span>Already have a list?</span>
+        <Link
+          to="/import"
+          className="inline-flex items-center gap-1 text-primary font-medium hover:underline underline-offset-2"
+        >
+          <FileDown className="w-3 h-3" />
+          Import from IMDb
+        </Link>
+      </div>
 
       {/* Feature hints with consistent icon sizing */}
       <div className="grid grid-cols-3 gap-4 mt-10 w-full max-w-lg text-center">
