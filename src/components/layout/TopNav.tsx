@@ -15,6 +15,7 @@ import { useAvatar } from "@/hooks/useAvatar";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { FEATURES } from "@/config/features";
 
 interface TopNavProps {
   notificationCount?: number;
@@ -24,14 +25,14 @@ interface TopNavProps {
 }
 
 const secondaryLinks = [
-  { href: "/dashboard", label: "Home", exact: true },
-  { href: "/vault", label: "Vault" },
-  { href: "/tonight", label: "Tonight's Pick" },
-  { href: "/stats", label: "Stats" },
-  { href: "/activity", label: "Activity" },
-  { href: "/calendar", label: "Calendar" },
-  { href: "/notifications", label: "Notifications" },
-];
+  { href: "/dashboard", label: "Home", exact: true, enabled: true },
+  { href: "/vault", label: "Vault", enabled: FEATURES.vault },
+  { href: "/tonight", label: "Tonight's Pick", enabled: FEATURES.tonightPick },
+  { href: "/stats", label: "Stats", enabled: FEATURES.stats },
+  { href: "/activity", label: "Activity", enabled: FEATURES.activityLog },
+  { href: "/calendar", label: "Calendar", enabled: FEATURES.scheduling },
+  { href: "/notifications", label: "Notifications", enabled: FEATURES.notifications },
+].filter((link) => link.enabled);
 
 export function TopNav({ notificationCount = 0, onSearchClick, leftContent, vaultedCount = 0 }: TopNavProps) {
   const [scrolled, setScrolled] = useState(false);
@@ -134,16 +135,18 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent, vaul
           </Link>
 
           <nav className="hidden md:flex items-center gap-2" aria-label="Main navigation">
-            <Link
-              to="/plans"
-              aria-current={isActive("/plans") ? "page" : undefined}
-              className={cn(
-                "px-3 py-2 rounded text-sm transition-colors",
-                isActive("/plans") ? "text-white font-semibold" : "text-white/70 hover:text-white",
-              )}
-            >
-              My List
-            </Link>
+            {FEATURES.watchPlans && (
+              <Link
+                to="/plans"
+                aria-current={isActive("/plans") ? "page" : undefined}
+                className={cn(
+                  "px-3 py-2 rounded text-sm transition-colors",
+                  isActive("/plans") ? "text-white font-semibold" : "text-white/70 hover:text-white",
+                )}
+              >
+                My List
+              </Link>
+            )}
 
             <Button
               type="button"
@@ -233,13 +236,17 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent, vaul
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="bg-background border-white/10 w-52">
-                <DropdownMenuItem asChild>
-                  <Link to="/plans" className="w-full text-sm flex items-center justify-between">
-                    <span>My List</span>
-                    {isActive("/plans") && <Check className="w-3.5 h-3.5 text-primary" aria-hidden="true" />}
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
+                {FEATURES.watchPlans && (
+                  <>
+                    <DropdownMenuItem asChild>
+                      <Link to="/plans" className="w-full text-sm flex items-center justify-between">
+                        <span>My List</span>
+                        {isActive("/plans") && <Check className="w-3.5 h-3.5 text-primary" aria-hidden="true" />}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 {secondaryLinks.map((link) => {
                   const active = isActive(link.href, link.exact);
                   return (
