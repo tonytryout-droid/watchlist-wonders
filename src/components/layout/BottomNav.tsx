@@ -19,8 +19,9 @@
  */
 
 import { Link, useLocation } from "react-router-dom";
-import { Home, Search, Plus, BarChart2, User } from "lucide-react";
+import { Home, Search, Plus, Sparkles, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FEATURES } from "@/config/features";
 
 interface BottomNavProps {
   onSearchClick?: () => void;
@@ -82,13 +83,15 @@ export function BottomNav({ onSearchClick, onAddClick, notificationCount = 0 }: 
           <span className="text-[10px] font-medium text-muted-foreground">Add</span>
         </button>
 
-        {/* Stats */}
-        <NavItem
-          to="/stats"
-          label="Stats"
-          icon={BarChart2}
-          active={isActive("/stats")}
-        />
+        {/* Tonight's Pick — core intent-entry (replaces Stats in MVP) */}
+        {FEATURES.tonightPick ? (
+          <NavItem
+            to="/tonight"
+            label="Tonight"
+            icon={Sparkles}
+            active={isActive("/tonight")}
+          />
+        ) : null}
 
         {/* Profile */}
         <NavItem
