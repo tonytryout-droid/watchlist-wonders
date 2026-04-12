@@ -1,6 +1,6 @@
 import { useState, type RefObject } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Play, Search, SkipForward } from "lucide-react";
+import { Play, Search, SkipForward, SlidersHorizontal } from "lucide-react";
 import { HeroBanner } from "@/components/layout/HeroBanner";
 import { QuickAddBar } from "@/components/QuickAddBar";
 import { Rail } from "@/components/bookmarks/Rail";
@@ -8,12 +8,15 @@ import { PosterCard } from "@/components/bookmarks/PosterCard";
 import { EmptyStateGuide } from "@/components/EmptyStateGuide";
 import { MissedSchedulesBanner } from "@/components/schedules/MissedSchedulesBanner";
 import { MoodPicker } from "@/components/dashboard/MoodPicker";
+import { FilterPanel } from "@/components/dashboard/FilterPanel";
+import { WatchBar } from "@/components/dashboard/WatchBar";
 import { RecommendationRail } from "@/components/recommendations/RecommendationRail";
 import { Button } from "@/components/ui/button";
 import { cn, openSafe } from "@/lib/utils";
 import type { Bookmark, Schedule } from "@/types/database";
 import type { DecisionRail, RecommendationInsights } from "@/engine/decisionEngine";
 import type { SimilarTitle } from "@/hooks/useSimilarTitles";
+import type { AdvancedFilters } from "@/components/dashboard/FilterPanel";
 
 type ScheduleWithBookmark = {
   id: string;
@@ -76,6 +79,18 @@ interface DashboardShellProps {
   onDismissMissedBanner: () => void;
   onDemoInputChange: (value: string) => void;
   onStartDemo: () => void;
+  // Advanced filters
+  advancedFilters: AdvancedFilters;
+  showFilterPanel: boolean;
+  onFilterToggle: () => void;
+  advancedFilterCount: number;
+  onFilterApply: (filters: AdvancedFilters) => void;
+  onFilterReset: () => void;
+  filterResultCount: number;
+  // Trending discovery rail (shown when user has < 10 bookmarks)
+  trendingCandidates: SimilarTitle[];
+  trendingRailSavingItemId: string | null;
+  onSaveTrendingItem: (item: SimilarTitle) => void;
 }
 
 function RevealSection({
@@ -246,6 +261,16 @@ export function DashboardShell({
   onDismissMissedBanner,
   onDemoInputChange,
   onStartDemo,
+  advancedFilters,
+  showFilterPanel,
+  onFilterToggle,
+  advancedFilterCount,
+  onFilterApply,
+  onFilterReset,
+  filterResultCount,
+  trendingCandidates,
+  trendingRailSavingItemId,
+  onSaveTrendingItem,
 }: DashboardShellProps) {
   const navigate = useNavigate();
 
@@ -336,13 +361,50 @@ export function DashboardShell({
               </div>
             )}
 
-            {/* ── Mood Picker — ALWAYS first, intent-first entry ── */}
+            {/* ── WatchBar — JustWatch-style provider + quick preset strip ── */}
             {!isEmpty && !demoActive && (
-              <div className="px-4 sm:px-6 lg:px-8 pt-3 pb-3">
+              <div className="pt-2 pb-1">
+                <WatchBar filters={advancedFilters} onApply={onFilterApply} />
+              </div>
+            )}
+
+            {/* ── Filter bar — persistent filter access with count badge ── */}
+            {!isEmpty && !demoActive && (
+              <div className="px-4 sm:px-6 lg:px-8 pt-1 pb-1 flex items-center justify-between gap-2">
                 <MoodPicker
                   activeMood={activeMood}
                   onMoodSelect={onMoodSelect}
                   label="What do you feel like?"
+                />
+                <button
+                  type="button"
+                  onClick={onFilterToggle}
+                  className={cn(
+                    "shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors",
+                    showFilterPanel || advancedFilterCount > 0
+                      ? "bg-primary/10 border-primary text-primary"
+                      : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                  )}
+                  aria-label={advancedFilterCount > 0 ? `Filters (${advancedFilterCount} active)` : "Filters"}
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  <span>Filters</span>
+                  {advancedFilterCount > 0 && (
+                    <span className="flex items-center justify-center w-4 h-4 rounded-full bg-primary text-white text-[10px] font-bold leading-none">
+                      {advancedFilterCount}
+                    </span>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* ── FilterPanel — shown when toggled ── */}
+            {!isEmpty && !demoActive && showFilterPanel && (
+              <div className="pb-2">
+                <FilterPanel
+                  onApply={onFilterApply}
+                  onReset={onFilterReset}
+                  resultCount={filterResultCount}
                 />
               </div>
             )}
@@ -477,6 +539,18 @@ export function DashboardShell({
                         <Link to="/vault">Open Vault</Link>
                       </Button>
                     </div>
+                  </div>
+                )}
+
+                {trendingCandidates.length > 0 && !demoActive && (
+                  <div className="px-4 sm:px-6 lg:px-8 pt-2">
+                    <RecommendationRail
+                      title="Trending Now"
+                      subtitle="Popular titles to kick-start your watchlist"
+                      items={trendingCandidates}
+                      onSave={onSaveTrendingItem}
+                      savingItemId={trendingRailSavingItemId}
+                    />
                   </div>
                 )}
 
