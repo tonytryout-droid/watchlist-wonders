@@ -19,12 +19,14 @@
  * - Von Restorff: Active filter count badge stands out (primary color) among muted text
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { cn, getMoodEmoji } from "@/lib/utils";
 import { SlidersHorizontal, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
+
+const FILTER_STORAGE_KEY = "wm_dashboard_filters";
 
 const PROVIDERS = ["youtube", "imdb", "netflix", "instagram", "facebook", "x", "generic"] as const;
 
@@ -78,11 +80,40 @@ const PROVIDER_LABELS: Record<string, string> = {
   instagram: "Instagram", facebook: "Facebook", x: "X / Twitter", generic: "Web",
 };
 
+function loadStoredFilters(): { providers: string[]; moods: string[]; runtimeMin: number | null; runtimeMax: number | null } | null {
+  try {
+    const raw = localStorage.getItem(FILTER_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function findPresetLabel(runtimeMin: number | null, runtimeMax: number | null): RuntimePreset {
+  const found = RUNTIME_PRESETS.find((p) => p.min === runtimeMin && p.max === runtimeMax);
+  return found?.label ?? "Any";
+}
+
 export function FilterPanel({ onApply, onReset, resultCount, className }: FilterPanelProps) {
-  const [providers, setProviders] = useState<string[]>([]);
-  const [moods, setMoods] = useState<string[]>([]);
-  const [runtimePreset, setRuntimePreset] = useState<RuntimePreset>("Any");
+  const stored = loadStoredFilters();
+  const [providers, setProviders] = useState<string[]>(() => stored?.providers ?? []);
+  const [moods, setMoods] = useState<string[]>(() => stored?.moods ?? []);
+  const [runtimePreset, setRuntimePreset] = useState<RuntimePreset>(
+    () => findPresetLabel(stored?.runtimeMin ?? null, stored?.runtimeMax ?? null)
+  );
   const [showAllMoods, setShowAllMoods] = useState(false);
+
+  // Persist filters to localStorage whenever they change
+  useEffect(() => {
+    try {
+      const chosen = RUNTIME_PRESETS.find((p) => p.label === runtimePreset)!;
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify({ providers, moods, runtimeMin: chosen.min, runtimeMax: chosen.max }),
+      );
+    } catch { /* ignore quota errors */ }
+  }, [providers, moods, runtimePreset]);
 
   const toggleProvider = (p: string) =>
     setProviders((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
@@ -107,6 +138,7 @@ export function FilterPanel({ onApply, onReset, resultCount, className }: Filter
     setMoods([]);
     setRuntimePreset("Any");
     setShowAllMoods(false);
+    try { localStorage.removeItem(FILTER_STORAGE_KEY); } catch { /* ignore */ }
     onReset();
   };
 
