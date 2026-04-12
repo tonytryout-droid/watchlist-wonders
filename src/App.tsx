@@ -11,6 +11,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NotificationListenerMount } from "@/hooks/useNotificationListener";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { FEATURES } from "@/config/features";
 
 const Index = lazy(() => import("./pages/Index"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -90,25 +91,49 @@ const App = () => (
                   <Route path="/terms" element={<ErrorBoundary><Terms /></ErrorBoundary>} />
                   <Route path="/privacy" element={<ErrorBoundary><Privacy /></ErrorBoundary>} />
                   {/* Public routes */}
-                  <Route path="/u/:uid" element={<ErrorBoundary><PublicProfile /></ErrorBoundary>} />
-                  <Route path="/share/:token" element={<ErrorBoundary><ShareView /></ErrorBoundary>} />
+                  {FEATURES.socialFeatures && (
+                    <Route path="/u/:uid" element={<ErrorBoundary><PublicProfile /></ErrorBoundary>} />
+                  )}
+                  {FEATURES.socialFeatures && (
+                    <Route path="/share/:token" element={<ErrorBoundary><ShareView /></ErrorBoundary>} />
+                  )}
                   {/* PWA Web Share Target — handles its own auth redirect */}
                   <Route path="/share-target" element={<ErrorBoundary><ShareTarget /></ErrorBoundary>} />
                   <Route element={<ProtectedRoute />}>
                     <Route element={<AppLayout />}>
+                      {/* ── Core routes (always on) ── */}
                       <Route path="/dashboard" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
-                      <Route path="/vault" element={<ErrorBoundary><Vault /></ErrorBoundary>} />
                       <Route path="/new" element={<ErrorBoundary><NewBookmark /></ErrorBoundary>} />
-                      <Route path="/tonight" element={<ErrorBoundary><TonightPick /></ErrorBoundary>} />
-                      <Route path="/plans" element={<ErrorBoundary><Plans /></ErrorBoundary>} />
-                      <Route path="/plans/:id" element={<ErrorBoundary><PlanDetail /></ErrorBoundary>} />
-                      <Route path="/notifications" element={<ErrorBoundary><Notifications /></ErrorBoundary>} />
-                      <Route path="/calendar" element={<ErrorBoundary><Calendar /></ErrorBoundary>} />
                       <Route path="/b/:id" element={<ErrorBoundary><BookmarkDetail /></ErrorBoundary>} />
                       <Route path="/settings" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
-                      <Route path="/stats" element={<ErrorBoundary><Stats /></ErrorBoundary>} />
-                      <Route path="/activity" element={<ErrorBoundary><Activity /></ErrorBoundary>} />
-                      <Route path="/import" element={<ErrorBoundary><Import /></ErrorBoundary>} />
+                      {FEATURES.tonightPick && (
+                        <Route path="/tonight" element={<ErrorBoundary><TonightPick /></ErrorBoundary>} />
+                      )}
+                      {/* ── Dimmed-down routes ── */}
+                      {FEATURES.vault && (
+                        <Route path="/vault" element={<ErrorBoundary><Vault /></ErrorBoundary>} />
+                      )}
+                      {FEATURES.watchPlans && (
+                        <Route path="/plans" element={<ErrorBoundary><Plans /></ErrorBoundary>} />
+                      )}
+                      {FEATURES.watchPlans && (
+                        <Route path="/plans/:id" element={<ErrorBoundary><PlanDetail /></ErrorBoundary>} />
+                      )}
+                      {FEATURES.notifications && (
+                        <Route path="/notifications" element={<ErrorBoundary><Notifications /></ErrorBoundary>} />
+                      )}
+                      {FEATURES.scheduling && (
+                        <Route path="/calendar" element={<ErrorBoundary><Calendar /></ErrorBoundary>} />
+                      )}
+                      {FEATURES.stats && (
+                        <Route path="/stats" element={<ErrorBoundary><Stats /></ErrorBoundary>} />
+                      )}
+                      {FEATURES.activityLog && (
+                        <Route path="/activity" element={<ErrorBoundary><Activity /></ErrorBoundary>} />
+                      )}
+                      {FEATURES.importBookmarks && (
+                        <Route path="/import" element={<ErrorBoundary><Import /></ErrorBoundary>} />
+                      )}
                     </Route>
                   </Route>
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

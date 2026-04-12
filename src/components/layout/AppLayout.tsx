@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { bookmarkService } from "@/services/bookmarks";
 import { notificationService } from "@/services/notifications";
 import { fetchUnreadNotificationCount } from "@/components/layout/appLayoutQueries";
+import { FEATURES } from "@/config/features";
 
 export function AppLayout() {
   const { user } = useAuth();
@@ -25,7 +26,7 @@ export function AppLayout() {
   const { data: unreadCount = 0 } = useQuery({
     queryKey: ["notifications-count"],
     queryFn: () => fetchUnreadNotificationCount(notificationService),
-    enabled: !!user,
+    enabled: !!user && FEATURES.notifications,
     staleTime: 60 * 1000,
   });
 
