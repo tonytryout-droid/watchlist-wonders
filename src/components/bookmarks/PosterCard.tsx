@@ -20,6 +20,7 @@ import { getNextStatus } from "@/engine/lifecycle";
 import { fetchTrailerEmbedUrlViaProxy } from "@/services/tmdbProxy";
 import { QuickScheduleSheet } from "@/components/schedules/QuickScheduleSheet";
 import { WatchModal } from "@/components/bookmarks/WatchModal";
+import { getProviderMeta } from "@/constants/providers";
 import type { Bookmark, Schedule } from "@/types/database";
 
 interface PosterCardProps {
@@ -51,29 +52,42 @@ interface PosterCardProps {
   schedule?: Schedule;
 }
 
-const PROVIDER_COLOR: Record<string, string> = {
-  youtube:        "bg-red-600",
-  netflix:        "bg-red-700",
-  imdb:           "bg-yellow-500",
-  instagram:      "bg-pink-500",
-  facebook:       "bg-blue-600",
-  x:              "bg-neutral-400",
-  letterboxd:     "bg-green-600",
-  tiktok:         "bg-neutral-900",
-  reddit:         "bg-orange-500",
-  rottentomatoes: "bg-red-500",
-  disney:         "bg-blue-800",
-  disneyplus:     "bg-blue-800",
-  prime:          "bg-sky-600",
-  primevideo:     "bg-sky-600",
-  twitch:         "bg-purple-600",
-  appletv:        "bg-zinc-900",
-  appletvplus:    "bg-zinc-900",
-  hbo:            "bg-purple-900",
-  hbomax:         "bg-purple-900",
-  peacock:        "bg-yellow-600",
-  generic:        "bg-neutral-500",
-};
+/** Small provider logo badge — shows favicon logo with color-dot fallback */
+function ProviderBadge({ provider, className }: { provider: string; className?: string }) {
+  const meta = getProviderMeta(provider);
+  const [imgError, setImgError] = useState(false);
+
+  if (meta.logoUrl && !imgError) {
+    return (
+      <div
+        className={cn(
+          "w-4 h-4 rounded-sm overflow-hidden bg-white/10 border border-black/20 flex items-center justify-center",
+          className,
+        )}
+        title={meta.label}
+      >
+        <img
+          src={meta.logoUrl}
+          alt={meta.label}
+          className="w-3.5 h-3.5 object-contain"
+          onError={() => setImgError(true)}
+          loading="lazy"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn("w-4 h-4 rounded-sm border border-black/20 flex items-center justify-center", meta.color, className)}
+      title={meta.label}
+    >
+      <span className="text-[8px] font-bold text-white leading-none">
+        {meta.label.charAt(0).toUpperCase()}
+      </span>
+    </div>
+  );
+}
 
 function formatRuntime(minutes: number) {
   if (minutes < 60) return `${minutes}m`;
@@ -538,12 +552,9 @@ export function PosterCard({
               </div>
             )}
 
-            {/* Provider dot */}
+            {/* Provider logo badge */}
             <div className={cn("absolute left-1.5", rank ? "top-7" : "top-1.5")}>
-              <div
-                title={bookmark.provider}
-                className={cn("w-2.5 h-2.5 rounded-full border border-black/30", PROVIDER_COLOR[bookmark.provider] || "bg-neutral-500")}
-              />
+              <ProviderBadge provider={bookmark.provider} />
             </div>
 
             {/* New badge */}
@@ -580,6 +591,49 @@ export function PosterCard({
                   <Globe className="w-2.5 h-2.5" />
                   Public
                 </span>
+              </div>
+            )}
+
+            {/* Leaving soon badge */}
+            {!isSelectable && (() => {
+              const providers = bookmark.availability?.providers ?? [];
+              const now = Date.now();
+              const soonest = providers
+                .filter((p) => p.leaving_date)
+                .map((p) => ({ name: p.name, ms: new Date(p.leaving_date!).getTime() - now }))
+                .filter((p) => p.ms > 0 && p.ms <= 14 * 24 * 60 * 60 * 1000)
+                .sort((a, b) => a.ms - b.ms)[0];
+              if (!soonest) return null;
+              const days = Math.ceil(soonest.ms / (24 * 60 * 60 * 1000));
+              return (
+                <div className="absolute top-1.5 left-6 z-10">
+                  <span className="text-[9px] font-bold bg-orange-600 text-white px-1.5 py-0.5 rounded-sm uppercase tracking-wide">
+                    Leaving {days === 1 ? "tomorrow" : `in ${days}d`}
+                  </span>
+                </div>
+              );
+            })()}
+
+            {/* Watch Now CTA — visible on hover (desktop) or always (mobile) when availability exists */}
+            {!isSelectable && (bookmark.availability?.providers?.length ?? 0) > 0 && (showExpanded || isMobile) && (
+              <div className="absolute bottom-7 left-1.5 right-1.5 z-20 flex justify-start">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const providers = bookmark.availability?.providers ?? [];
+                    if (providers.length === 1) {
+                      openSafe(providers[0].url);
+                    } else {
+                      setWatchModalOpen(true);
+                    }
+                  }}
+                  className="flex items-center gap-1 bg-white text-black text-[9px] font-bold px-2 py-1 rounded-sm shadow-md hover:bg-white/90 transition-colors uppercase tracking-wide"
+                >
+                  <Play className="w-2.5 h-2.5 fill-current" />
+                  Watch
+                </button>
               </div>
             )}
 

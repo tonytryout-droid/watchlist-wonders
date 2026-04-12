@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import { ArrowRight, Check, Link2, Sparkles, X } from "lucide-react";
+import { ArrowRight, Check, Link2, Sparkles, X, FileDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { getSafeErrorMessage } from "@/lib/errorMessage";
 import { toast } from "sonner";
+import { getProviderMeta } from "@/constants/providers";
 import type { Bookmark } from "@/types/database";
 
 const GENRE_OPTIONS = [
@@ -19,13 +20,33 @@ const GENRE_OPTIONS = [
   "Romance",
 ] as const;
 
+// Extended provider list — provider key maps to PROVIDER_META for logos
 const PROVIDER_OPTIONS = [
-  "Netflix",
-  "Prime Video",
-  "Disney+",
-  "YouTube",
-  "HBO Max",
+  { key: "netflix",    label: "Netflix" },
+  { key: "primevideo", label: "Prime Video" },
+  { key: "disneyplus", label: "Disney+" },
+  { key: "youtube",    label: "YouTube" },
+  { key: "hbomax",     label: "Max (HBO)" },
+  { key: "appletv",    label: "Apple TV+" },
+  { key: "peacock",    label: "Peacock" },
+  { key: "tiktok",     label: "TikTok" },
+  { key: "imdb",       label: "IMDb" },
+  { key: "instagram",  label: "Instagram" },
 ] as const;
+
+// Persist provider selections to dashboard filters so WatchBar pre-populates
+const FILTER_STORAGE_KEY = "wm_dashboard_filters";
+
+function saveProvidersToFilters(providerKeys: string[]) {
+  try {
+    const raw = localStorage.getItem(FILTER_STORAGE_KEY);
+    const existing = raw ? JSON.parse(raw) : {};
+    localStorage.setItem(
+      FILTER_STORAGE_KEY,
+      JSON.stringify({ ...existing, providers: providerKeys }),
+    );
+  } catch { /* ignore */ }
+}
 
 export interface OnboardingSuggestion {
   id: string;
@@ -104,6 +125,10 @@ export function WelcomeFlow({ open, onDismiss, onAddSuggestion, onComplete }: We
   const handleComplete = async () => {
     setIsCompleting(true);
     try {
+      // Pre-populate WatchBar with selected providers
+      if (providers.length > 0) {
+        saveProvidersToFilters(providers);
+      }
       await onComplete({
         genres,
         providers,
@@ -143,7 +168,46 @@ export function WelcomeFlow({ open, onDismiss, onAddSuggestion, onComplete }: We
           </p>
         </div>
 
+        {/* Step 0 — Provider selection FIRST (powers all personalization) */}
         {step === 0 && (
+          <div>
+            <h3 className="text-sm font-semibold text-foreground mb-1">Where do you watch?</h3>
+            <p className="text-xs text-muted-foreground mb-3">Select the services you have — we'll prioritize your content.</p>
+            <div className="flex flex-wrap gap-2">
+              {PROVIDER_OPTIONS.map(({ key, label }) => {
+                const selected = providers.includes(key);
+                const meta = getProviderMeta(key);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => toggleTag(key, providers, setProviders)}
+                    aria-pressed={selected}
+                    className={cn(
+                      "flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors",
+                      selected
+                        ? "bg-primary/10 text-primary border-primary"
+                        : "bg-background text-foreground border-border hover:border-primary/60",
+                    )}
+                  >
+                    {meta.logoUrl ? (
+                      <img src={meta.logoUrl} alt="" className="w-4 h-4 object-contain rounded-sm" loading="lazy" />
+                    ) : (
+                      <span className={cn("w-4 h-4 rounded-sm flex items-center justify-center text-[8px] font-bold text-white", meta.color)}>
+                        {label.charAt(0)}
+                      </span>
+                    )}
+                    {label}
+                    {selected && <Check className="w-3 h-3 ml-0.5 shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Step 1 — Genre / taste selection */}
+        {step === 1 && (
           <div>
             <h3 className="text-sm font-semibold text-foreground mb-3">What do you love watching?</h3>
             <div className="flex flex-wrap gap-2">
@@ -163,33 +227,6 @@ export function WelcomeFlow({ open, onDismiss, onAddSuggestion, onComplete }: We
                     )}
                   >
                     {genre}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {step === 1 && (
-          <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Where do you watch?</h3>
-            <div className="flex flex-wrap gap-2">
-              {PROVIDER_OPTIONS.map((provider) => {
-                const selected = providers.includes(provider);
-                return (
-                  <button
-                    key={provider}
-                    type="button"
-                    onClick={() => toggleTag(provider, providers, setProviders)}
-                    aria-pressed={selected}
-                    className={cn(
-                      "rounded-full border px-3 py-1.5 text-sm transition-colors",
-                      selected
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-background text-foreground border-border hover:border-primary/60",
-                    )}
-                  >
-                    {provider}
                   </button>
                 );
               })}
@@ -241,19 +278,35 @@ export function WelcomeFlow({ open, onDismiss, onAddSuggestion, onComplete }: We
         )}
 
         {step === 2 && (
-          <div className="mt-5 flex items-center gap-3 rounded-xl border border-dashed border-primary/30 bg-primary/5 px-4 py-3">
-            <Link2 className="w-4 h-4 text-primary shrink-0" />
-            <p className="text-sm text-muted-foreground flex-1">
-              See something on TikTok or YouTube?{" "}
-              <button
-                type="button"
-                onClick={() => { onDismiss(); navigate("/new"); }}
-                className="text-primary underline underline-offset-2 hover:text-primary/80 font-medium"
-              >
-                Paste the link
-              </button>{" "}
-              — we'll find the movie automatically.
-            </p>
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center gap-3 rounded-xl border border-dashed border-primary/30 bg-primary/5 px-4 py-3">
+              <Link2 className="w-4 h-4 text-primary shrink-0" />
+              <p className="text-sm text-muted-foreground flex-1">
+                See something on TikTok or YouTube?{" "}
+                <button
+                  type="button"
+                  onClick={() => { onDismiss(); navigate("/new"); }}
+                  className="text-primary underline underline-offset-2 hover:text-primary/80 font-medium"
+                >
+                  Paste the link
+                </button>{" "}
+                — we'll find the movie automatically.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 rounded-xl border border-dashed border-border px-4 py-3">
+              <FileDown className="w-4 h-4 text-muted-foreground shrink-0" />
+              <p className="text-sm text-muted-foreground flex-1">
+                Already have an IMDb watchlist?{" "}
+                <button
+                  type="button"
+                  onClick={() => { onDismiss(); navigate("/import"); }}
+                  className="text-primary underline underline-offset-2 hover:text-primary/80 font-medium"
+                >
+                  Import it in seconds
+                </button>
+                {" "}— no manual entry needed.
+              </p>
+            </div>
           </div>
         )}
 

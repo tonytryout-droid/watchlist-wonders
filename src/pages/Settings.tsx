@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
-import { User, Mail, LogOut, Shield, Bell, Camera, Trash2, Loader2, Globe, ExternalLink, Download } from "lucide-react";
+import { User, Mail, LogOut, Shield, Bell, Camera, Trash2, Loader2, Globe, ExternalLink, Download, Upload } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { bookmarkService } from "@/services/bookmarks";
@@ -518,6 +518,29 @@ const Settings = () => {
                 <Separator />
                 <Button variant="ghost" size="sm" className="w-full text-muted-foreground text-xs" onClick={handleResetViaEmail}>
                   Forgot your password? Send a reset email instead
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* ── Import ──────────────────────────────────────────── */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Upload className="w-5 h-5" />
+                  Import Watchlist
+                </CardTitle>
+                <CardDescription>
+                  Bring in your existing watchlist from IMDb in one go — no manual entry needed
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button
+                  variant="outline"
+                  onClick={() => navigate("/import")}
+                  className="w-full sm:w-auto"
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  Import from IMDb
                 </Button>
               </CardContent>
             </Card>

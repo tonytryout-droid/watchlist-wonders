@@ -26,6 +26,8 @@ export interface AvailabilityProvider {
   providerId: number;
   logoUrl: string | null;
   score: number;
+  /** ISO date string — when this title leaves the provider. Optional. */
+  leaving_date?: string | null;
 }
 
 export interface BookmarkAvailability {
