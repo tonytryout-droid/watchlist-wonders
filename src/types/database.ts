@@ -1,5 +1,44 @@
 import type { BookmarkAvailability } from "@/services/watchAvailability";
 
+export interface TmdbStreamingProvider {
+  id: number;
+  name: string;
+  logoPath: string | null;
+  logoUrl: string | null;
+}
+
+export interface TmdbStreamingAvailability {
+  flatrate: TmdbStreamingProvider[];
+  rent: TmdbStreamingProvider[];
+  buy: TmdbStreamingProvider[];
+  free: TmdbStreamingProvider[];
+  link: string;
+}
+
+export interface TmdbEnrichment {
+  tmdbId: number;
+  mediaType: "movie" | "tv";
+  title: string;
+  originalTitle: string;
+  overview: string | null;
+  posterPath: string | null;
+  posterUrl: string | null;
+  backdropPath: string | null;
+  backdropUrl: string | null;
+  releaseDate: string | null;
+  releaseYear: number | null;
+  rating: number | null;
+  voteCount: number | null;
+  popularity: number | null;
+  genreIds: number[];
+  genres: string[];
+  runtimeMinutes: number | null;
+  trailerUrl: string | null;
+  canonicalUrl: string | null;
+  streaming: Record<string, TmdbStreamingAvailability>;
+  enrichedAt: string;
+}
+
 export interface Bookmark {
   id: string;
   user_id: string;
@@ -37,6 +76,10 @@ export interface Bookmark {
   queue_status?: "queued" | "up_next" | "in_progress" | "completed";
   progress_percent?: number;       // 0–100 watch progress
   availability?: BookmarkAvailability | null;
+  enriched?: boolean;
+  enriched_at?: string | null;
+  enrich_fail_reason?: string | null;
+  tmdb?: TmdbEnrichment | null;
 }
 
 export interface Attachment {

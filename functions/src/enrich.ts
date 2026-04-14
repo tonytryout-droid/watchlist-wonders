@@ -605,8 +605,18 @@ async function enrichYouTube(videoId: string): Promise<EnrichResponse> {
 
     const data = (await res.json()) as {
       items?: Array<{
-        snippet?: Record<string, unknown>;
-        contentDetails?: Record<string, unknown>;
+        snippet?: {
+          title?: string;
+          description?: string;
+          thumbnails?: {
+            maxres?: { url?: string };
+            high?: { url?: string };
+            medium?: { url?: string };
+          };
+        };
+        contentDetails?: {
+          duration?: string;
+        };
       }>;
     };
     const item = data.items?.[0];
@@ -1293,14 +1303,33 @@ async function enrichIMDb(url: string): Promise<EnrichResponse> {
     if (!res.ok) return enrichViaOG(url, 'imdb');
 
     const data = (await res.json()) as {
-      tv_results?: Array<Record<string, unknown>>;
-      movie_results?: Array<Record<string, unknown>>;
+      tv_results?: Array<{
+        id?: number;
+        name?: string;
+        overview?: string;
+        poster_path?: string | null;
+        backdrop_path?: string | null;
+        first_air_date?: string;
+        vote_average?: number;
+      }>;
+      movie_results?: Array<{
+        id?: number;
+        title?: string;
+        overview?: string;
+        poster_path?: string | null;
+        backdrop_path?: string | null;
+        release_date?: string;
+        vote_average?: number;
+      }>;
     };
     const isTV = !!data.tv_results?.[0];
-    const result = isTV ? data.tv_results[0] : data.movie_results?.[0];
+    const result = isTV ? data.tv_results?.[0] : data.movie_results?.[0];
     if (!result) return enrichViaOG(url, 'imdb');
+    if (typeof result.id !== 'number') return enrichViaOG(url, 'imdb');
 
-    const rawDate = isTV ? result.first_air_date : result.release_date;
+    const rawDate = isTV
+      ? ('first_air_date' in result ? result.first_air_date : undefined)
+      : ('release_date' in result ? result.release_date : undefined);
     let runtimeMinutes: number | undefined;
     let genres: string[] | undefined;
     try {
@@ -1326,10 +1355,10 @@ async function enrichIMDb(url: string): Promise<EnrichResponse> {
     }
 
     return {
-      title: result.title ?? result.name,
+      title: ('title' in result ? result.title : undefined) ?? ('name' in result ? result.name : undefined),
       description: result.overview,
-      posterUrl: result.poster_path ? `https://image.tmdb.org/t/p/w500${result.poster_path}` : undefined,
-      backdropUrl: result.backdrop_path ? `https://image.tmdb.org/t/p/original${result.backdrop_path}` : undefined,
+      posterUrl: typeof result.poster_path === 'string' ? `https://image.tmdb.org/t/p/w500${result.poster_path}` : undefined,
+      backdropUrl: typeof result.backdrop_path === 'string' ? `https://image.tmdb.org/t/p/original${result.backdrop_path}` : undefined,
       releaseYear: rawDate ? parseInt(rawDate.slice(0, 4), 10) || undefined : undefined,
       contentType: toContentType(isTV ? 'tv' : 'movie', false),
       mediaType: isTV ? 'tv' : 'movie',
