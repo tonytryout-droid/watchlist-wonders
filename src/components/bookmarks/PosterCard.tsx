@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useBookmarkEnrichment } from "@/hooks/useBookmarkEnrichment";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Play, Plus, Check, CalendarPlus, MoreHorizontal, ExternalLink,
   Trash2, Undo2, Eye, BookMarked, Minus, ThumbsUp, Info, Film, Star, SkipForward,
-  Lock, Unlock, Globe, Share2,
+  Lock, Unlock, Globe, Share2, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -245,6 +247,8 @@ export function PosterCard({
   schedule,
 }: PosterCardProps) {
   const isMobile = useIsMobile();
+  const { user } = useAuth();
+  const enrichmentState = useBookmarkEnrichment(bookmark.id, user?.uid);
   const [isHovered, setIsHovered] = useState(false);
   const [isTouched, setIsTouched] = useState(false);
   const [imageError, setImageError] = useState(false);
@@ -566,6 +570,16 @@ export function PosterCard({
               </div>
             )}
 
+            {/* Enrichment pending indicator */}
+            {enrichmentState.status === "pending" && !isSelectable && !isNew && (
+              <div className="absolute top-1.5 right-1.5 z-10">
+                <span className="flex items-center gap-1 text-[9px] font-bold bg-purple-600/90 text-white px-1.5 py-0.5 rounded-sm uppercase tracking-wide animate-pulse">
+                  <Sparkles className="w-2.5 h-2.5" />
+                  Enriching
+                </span>
+              </div>
+            )}
+
             {/* Schedule badge */}
             {schedule && bookmark.queue_status !== "up_next" && !isNew && !isSelectable && (
               <div className="absolute top-1.5 right-1.5">
@@ -604,11 +618,20 @@ export function PosterCard({
                 .filter((p) => p.ms > 0 && p.ms <= 14 * 24 * 60 * 60 * 1000)
                 .sort((a, b) => a.ms - b.ms)[0];
               if (!soonest) return null;
-              const days = Math.ceil(soonest.ms / (24 * 60 * 60 * 1000));
+              const dayMs = 24 * 60 * 60 * 1000;
+              const days = Math.floor(soonest.ms / dayMs);
+              let label: string;
+              if (days === 0) {
+                label = "today";
+              } else if (days === 1) {
+                label = "tomorrow";
+              } else {
+                label = `in ${days}d`;
+              }
               return (
                 <div className="absolute top-1.5 left-6 z-10">
                   <span className="text-[9px] font-bold bg-orange-600 text-white px-1.5 py-0.5 rounded-sm uppercase tracking-wide">
-                    Leaving {days === 1 ? "tomorrow" : `in ${days}d`}
+                    Leaving {label}
                   </span>
                 </div>
               );

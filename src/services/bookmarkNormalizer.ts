@@ -121,14 +121,21 @@ export function normalizeBookmark(id: string, raw: unknown): Bookmark {
   const data = asRecord(raw);
   const now = new Date().toISOString();
   const status = normalizeStatus(data.status);
-  const createdAt = asIsoString(data.created_at, now) ?? now;
-  const updatedAt = asIsoString(data.updated_at, createdAt) ?? createdAt;
+  const createdAt = asIsoString(data.created_at ?? data.createdAt, now) ?? now;
+  const updatedAt = asIsoString(data.updated_at ?? data.updatedAt, createdAt) ?? createdAt;
 
   const metadata = asRecord(data.metadata);
   const availability =
     (asOptionalRecord(data.availability) ?? asOptionalRecord(metadata.availability)) as
       | Bookmark["availability"]
       | undefined;
+  const tmdb = (asOptionalRecord(data.tmdb) ?? null) as Bookmark["tmdb"] | null;
+  const enrichedAt = asIsoString(data.enriched_at ?? data.enrichedAt);
+  const enrichFailReason = asTrimmedString(data.enrich_fail_reason ?? data.enrichFailReason);
+  const enriched =
+    typeof data.enriched === "boolean"
+      ? data.enriched
+      : tmdb !== null || enrichedAt !== null;
 
   return {
     id,
@@ -162,5 +169,9 @@ export function normalizeBookmark(id: string, raw: unknown): Bookmark {
     queue_status: normalizeQueueStatus(data.queue_status, status),
     progress_percent: clampPercent(data.progress_percent),
     availability: availability ?? null,
+    enriched,
+    enriched_at: enrichedAt,
+    enrich_fail_reason: enrichFailReason,
+    tmdb,
   };
 }

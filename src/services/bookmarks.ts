@@ -16,6 +16,7 @@ import { auth, db } from '@/lib/firebase';
 import type { Bookmark } from '@/types/database';
 import { buildLifecycleUpdate, deriveLifecycleState } from "@/engine/lifecycle";
 import { normalizeBookmark } from '@/services/bookmarkNormalizer';
+import { inferBookmarkEnrichmentState } from '@/lib/tmdbEnrichment';
 import {
   DEFAULT_WATCH_REGION,
   resolveAndFetchAvailability,
@@ -149,6 +150,21 @@ export const bookmarkService = {
     const baseMetadata = bookmark.metadata || {};
     const initialStatus = bookmark.status || "backlog";
     const initialQueueStatus = bookmark.queue_status ?? "queued";
+    const inferredEnrichment = inferBookmarkEnrichmentState(
+      {
+        ...bookmark,
+        title: bookmark.title,
+        type: bookmark.type || "movie",
+        provider: bookmark.provider || "generic",
+        metadata: baseMetadata,
+        canonical_url: bookmark.canonical_url ?? null,
+        runtime_minutes: bookmark.runtime_minutes ?? null,
+        release_year: bookmark.release_year ?? null,
+        poster_url: bookmark.poster_url ?? null,
+        backdrop_url: bookmark.backdrop_url ?? null,
+      },
+      now,
+    );
     validateBookmarkCreateVisibility({
       is_vaulted: bookmark.is_vaulted,
       is_public: bookmark.is_public,
@@ -211,6 +227,10 @@ export const bookmarkService = {
       queue_status: initialQueueStatus,
       progress_percent: bookmark.progress_percent ?? 0,
       availability: bookmark.availability ?? null,
+      enriched: inferredEnrichment.enriched,
+      enriched_at: inferredEnrichment.enriched_at,
+      enrich_fail_reason: inferredEnrichment.enrich_fail_reason,
+      tmdb: inferredEnrichment.tmdb,
       created_at: now,
       updated_at: now,
     };
