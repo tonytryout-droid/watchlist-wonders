@@ -115,7 +115,26 @@ function isNewBookmark(createdAt: string) {
   return now.getTime() - created.getTime() < 24 * 60 * 60 * 1000;
 }
 
-const trailerUrlCache = new Map<string, string | null>();
+class LruCache<K, V> {
+  private readonly max: number;
+  private readonly map = new Map<K, V>();
+  constructor(max: number) { this.max = max; }
+  has(key: K) { return this.map.has(key); }
+  get(key: K): V | undefined {
+    if (!this.map.has(key)) return undefined;
+    const val = this.map.get(key)!;
+    this.map.delete(key);
+    this.map.set(key, val);
+    return val;
+  }
+  set(key: K, val: V) {
+    if (this.map.has(key)) this.map.delete(key);
+    else if (this.map.size >= this.max) this.map.delete(this.map.keys().next().value!);
+    this.map.set(key, val);
+  }
+}
+
+const trailerUrlCache = new LruCache<string, string | null>(100);
 
 function getMetadataNumber(metadata: Record<string, unknown>, keys: string[]): number | null {
   for (const key of keys) {

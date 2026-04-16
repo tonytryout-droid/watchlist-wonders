@@ -39,6 +39,29 @@ export interface TmdbEnrichment {
   enrichedAt: string;
 }
 
+/** All documented keys stored in the bookmark metadata bag.
+ *  Add new keys here rather than sprinkling raw strings throughout the codebase.
+ *  The index signature allows service-specific extension while keeping known keys typed.
+ */
+export interface BookmarkMetadata {
+  // Lifecycle tracking
+  lifecycle_state?: unknown;
+  lifecycle_updated_at?: string;
+  // Episode tracking (series only)
+  episodes_watched?: number;
+  total_episodes?: number;
+  // Trailer / video links
+  trailer_url?: string;
+  youtube_trailer_url?: string;
+  // TMDB identifier — tmdb_id is canonical; tmdbId is a legacy alias, do not write new values to it
+  tmdb_id?: number;
+  /** @deprecated use tmdb_id */
+  tmdbId?: number;
+  // Streaming availability snapshot (mirrors top-level availability field)
+  availability?: unknown;
+  [key: string]: unknown;
+}
+
 export interface Bookmark {
   id: string;
   user_id: string;
@@ -56,7 +79,7 @@ export interface Bookmark {
   tags: string[];
   mood_tags: string[];
   notes: string | null;
-  metadata: Record<string, unknown>;
+  metadata: BookmarkMetadata;
   last_shown_at: string | null;
   shown_count: number;
   created_at: string;
