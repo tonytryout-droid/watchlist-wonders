@@ -9,8 +9,11 @@ import {
   query,
   where,
   orderBy,
+  limit,
+  startAfter,
   increment,
   runTransaction,
+  type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { Bookmark } from '@/types/database';
@@ -98,16 +101,44 @@ async function prefetchAvailabilityForBookmark(params: {
 
 export const bookmarkService = {
   /**
-   * Get all bookmarks for the current user
+   * Get bookmarks for the current user, capped at safetyLimit to avoid
+   * unbounded reads. Use getBookmarksPage() for cursor-based pagination.
    */
-  async getBookmarks(): Promise<Bookmark[]> {
+  async getBookmarks(safetyLimit = 500): Promise<Bookmark[]> {
     const uid = getUid();
     try {
-      const q = query(bookmarksCol(uid), orderBy('created_at', 'desc'));
+      const q = query(bookmarksCol(uid), orderBy('created_at', 'desc'), limit(safetyLimit));
       const snap = await getDocs(q);
       return snap.docs.map(docToBookmark);
     } catch (error) {
       console.error('[bookmarkService] getBookmarks failed', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Cursor-based paginated fetch. Returns bookmarks and an opaque cursor
+   * for the next page (undefined when the last page has been reached).
+   */
+  async getBookmarksPage(
+    pageSize = 50,
+    cursor?: QueryDocumentSnapshot,
+  ): Promise<{ bookmarks: Bookmark[]; nextCursor?: QueryDocumentSnapshot }> {
+    const uid = getUid();
+    try {
+      const constraints = cursor
+        ? [orderBy('created_at', 'desc'), limit(pageSize), startAfter(cursor)]
+        : [orderBy('created_at', 'desc'), limit(pageSize)];
+      const q = query(bookmarksCol(uid), ...constraints);
+      const snap = await getDocs(q);
+      const bookmarks = snap.docs.map(docToBookmark);
+      const nextCursor =
+        snap.docs.length === pageSize
+          ? (snap.docs[snap.docs.length - 1] as QueryDocumentSnapshot)
+          : undefined;
+      return { bookmarks, nextCursor };
+    } catch (error) {
+      console.error('[bookmarkService] getBookmarksPage failed', error);
       throw error;
     }
   },
@@ -252,39 +283,21 @@ export const bookmarkService = {
   async updateBookmark(id: string, updates: Partial<Bookmark>): Promise<Bookmark> {
     const uid = getUid();
     const ref = doc(db, 'users', uid, 'bookmarks', id);
-    if (updates.is_vaulted !== undefined || updates.is_public !== undefined) {
-      const currentSnap = await getDoc(ref);
-      if (!currentSnap.exists()) throw new Error('Bookmark not found');
-      const currentData = currentSnap.data() as Partial<Bookmark>;
-      validateBookmarkUpdateVisibility(
-        {
-          is_vaulted: currentData.is_vaulted,
-          is_public: currentData.is_public,
-        },
-        {
-          is_vaulted: updates.is_vaulted,
-          is_public: updates.is_public,
-        },
-      );
-    }
     const { metadata, availability, ...restUpdates } = updates;
-    
-    // Define the set of fields that are safe to update (allow-list)
-    // Exclude immutable fields: id, user_id, created_at, share_token
+
     const allowedUpdateFields = new Set<string>([
       'title', 'type', 'provider', 'source_url', 'canonical_url',
       'platform_label', 'status', 'runtime_minutes', 'release_year',
       'poster_url', 'backdrop_url', 'tags', 'mood_tags', 'notes',
       'last_shown_at', 'shown_count', 'user_rating', 'user_review',
       'watched_at', 'is_public', 'is_vaulted', 'priority',
-      'queue_status', 'progress_percent'
+      'queue_status', 'progress_percent',
     ]);
-    
-    // Filter restUpdates to only include allowed mutable fields
+
     const filteredUpdates = Object.entries(restUpdates)
       .filter(([key]) => allowedUpdateFields.has(key))
       .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
-    
+
     const nextUpdates: Record<string, unknown> = {
       ...filteredUpdates,
       updated_at: new Date().toISOString(),
@@ -299,7 +312,26 @@ export const bookmarkService = {
       nextUpdates["metadata.availability"] = availability;
     }
 
-    await updateDoc(ref, nextUpdates);
+    const needsVisibilityCheck = updates.is_vaulted !== undefined || updates.is_public !== undefined;
+
+    if (needsVisibilityCheck) {
+      // Read + validate + write atomically so concurrent edits can't slip an
+      // invalid visibility state (e.g. is_vaulted=true AND is_public=true) past
+      // the check between the getDoc and updateDoc calls.
+      await runTransaction(db, async (transaction) => {
+        const currentSnap = await transaction.get(ref);
+        if (!currentSnap.exists()) throw new Error('Bookmark not found');
+        const currentData = normalizeBookmark(currentSnap.id, currentSnap.data());
+        validateBookmarkUpdateVisibility(
+          { is_vaulted: currentData.is_vaulted, is_public: currentData.is_public },
+          { is_vaulted: updates.is_vaulted, is_public: updates.is_public },
+        );
+        transaction.update(ref, nextUpdates);
+      });
+    } else {
+      await updateDoc(ref, nextUpdates);
+    }
+
     const snap = await getDoc(ref);
     if (!snap.exists()) throw new Error('Bookmark not found after update');
     return docToBookmark(snap);
@@ -352,13 +384,16 @@ export const bookmarkService = {
   },
 
   /**
-   * Get backlog items for Tonight Pick (runtime <= 90 minutes)
+   * Get backlog items for Tonight Pick (runtime <= 90 minutes or unknown).
+   * Capped at 200 server-side; null-runtime items can't be excluded by Firestore
+   * so client-side filtering is intentional here.
    */
   async getTonightCandidates(): Promise<Bookmark[]> {
     const uid = getUid();
     const q = query(
       bookmarksCol(uid),
       where('status', '==', 'backlog'),
+      limit(200),
     );
     const snap = await getDocs(q);
     const bookmarks = snap.docs.map(docToBookmark);
