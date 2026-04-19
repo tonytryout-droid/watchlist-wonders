@@ -276,24 +276,26 @@ export function Rail({
               variant={variant}
               rank={showRanks ? index + 1 : undefined}
               cardSize={cardSize}
-              onSchedule={() => onSchedule?.(bookmark)}
-              onSkip={() => onSkip?.(bookmark)}
-              onMarkDone={() => onMarkDone?.(bookmark)}
-              onAddToPlan={() => onAddToPlan?.(bookmark)}
-              onDelete={() => onDelete?.(bookmark)}
-              onUndoDone={() => onUndoDone?.(bookmark)}
-              onSetWatching={() => onSetWatching?.(bookmark)}
-              onStatusCycle={onStatusCycle}
-              onEpisodeUpdate={onEpisodeUpdate}
-              onToggleUpNext={onToggleUpNext}
-              onSharePublic={() => onSharePublic?.(bookmark)}
-              onSharePrivate={() => onSharePrivate?.(bookmark)}
-              onVault={() => onVault?.(bookmark)}
-              onUnvault={() => onUnvault?.(bookmark)}
               schedule={itemSchedules?.[bookmark.id]}
               isSelectable={isSelectable}
               isSelected={selectedIds?.has(bookmark.id)}
-              onSelect={() => onSelect?.(bookmark.id)}
+              actions={{
+                onSchedule: () => onSchedule?.(bookmark),
+                onSkip: () => onSkip?.(bookmark),
+                onMarkDone: () => onMarkDone?.(bookmark),
+                onAddToPlan: () => onAddToPlan?.(bookmark),
+                onDelete: () => onDelete?.(bookmark),
+                onUndoDone: () => onUndoDone?.(bookmark),
+                onSetWatching: () => onSetWatching?.(bookmark),
+                onStatusCycle,
+                onEpisodeUpdate,
+                onToggleUpNext,
+                onSharePublic: () => onSharePublic?.(bookmark),
+                onSharePrivate: () => onSharePrivate?.(bookmark),
+                onVault: () => onVault?.(bookmark),
+                onUnvault: () => onUnvault?.(bookmark),
+                onSelect: () => onSelect?.(bookmark.id),
+              }}
             />
           ))}
         </div>

@@ -19,30 +19,11 @@ import { bookmarkService } from "@/services/bookmarks";
 import { attachmentService } from "@/services/attachments";
 import { buildSmartFillData, mapGenresToMoodTags, type EnrichmentMatchCandidate, type MatchConfidence } from "@/lib/enrichmentSmartFill";
 import { getSafeErrorMessage } from "@/lib/errorMessage";
+import { GENRE_OPTIONS } from "@/constants/ui";
+import { getProviderMeta } from "@/constants/providers";
 import { ConfirmMetadataDialog, type ConfirmMetadataPayload } from "@/components/bookmarks/ConfirmMetadataDialog";
 import { QuickScheduleSheet } from "@/components/schedules/QuickScheduleSheet";
 import type { Bookmark } from "@/types/database";
-
-const GENRE_OPTIONS = [
-  "action",
-  "adventure",
-  "animation",
-  "comedy",
-  "crime",
-  "documentary",
-  "drama",
-  "family",
-  "fantasy",
-  "history",
-  "horror",
-  "music",
-  "mystery",
-  "romance",
-  "scifi",
-  "thriller",
-  "war",
-  "western",
-];
 
 const TYPE_OPTIONS: { value: Bookmark["type"]; label: string; icon: React.ElementType }[] = [
   { value: "movie",   label: "Movie",    icon: Film },
@@ -53,25 +34,8 @@ const TYPE_OPTIONS: { value: Bookmark["type"]; label: string; icon: React.Elemen
   { value: "other",   label: "Other",    icon: LinkIcon },
 ];
 
-const PROVIDER_LABELS: Record<string, string> = {
-  youtube:   "YouTube",
-  instagram: "Instagram",
-  facebook:  "Facebook",
-  x:         "X / Twitter",
-  netflix:   "Netflix",
-  imdb:      "IMDB",
-  generic:   "Website",
-};
 
-const PROVIDER_COLORS: Record<string, string> = {
-  youtube:   "bg-red-600",
-  instagram: "bg-pink-500",
-  facebook:  "bg-blue-600",
-  x:         "bg-neutral-700",
-  netflix:   "bg-red-700",
-  imdb:      "bg-yellow-500",
-  generic:   "bg-muted",
-};
+const KNOWN_PROVIDERS = ["youtube", "instagram", "facebook", "x", "netflix", "imdb"] as const;
 
 type Step = "paste" | "confirm";
 
@@ -465,26 +429,29 @@ const NewBookmark = () => {
 
           {/* Platform icons */}
           <div className="flex items-center justify-center gap-3 mb-8">
-            {Object.entries(PROVIDER_COLORS).filter(([k]) => k !== "generic").map(([key, color]) => (
-              <div key={key} className="flex flex-col items-center gap-1">
-                <div
-                  title={PROVIDER_LABELS[key]}
-                  className={cn(
-                    "w-9 h-9 rounded-full text-[10px] font-bold text-white flex items-center justify-center transition-all",
-                    color,
-                    detectedProvider === key ? "scale-125 ring-2 ring-white ring-offset-2 ring-offset-background" : "opacity-50"
-                  )}
-                >
-                  {PROVIDER_LABELS[key].slice(0, 2)}
+            {KNOWN_PROVIDERS.map((key) => {
+              const meta = getProviderMeta(key);
+              return (
+                <div key={key} className="flex flex-col items-center gap-1">
+                  <div
+                    title={meta.label}
+                    className={cn(
+                      "w-9 h-9 rounded-full text-[10px] font-bold text-white flex items-center justify-center transition-all",
+                      meta.color,
+                      detectedProvider === key ? "scale-125 ring-2 ring-white ring-offset-2 ring-offset-background" : "opacity-50"
+                    )}
+                  >
+                    {meta.label.slice(0, 2)}
+                  </div>
+                  <span className={cn(
+                    "text-[9px] font-medium transition-opacity",
+                    detectedProvider === key ? "text-foreground" : "text-muted-foreground/50"
+                  )}>
+                    {meta.label.split(" ")[0].slice(0, 4)}
+                  </span>
                 </div>
-                <span className={cn(
-                  "text-[9px] font-medium transition-opacity",
-                  detectedProvider === key ? "text-foreground" : "text-muted-foreground/50"
-                )}>
-                  {PROVIDER_LABELS[key].split(" ")[0].slice(0, 4)}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* URL input + button */}
@@ -507,7 +474,7 @@ const NewBookmark = () => {
               <p className="text-xs text-destructive px-1">{enrichError}</p>
             ) : detectedProvider && url.trim() ? (
               <p className="text-xs text-muted-foreground px-1">
-                ✓ <span className="text-foreground font-medium">{PROVIDER_LABELS[detectedProvider]}</span> link detected
+                ✓ <span className="text-foreground font-medium">{getProviderMeta(detectedProvider).label}</span> link detected
               </p>
             ) : null}
 
@@ -523,7 +490,7 @@ const NewBookmark = () => {
                   <div className="h-3 bg-muted rounded animate-pulse flex-1" />
                 </div>
                 <p className="text-xs text-muted-foreground pt-1">
-                  Fetching details from {detectedProvider ? PROVIDER_LABELS[detectedProvider] : "the link"}…
+                  Fetching details from {detectedProvider ? getProviderMeta(detectedProvider).label : "the link"}…
                 </p>
               </div>
             )}
@@ -686,7 +653,7 @@ const NewBookmark = () => {
                 )}
                 {/* Provider badge */}
                 {provider && provider !== "generic" && (
-                  <div className={cn("absolute top-2 left-2 w-3 h-3 rounded-full", PROVIDER_COLORS[provider])} />
+                  <div className={cn("absolute top-2 left-2 w-3 h-3 rounded-full", getProviderMeta(provider).color)} />
                 )}
               </div>
             </div>

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowUpDown } from "lucide-react";
 import { openSafe } from "@/lib/utils";
+import { getTmdbId } from "@/lib/metadataAccessors";
 import type { AdvancedFilters } from "@/components/dashboard/FilterPanel";
 
 const FILTER_STORAGE_KEY = "wm_dashboard_filters";
@@ -56,17 +57,6 @@ type ScheduleWithBookmark = {
   bookmarks: Bookmark | null;
 };
 
-function getMetadataTmdbId(bookmark: Bookmark | null): number | null {
-  if (!bookmark?.metadata || typeof bookmark.metadata !== "object") return null;
-  const metadata = bookmark.metadata as Record<string, unknown>;
-  const raw = metadata.tmdb_id ?? metadata.tmdbId;
-  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-  if (typeof raw === "string" && raw.trim()) {
-    const parsed = Number(raw);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return null;
-}
 
 function toBookmarkType(mediaType: SimilarTitle["media_type"]): Bookmark["type"] {
   return mediaType === "tv" ? "series" : "movie";
@@ -255,7 +245,7 @@ const Dashboard = () => {
   });
 
   const recommendationSeed = view.bestNextItem ?? view.heroBookmark;
-  const recommendationSeedTmdbId = getMetadataTmdbId(recommendationSeed);
+  const recommendationSeedTmdbId = getTmdbId(recommendationSeed);
   const recommendationSeedType =
     recommendationSeed?.type === "series" || recommendationSeed?.type === "episode"
       ? "tv"
@@ -271,7 +261,7 @@ const Dashboard = () => {
     const existingTitles = new Set<string>();
 
     for (const bookmark of view.visibleBookmarks) {
-      const tmdbId = getMetadataTmdbId(bookmark);
+      const tmdbId = getTmdbId(bookmark);
       if (tmdbId) existingTmdbIds.add(tmdbId);
       existingTitles.add(bookmark.title.trim().toLowerCase());
     }
@@ -289,7 +279,7 @@ const Dashboard = () => {
     const existingTmdbIds = new Set<number>();
     const existingTitles = new Set<string>();
     for (const bookmark of view.visibleBookmarks) {
-      const tmdbId = getMetadataTmdbId(bookmark);
+      const tmdbId = getTmdbId(bookmark);
       if (tmdbId) existingTmdbIds.add(tmdbId);
       existingTitles.add(bookmark.title.trim().toLowerCase());
     }

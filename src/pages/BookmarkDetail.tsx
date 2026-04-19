@@ -3,9 +3,9 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Play, Check, Trash2, Edit2,
-  Clock, Tag, ExternalLink, Save, X,
+  Clock, Tag, ExternalLink,
   FileText, Download, Upload, Loader2, Star,
-  Globe, Lock, Unlock, Copy, Plus, Shuffle,
+  Globe, Lock, Unlock, Copy, Plus,
   CalendarCheck,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -15,9 +15,6 @@ import { useSimilarTitles } from "@/hooks/useSimilarTitles";
 import { useTmdbDetails } from "@/hooks/useTmdbDetails";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
@@ -39,11 +36,16 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { CastRail } from "@/components/bookmark-detail/CastRail";
+import { SimilarTitlesRail } from "@/components/bookmark-detail/SimilarTitlesRail";
+import { WatchProvidersPanel } from "@/components/bookmark-detail/WatchProvidersPanel";
+import { BookmarkEditForm } from "@/components/bookmark-detail/BookmarkEditForm";
 import { bookmarkService } from "@/services/bookmarks";
 import { attachmentService } from "@/services/attachments";
 import { useToast } from "@/hooks/use-toast";
 import { getPreferredRegionFromBrowser } from "@/lib/localeRegion";
 import { formatRuntime, getMoodEmoji } from "@/lib/utils";
+import { getTmdbId } from "@/lib/metadataAccessors";
 import {
   buildAvailabilityFromWatchProviders,
   buildFallbackSearchUrls,
@@ -281,11 +283,7 @@ const BookmarkDetail = () => {
     updateMutation.mutate({ status });
   };
 
-  // Handle both camelCase (tmdbId) and snake_case (tmdb_id) — legacy data may differ
-  const rawTmdbId = bookmark?.metadata?.tmdb_id ?? bookmark?.metadata?.tmdbId;
-  const tmdbId = (typeof rawTmdbId === "string" || typeof rawTmdbId === "number")
-    ? rawTmdbId
-    : undefined;
+  const tmdbId = getTmdbId(bookmark) ?? undefined;
   const storedOverview = bookmark?.metadata?.overview as string | undefined;
   const { data: resolvedTmdbId } = useTmdbSearch(
     !tmdbId ? bookmark?.title : null,
@@ -333,12 +331,7 @@ const BookmarkDetail = () => {
     staleTime: 60 * 1000,
   });
   const ownedTmdbIds = new Set(
-    allBookmarks
-      .map((b) => {
-        const bid = b.metadata?.tmdb_id ?? b.metadata?.tmdbId;
-        return typeof bid === 'string' ? parseInt(bid, 10) : bid;
-      })
-      .filter((bid) => typeof bid === 'number' && !isNaN(bid))
+    allBookmarks.map((b) => getTmdbId(b)).filter((id): id is number => id !== null)
   );
 
   if (isLoading) {
@@ -532,50 +525,17 @@ const BookmarkDetail = () => {
       {/* Content — overlapping the hero */}
       <div className="container mx-auto px-4 lg:px-8 -mt-48 relative z-10 pb-24">
         {isEditing ? (
-          <div className="bg-card border border-border rounded-lg p-6 space-y-4 max-w-2xl">
-            <div className="space-y-2">
-              <Label htmlFor="edit-title">Title</Label>
-              <Input
-                id="edit-title"
-                value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-status">Status</Label>
-              <Select value={editStatus} onValueChange={(v) => setEditStatus(v as Bookmark["status"])}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUS_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-notes">My Notes</Label>
-              <Textarea
-                id="edit-notes"
-                value={editNotes}
-                onChange={(e) => setEditNotes(e.target.value)}
-                rows={4}
-              />
-            </div>
-            <div className="flex gap-2 pt-4">
-              <Button onClick={handleSaveEdit} disabled={updateMutation.isPending}>
-                <Save className="w-4 h-4 mr-2" />
-                Save
-              </Button>
-              <Button variant="ghost" onClick={() => setIsEditing(false)}>
-                <X className="w-4 h-4 mr-2" />
-                Cancel
-              </Button>
-            </div>
-          </div>
+          <BookmarkEditForm
+            title={editTitle}
+            notes={editNotes}
+            status={editStatus}
+            isPending={updateMutation.isPending}
+            onTitleChange={setEditTitle}
+            onNotesChange={setEditNotes}
+            onStatusChange={setEditStatus}
+            onSave={handleSaveEdit}
+            onCancel={() => setIsEditing(false)}
+          />
         ) : (
           <>
             {/* ── HERO INFO: poster + details ── */}
@@ -808,156 +768,29 @@ const BookmarkDetail = () => {
                 )}
 
                 {/* Top Cast — portrait cards */}
-                {tmdbDetails?.cast && tmdbDetails.cast.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
-                      Top Cast
-                    </p>
-                    <div className="flex gap-3 overflow-x-auto pb-2 hide-scrollbar">
-                      {tmdbDetails.cast.slice(0, 8).map((actor) => (
-                        <div key={actor.name} className="shrink-0 w-[100px]">
-                          <div className="aspect-[2/3] rounded-lg overflow-hidden bg-muted mb-2 ring-1 ring-white/10">
-                            {actor.profileUrl ? (
-                              <img
-                                src={actor.profileUrl}
-                                alt={actor.name}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-2xl font-bold text-muted-foreground">
-                                {actor.name.charAt(0)}
-                              </div>
-                            )}
-                          </div>
-                          <p className="text-xs font-semibold leading-tight truncate">{actor.name}</p>
-                          <p className="text-[10px] text-muted-foreground leading-tight truncate">{actor.character}</p>
-                        </div>
-                      ))}
-                    </div>
-                    {tmdbDetails.director && (
-                      <p className="text-xs text-muted-foreground mt-3">
-                        Directed by{" "}
-                        <span className="text-foreground font-medium">{tmdbDetails.director}</span>
-                      </p>
-                    )}
-                  </div>
+                {tmdbDetails?.cast && (
+                  <CastRail cast={tmdbDetails.cast} director={tmdbDetails.director} />
                 )}
 
                 {/* You Might Also Like */}
-                {similarTitles.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-1">
-                      <Shuffle className="w-4 h-4" />
-                      You Might Also Like
-                    </h3>
-                    <div className="flex gap-3 overflow-x-auto pb-2 hide-scrollbar">
-                      {similarTitles.map((item) => {
-                        const alreadyOwned = ownedTmdbIds.has(item.id);
-                        return (
-                          <div key={item.id} className="shrink-0 w-28 group">
-                            <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-secondary mb-1.5">
-                              {item.posterUrl ? (
-                                <img
-                                  src={item.posterUrl}
-                                  alt={item.title}
-                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                  <span className="text-2xl font-bold text-muted-foreground">{item.title.charAt(0)}</span>
-                                </div>
-                              )}
-                              {!alreadyOwned && (
-                                <button
-                                  type="button"
-                                  onClick={() => addSimilarMutation.mutate(item)}
-                                  disabled={addSimilarMutation.isPending}
-                                  className="absolute inset-0 bg-background/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                                  aria-label={`Add ${item.title} to your list`}
-                                >
-                                  <Plus className="w-6 h-6 text-primary" />
-                                </button>
-                              )}
-                              {alreadyOwned && (
-                                <div className="absolute top-1 right-1 bg-primary rounded-full p-0.5">
-                                  <Check className="w-3 h-3 text-primary-foreground" />
-                                </div>
-                              )}
-                            </div>
-                            <p className="text-xs text-foreground truncate">{item.title}</p>
-                            {item.release_year && (
-                              <p className="text-[10px] text-muted-foreground">{item.release_year}</p>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                <SimilarTitlesRail
+                  titles={similarTitles}
+                  ownedIds={ownedTmdbIds}
+                  onAdd={(item) => addSimilarMutation.mutate(item)}
+                  isAdding={addSimilarMutation.isPending}
+                />
               </div>
 
               {/* ── SIDEBAR ── */}
               <div className="w-full md:w-72 lg:w-80 shrink-0 space-y-6">
 
                 {/* Where You Can Watch */}
-                <div className="rounded-xl bg-muted/30 border border-border p-4">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
-                    Where You Can Watch ({currentAvailability?.region ?? preferredRegion})
-                  </p>
-                  {availableNowProviders.length > 0 ? (
-                    <div className="space-y-2">
-                      {availableNowProviders.slice(0, 4).map((provider) => (
-                        <div
-                          key={`${provider.providerId}-${provider.type}`}
-                          className="flex items-center justify-between rounded-lg bg-background/70 border border-border px-3 py-2"
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            {provider.logoUrl && (
-                              <img src={provider.logoUrl} alt={provider.name} className="w-5 h-5 rounded-sm" />
-                            )}
-                            <span className="text-sm font-medium truncate">{provider.name}</span>
-                          </div>
-                          <Button size="sm" variant="secondary" onClick={() => openSafeLink(provider.url)} className="gap-1">
-                            <ExternalLink className="w-3 h-3" />
-                            Watch
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Not available on subscription platforms right now.</p>
-                  )}
-                  {rentOrBuyProviders.length > 0 && (
-                    <div className="mt-4 space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Rent or Buy</p>
-                      {rentOrBuyProviders.slice(0, 4).map((provider) => (
-                        <div
-                          key={`${provider.providerId}-${provider.type}`}
-                          className="flex items-center justify-between rounded-lg bg-background/70 border border-border px-3 py-2"
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            {provider.logoUrl && (
-                              <img src={provider.logoUrl} alt={provider.name} className="w-5 h-5 rounded-sm" />
-                            )}
-                            <span className="text-sm font-medium truncate">{provider.name}</span>
-                          </div>
-                          <Button size="sm" variant="outline" onClick={() => openSafeLink(provider.url)} className="gap-1">
-                            <ExternalLink className="w-3 h-3" />
-                            {provider.type === "rent" ? "Rent" : "Buy"}
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <div className="mt-4">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Search Elsewhere</p>
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" size="sm" onClick={() => openSafeLink(fallbackSearch.google)}>Search on Google</Button>
-                      <Button variant="outline" size="sm" onClick={() => openSafeLink(fallbackSearch.youtube)}>Search on YouTube</Button>
-                      <Button variant="outline" size="sm" onClick={() => openSafeLink(fallbackSearch.web)}>Search on Web</Button>
-                    </div>
-                  </div>
-                </div>
+                <WatchProvidersPanel
+                  availability={currentAvailability}
+                  region={preferredRegion}
+                  fallbackSearch={fallbackSearch}
+                  onOpenLink={openSafeLink}
+                />
 
                 {/* User review */}
                 {bookmark.user_review && (

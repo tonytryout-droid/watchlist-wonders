@@ -25,38 +25,15 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { cn, getMoodEmoji } from "@/lib/utils";
 import { SlidersHorizontal, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
+import { MOOD_OPTIONS, RUNTIME_PRESETS } from "@/constants/ui";
+import { getProviderMeta } from "@/constants/providers";
 
 const FILTER_STORAGE_KEY = "wm_dashboard_filters";
 
 const PROVIDERS = ["youtube", "imdb", "netflix", "instagram", "facebook", "x", "generic"] as const;
 
-const PROVIDER_COLORS: Record<string, string> = {
-  youtube:   "bg-red-500",
-  imdb:      "bg-yellow-400",
-  netflix:   "bg-red-600",
-  instagram: "bg-pink-500",
-  facebook:  "bg-blue-600",
-  x:         "bg-neutral-100",
-  generic:   "bg-muted-foreground",
-};
-
-const MOOD_OPTIONS = [
-  "action", "comedy", "drama", "horror", "romance", "thriller",
-  "documentary", "scifi", "fantasy", "animation", "family",
-  "relaxing", "inspiring", "intense", "thoughtful", "nostalgic",
-  "uplifting", "dark", "quirky", "epic", "emotional", "fun", "educational",
-];
-
 const MOOD_PRIMARY = MOOD_OPTIONS.slice(0, 10);
 const MOOD_EXTRA = MOOD_OPTIONS.slice(10);
-
-/** Runtime preset buckets — replaces free-form number inputs */
-const RUNTIME_PRESETS = [
-  { label: "Any",    min: null,  max: null  },
-  { label: "< 30m",  min: null,  max: 30   },
-  { label: "30–90m", min: 30,   max: 90   },
-  { label: "90m+",   min: 90,   max: null  },
-] as const;
 
 export interface AdvancedFilters {
   providers: string[];
@@ -74,11 +51,6 @@ interface FilterPanelProps {
 }
 
 type RuntimePreset = typeof RUNTIME_PRESETS[number]["label"];
-
-const PROVIDER_LABELS: Record<string, string> = {
-  youtube: "YouTube", imdb: "IMDb", netflix: "Netflix",
-  instagram: "Instagram", facebook: "Facebook", x: "X / Twitter", generic: "Web",
-};
 
 function loadStoredFilters(): { providers: string[]; moods: string[]; runtimeMin: number | null; runtimeMax: number | null } | null {
   try {
@@ -200,9 +172,9 @@ export function FilterPanel({ onApply, onReset, resultCount, className }: Filter
                 )}
               >
                 <span
-                  className={cn("w-2 h-2 rounded-full shrink-0", PROVIDER_COLORS[p] ?? "bg-muted-foreground")}
+                  className={cn("w-2 h-2 rounded-full shrink-0", getProviderMeta(p).color)}
                 />
-                <span>{PROVIDER_LABELS[p] ?? p}</span>
+                <span>{getProviderMeta(p).label}</span>
               </button>
             ))}
           </div>

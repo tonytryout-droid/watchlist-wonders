@@ -8,6 +8,7 @@ import { watchPlanService } from "@/services/watchPlans";
 import { sharingService } from "@/services/sharing";
 import { useToast } from "@/hooks/use-toast";
 import { getSafeErrorMessage } from "@/lib/errorMessage";
+import { bookmarkListMutateOptions } from "@/lib/bookmarkMutationOptions";
 import { ToastAction } from "@/components/ui/toast";
 import type { Bookmark } from "@/types/database";
 import type { OnboardingSuggestion } from "@/components/onboarding/WelcomeFlow";
@@ -25,16 +26,9 @@ export function useDashboardMutations({ onMarkDoneSuccess, onPlanAdded }: Dashbo
   // ── Mark done ───────────────────────────────────────────────────────────
   const undoDoneMutation = useMutation({
     mutationFn: (id: string) => bookmarkService.updateStatus(id, "backlog"),
-    onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: ["bookmarks"] });
-      const prev = queryClient.getQueryData<Bookmark[]>(["bookmarks"]);
-      queryClient.setQueryData<Bookmark[]>(["bookmarks"], (old = []) =>
-        old.map((b) => (b.id === id ? { ...b, status: "backlog" } : b)),
-      );
-      return { prev };
-    },
-    onError: (_, __, ctx) => queryClient.setQueryData(["bookmarks"], ctx?.prev),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["bookmarks"] }),
+    ...bookmarkListMutateOptions(queryClient, (old, id: string) =>
+      old.map((b) => (b.id === id ? { ...b, status: "backlog" as const } : b)),
+    ),
     onSuccess: () => {
       toast({ title: "Added back to your list", description: "Ready to watch when you are." });
     },
@@ -42,16 +36,9 @@ export function useDashboardMutations({ onMarkDoneSuccess, onPlanAdded }: Dashbo
 
   const markDoneMutation = useMutation({
     mutationFn: (id: string) => bookmarkService.updateStatus(id, "done"),
-    onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: ["bookmarks"] });
-      const prev = queryClient.getQueryData<Bookmark[]>(["bookmarks"]);
-      queryClient.setQueryData<Bookmark[]>(["bookmarks"], (old = []) =>
-        old.map((b) => (b.id === id ? { ...b, status: "done" } : b)),
-      );
-      return { prev };
-    },
-    onError: (_, __, ctx) => queryClient.setQueryData(["bookmarks"], ctx?.prev),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["bookmarks"] }),
+    ...bookmarkListMutateOptions(queryClient, (old, id: string) =>
+      old.map((b) => (b.id === id ? { ...b, status: "done" as const } : b)),
+    ),
     onSuccess: (_, id) => {
       const completed = queryClient.getQueryData<Bookmark[]>(["bookmarks"])?.find((b) => b.id === id);
       if (completed) onMarkDoneSuccess(completed);
@@ -70,16 +57,9 @@ export function useDashboardMutations({ onMarkDoneSuccess, onPlanAdded }: Dashbo
   // ── Set watching ────────────────────────────────────────────────────────
   const setWatchingMutation = useMutation({
     mutationFn: (id: string) => bookmarkService.updateStatus(id, "watching"),
-    onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: ["bookmarks"] });
-      const prev = queryClient.getQueryData<Bookmark[]>(["bookmarks"]);
-      queryClient.setQueryData<Bookmark[]>(["bookmarks"], (old = []) =>
-        old.map((b) => (b.id === id ? { ...b, status: "watching" } : b)),
-      );
-      return { prev };
-    },
-    onError: (_, __, ctx) => queryClient.setQueryData(["bookmarks"], ctx?.prev),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["bookmarks"] }),
+    ...bookmarkListMutateOptions(queryClient, (old, id: string) =>
+      old.map((b) => (b.id === id ? { ...b, status: "watching" as const } : b)),
+    ),
     onSuccess: () => {
       toast({ title: "Now watching!", description: "Added to Continue Watching." });
     },
@@ -107,14 +87,9 @@ export function useDashboardMutations({ onMarkDoneSuccess, onPlanAdded }: Dashbo
 
   const deleteMutation = useMutation({
     mutationFn: (bookmark: Bookmark) => bookmarkService.deleteBookmark(bookmark.id),
-    onMutate: async (bookmark) => {
-      await queryClient.cancelQueries({ queryKey: ["bookmarks"] });
-      const prev = queryClient.getQueryData<Bookmark[]>(["bookmarks"]);
-      queryClient.setQueryData<Bookmark[]>(["bookmarks"], (old = []) =>
-        old.filter((b) => b.id !== bookmark.id),
-      );
-      return { prev };
-    },
+    ...bookmarkListMutateOptions(queryClient, (old, bookmark: Bookmark) =>
+      old.filter((b) => b.id !== bookmark.id),
+    ),
     onError: (error: unknown, _, ctx) => {
       queryClient.setQueryData(["bookmarks"], ctx?.prev);
       toast({
@@ -123,7 +98,6 @@ export function useDashboardMutations({ onMarkDoneSuccess, onPlanAdded }: Dashbo
         variant: "destructive",
       });
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["bookmarks"] }),
     onSuccess: (_, bookmark) => {
       toast({
         title: "Deleted",
@@ -141,16 +115,11 @@ export function useDashboardMutations({ onMarkDoneSuccess, onPlanAdded }: Dashbo
   const updateEpisodesMutation = useMutation({
     mutationFn: ({ id, count, existing }: { id: string; count: number; existing: Record<string, unknown> }) =>
       bookmarkService.updateBookmark(id, { metadata: { ...existing, episodes_watched: count } }),
-    onMutate: async ({ id, count }) => {
-      await queryClient.cancelQueries({ queryKey: ["bookmarks"] });
-      const prev = queryClient.getQueryData<Bookmark[]>(["bookmarks"]);
-      queryClient.setQueryData<Bookmark[]>(["bookmarks"], (old = []) =>
+    ...bookmarkListMutateOptions(
+      queryClient,
+      (old, { id, count }: { id: string; count: number; existing: Record<string, unknown> }) =>
         old.map((b) => (b.id === id ? { ...b, metadata: { ...b.metadata, episodes_watched: count } } : b)),
-      );
-      return { prev };
-    },
-    onError: (_, __, ctx) => queryClient.setQueryData(["bookmarks"], ctx?.prev),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["bookmarks"] }),
+    ),
   });
 
   // ── Skip ────────────────────────────────────────────────────────────────
@@ -195,27 +164,20 @@ export function useDashboardMutations({ onMarkDoneSuccess, onPlanAdded }: Dashbo
       
       throw lastError;
     },
-    onMutate: async (bookmark) => {
-      await queryClient.cancelQueries({ queryKey: ["bookmarks"] });
-      const prev = queryClient.getQueryData<Bookmark[]>(["bookmarks"]);
+    ...bookmarkListMutateOptions(queryClient, (old, bookmark: Bookmark) => {
       const skippedAt = new Date().toISOString();
-      queryClient.setQueryData<Bookmark[]>(["bookmarks"], (old = []) =>
-        old.map((b) =>
-          b.id !== bookmark.id
-            ? b
-            : {
-                ...b,
-                last_shown_at: skippedAt,
-                shown_count: (b.shown_count ?? 0) + 1,
-                queue_status: b.queue_status === "up_next" ? "queued" : b.queue_status,
-                priority: b.queue_status === "up_next" ? 100 : getSkippedPriority(b),
-              },
-        ),
+      return old.map((b) =>
+        b.id !== bookmark.id
+          ? b
+          : {
+              ...b,
+              last_shown_at: skippedAt,
+              shown_count: (b.shown_count ?? 0) + 1,
+              queue_status: b.queue_status === "up_next" ? "queued" : b.queue_status,
+              priority: b.queue_status === "up_next" ? 100 : getSkippedPriority(b),
+            },
       );
-      return { prev };
-    },
-    onError: (_, __, ctx) => queryClient.setQueryData(["bookmarks"], ctx?.prev),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["bookmarks"] }),
+    }),
     onSuccess: (_, bookmark) => {
       toast({
         title: "Skipped for now",
@@ -228,20 +190,15 @@ export function useDashboardMutations({ onMarkDoneSuccess, onPlanAdded }: Dashbo
   const toggleUpNextMutation = useMutation({
     mutationFn: ({ id, promote }: { id: string; promote: boolean }) =>
       queueService.toggleUpNext(id, promote),
-    onMutate: async ({ id, promote }) => {
-      await queryClient.cancelQueries({ queryKey: ["bookmarks"] });
-      const prev = queryClient.getQueryData<Bookmark[]>(["bookmarks"]);
-      queryClient.setQueryData<Bookmark[]>(["bookmarks"], (old = []) =>
+    ...bookmarkListMutateOptions(
+      queryClient,
+      (old, { id, promote }: { id: string; promote: boolean }) =>
         old.map((b) =>
           b.id === id
-            ? { ...b, queue_status: promote ? "up_next" : "queued", priority: promote ? 200 : 100 }
+            ? { ...b, queue_status: promote ? "up_next" as const : "queued" as const, priority: promote ? 200 : 100 }
             : b,
         ),
-      );
-      return { prev };
-    },
-    onError: (_, __, ctx) => queryClient.setQueryData(["bookmarks"], ctx?.prev),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["bookmarks"] }),
+    ),
     onSuccess: (_, { promote }) => {
       toast({
         title: promote ? "Added to Up Next" : "Removed from Up Next",

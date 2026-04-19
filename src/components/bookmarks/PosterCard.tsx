@@ -23,14 +23,10 @@ import { fetchTrailerEmbedUrlViaProxy } from "@/services/tmdbProxy";
 import { QuickScheduleSheet } from "@/components/schedules/QuickScheduleSheet";
 import { WatchModal } from "@/components/bookmarks/WatchModal";
 import { getProviderMeta } from "@/constants/providers";
+import { getMetadataNumber, getMetadataString } from "@/lib/metadataAccessors";
 import type { Bookmark, Schedule } from "@/types/database";
 
-interface PosterCardProps {
-  bookmark: Bookmark;
-  rank?: number;
-  cardSize?: "default" | "featured";
-  recommendationReason?: string;
-  isHighlighted?: boolean;
+export interface BookmarkCardActions {
   onPlay?: () => void;
   onSchedule?: () => void;
   onSkip?: () => void;
@@ -41,17 +37,26 @@ interface PosterCardProps {
   onSetWatching?: () => void;
   onStatusCycle?: (bookmark: Bookmark, newStatus: Bookmark["status"]) => void;
   onEpisodeUpdate?: (bookmark: Bookmark, count: number) => void;
-  variant?: "poster" | "backdrop";
-  className?: string;
-  isSelectable?: boolean;
-  isSelected?: boolean;
   onSelect?: () => void;
   onToggleUpNext?: (bookmark: Bookmark) => void;
   onSharePublic?: () => void;
   onSharePrivate?: () => void;
   onVault?: () => void;
   onUnvault?: () => void;
+}
+
+interface PosterCardProps {
+  bookmark: Bookmark;
+  rank?: number;
+  cardSize?: "default" | "featured";
+  recommendationReason?: string;
+  isHighlighted?: boolean;
+  variant?: "poster" | "backdrop";
+  className?: string;
+  isSelectable?: boolean;
+  isSelected?: boolean;
   schedule?: Schedule;
+  actions?: BookmarkCardActions;
 }
 
 /** Small provider logo badge — shows favicon logo with color-dot fallback */
@@ -116,26 +121,6 @@ function isNewBookmark(createdAt: string) {
 }
 
 const trailerUrlCache = new Map<string, string | null>();
-
-function getMetadataNumber(metadata: Record<string, unknown>, keys: string[]): number | null {
-  for (const key of keys) {
-    const value = metadata[key];
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "string") {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) return parsed;
-    }
-  }
-  return null;
-}
-
-function getMetadataString(metadata: Record<string, unknown>, keys: string[]): string | null {
-  for (const key of keys) {
-    const value = metadata[key];
-    if (typeof value === "string" && value.trim().length > 0) return value.trim();
-  }
-  return null;
-}
 
 function toYouTubeEmbedUrl(videoId: string, autoplay = true): string {
   const params = new URLSearchParams({
@@ -224,28 +209,18 @@ export function PosterCard({
   cardSize = "default",
   recommendationReason,
   isHighlighted = false,
-  onPlay,
-  onSchedule,
-  onSkip,
-  onMarkDone,
-  onAddToPlan,
-  onDelete,
-  onUndoDone,
-  onSetWatching,
-  onStatusCycle,
-  onEpisodeUpdate,
   variant = "poster",
   className,
   isSelectable,
   isSelected,
-  onSelect,
-  onToggleUpNext,
-  onSharePublic,
-  onSharePrivate,
-  onVault,
-  onUnvault,
   schedule,
+  actions = {},
 }: PosterCardProps) {
+  const {
+    onPlay, onSchedule, onSkip, onMarkDone, onAddToPlan, onDelete,
+    onUndoDone, onSetWatching, onStatusCycle, onEpisodeUpdate,
+    onSelect, onToggleUpNext, onSharePublic, onSharePrivate, onVault, onUnvault,
+  } = actions;
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const enrichmentState = useBookmarkEnrichment(bookmark.id, user?.uid);

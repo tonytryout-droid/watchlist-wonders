@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getSafeErrorMessage } from "@/lib/errorMessage";
 import { cn } from "@/lib/utils";
+import { REMINDER_OPTIONS } from "@/constants/ui";
 import { scheduleService } from "@/services/schedules";
 import { bookmarkService } from "@/services/bookmarks";
 import { reportError } from "@/services/errorMonitoring";
@@ -54,13 +55,6 @@ const QUICK_OPTIONS: { label: string; getDate: () => Date | null }[] = [
   { label: "Tomorrow",     getDate: getTomorrowDate },
   { label: "This Weekend", getDate: getWeekendDate },
   { label: "Next Week",    getDate: getNextWeekDate },
-];
-
-const REMINDER_OPTIONS = [
-  { value: "15",  label: "15 min before" },
-  { value: "30",  label: "30 min before" },
-  { value: "60",  label: "1 hour before" },
-  { value: "120", label: "2 hours before" },
 ];
 
 interface QuickScheduleSheetProps {

@@ -445,7 +445,7 @@ export function DashboardShell({
                         key={bookmark.id}
                         bookmark={bookmark}
                         schedule={allScheduleMap[bookmark.id]}
-                        {...railHandlers}
+                        actions={railHandlers}
                       />
                     ))}
                   </div>
@@ -508,7 +508,7 @@ export function DashboardShell({
                         bookmark={demoSavedBookmark}
                         schedule={allScheduleMap[demoSavedBookmark.id]}
                         isHighlighted
-                        {...railHandlers}
+                        actions={railHandlers}
                       />
                     </div>
                   </div>

@@ -40,6 +40,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getSafeErrorMessage } from "@/lib/errorMessage";
 import { cn } from "@/lib/utils";
+import { REMINDER_OPTIONS } from "@/constants/ui";
 import { useToast } from "@/hooks/use-toast";
 import { scheduleService } from "@/services/schedules";
 import { bookmarkService } from "@/services/bookmarks";
@@ -59,13 +60,6 @@ function getLocalDateInputValue(date = new Date()): string {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
   return local.toISOString().split("T")[0];
 }
-
-const REMINDER_OPTIONS = [
-  { value: "15", label: "15 minutes before" },
-  { value: "30", label: "30 minutes before" },
-  { value: "60", label: "1 hour before" },
-  { value: "120", label: "2 hours before" },
-];
 
 const RECURRENCE_OPTIONS: { value: Recurrence; label: string; description: string }[] = [
   { value: "none",    label: "Once",           description: "One time only" },
