@@ -548,7 +548,7 @@ function buildGenreRails(ranked: RankedBookmark[], maxGenres: number): DecisionR
       title: genre,
       subtitle: "Popular in your list",
       bookmarks: list.slice(0, 12),
-      variant: "poster" as const,
+      variant: "backdrop" as const,
     }));
 }
 
@@ -628,7 +628,7 @@ function buildRails(
       title: "Planned",
       subtitle: "Coming up on your calendar",
       bookmarks: planned,
-      variant: "poster",
+      variant: "backdrop",
     },
     1,
   );
@@ -644,7 +644,7 @@ function buildRails(
       title: "New to your list",
       subtitle: "Recently added picks",
       bookmarks: recentlyAdded,
-      variant: "poster",
+      variant: "backdrop",
     },
     2,
   );
@@ -655,7 +655,7 @@ function buildRails(
       title: "Quick Watch",
       subtitle: "Under 30 minutes",
       bookmarks: quickWatch,
-      variant: "poster",
+      variant: "backdrop",
     },
     2,
   );

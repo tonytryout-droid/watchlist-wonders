@@ -469,7 +469,7 @@ export function PosterCard({
   const showExpanded = (isHovered || isTouched) && !isSelectable;
   const shouldElevate = showExpanded && !isMobile;
   const elevatedTransform =
-    variant === "poster" ? "translateY(-2px) scale(1.04)" : "translateY(-1px) scale(1.02)";
+    variant === "poster" ? "translateY(-2px) scale(1.04)" : "scale(1.04)";
 
   return (
     <>
@@ -477,7 +477,7 @@ export function PosterCard({
       <div
         ref={cardRef}
         className={cn(
-          "group relative flex-shrink-0 snap-start transition-transform transition-shadow ease-out will-change-transform",
+          "group relative flex-shrink-0 snap-start transition-[transform,box-shadow] ease-out will-change-transform",
           variant === "poster"
             ? cardSize === "featured"
               ? "w-44 sm:w-48 md:w-52 lg:w-56"
@@ -493,7 +493,7 @@ export function PosterCard({
         )}
         style={{
           transform: shouldElevate ? elevatedTransform : "translateY(0) scale(1)",
-          transformOrigin: "bottom center",
+          transformOrigin: variant === "poster" ? "bottom center" : "center",
           transitionDuration: `${motionDuration.card}ms`,
           transitionTimingFunction: "var(--wm-ease-fluid, cubic-bezier(0.16, 1, 0.3, 1))",
         }}
@@ -531,7 +531,8 @@ export function PosterCard({
             className={cn(
               "relative overflow-hidden rounded-sm transition-[transform,box-shadow] ease-out",
               aspectRatio,
-              showExpanded && "rounded-t-sm rounded-b-none shadow-[0_20px_40px_rgba(0,0,0,0.4)]"
+              showExpanded && variant === "poster" && "rounded-t-sm rounded-b-none shadow-[0_20px_40px_rgba(0,0,0,0.4)]",
+              showExpanded && variant === "backdrop" && "shadow-[0_12px_32px_rgba(0,0,0,0.6)]"
             )}
             style={{ transitionDuration: `${motionDuration.card}ms`, transitionTimingFunction: motionEasing }}
           >
@@ -847,18 +848,142 @@ export function PosterCard({
               </div>
             )}
 
-            {/* Gradient blending image into expanded panel */}
-            {showExpanded && (
+            {/* Gradient blending image into expanded panel — poster only */}
+            {showExpanded && variant === "poster" && (
               <div
                 className="absolute bottom-0 left-0 right-0 h-10 pointer-events-none z-[2]"
                 style={{ background: "linear-gradient(to bottom, transparent, hsl(var(--card)))" }}
               />
             )}
+
+            {/* Backdrop: persistent bottom gradient + title overlay */}
+            {variant === "backdrop" && !isSelectable && (
+              <div className="absolute bottom-0 left-0 right-0 z-[3] pointer-events-none">
+                <div className="h-16 bg-gradient-to-t from-black/75 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 px-2.5 pb-2">
+                  <p className="text-[11px] font-bold text-white leading-tight line-clamp-2 drop-shadow-sm max-w-[78%]">
+                    {bookmark.title}
+                  </p>
+                  {recommendationReason && (
+                    <p className="text-[9px] text-[#54b3d6]/90 truncate mt-0.5">{recommendationReason}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Backdrop: in-card hover action overlay — desktop only */}
+            {variant === "backdrop" && !isSelectable && !isMobile && (
+              <>
+                <div
+                  className="absolute inset-0 bg-black/35 z-[4] pointer-events-none transition-opacity duration-200"
+                  style={{ opacity: showExpanded ? 1 : 0 }}
+                />
+                <div
+                  className="absolute bottom-0 left-0 right-0 z-[25] transition-opacity duration-200"
+                  style={{
+                    opacity: showExpanded ? 1 : 0,
+                    pointerEvents: showExpanded ? "auto" : "none",
+                  }}
+                >
+                  <div className="px-2.5 pb-2.5 flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handlePlay}
+                      className="flex items-center justify-center gap-1 bg-white text-black text-[11px] font-bold h-7 px-2.5 rounded-sm hover:bg-white/90 transition-colors flex-shrink-0"
+                      aria-label={`Play ${bookmark.title}`}
+                    >
+                      <Play className="w-3 h-3 fill-black" />
+                      <span>Play</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleScheduleClick}
+                      className="w-7 h-7 rounded-full border border-white/60 flex items-center justify-center text-white hover:border-white hover:bg-white/10 transition-colors flex-shrink-0"
+                      aria-label="Schedule"
+                    >
+                      <CalendarPlus className="w-3 h-3" />
+                    </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                          className="w-7 h-7 rounded-full border border-white/60 flex items-center justify-center text-white hover:border-white hover:bg-white/10 transition-colors flex-shrink-0"
+                          aria-label="More options"
+                        >
+                          <MoreHorizontal className="w-3.5 h-3.5" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48 bg-card border-white/10">
+                        {bookmark.status !== "watching" && (
+                          <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSetWatching(); }} className="text-white/90">
+                            <Eye className="w-4 h-4 mr-2" />Set as Watching
+                          </DropdownMenuItem>
+                        )}
+                        {bookmark.status !== "done" && (
+                          <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSkip?.(); }} className="text-white/90">
+                            <SkipForward className="w-4 h-4 mr-2" />Skip for now
+                          </DropdownMenuItem>
+                        )}
+                        {bookmark.status === "done" ? (
+                          <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUndoDone?.(); }} className="text-white/90">
+                            <Undo2 className="w-4 h-4 mr-2" />Add Back to List
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onMarkDone?.(); }} className="text-white/90">
+                            <Check className="w-4 h-4 mr-2" />Mark as Watched
+                          </DropdownMenuItem>
+                        )}
+                        {onToggleUpNext && bookmark.status !== "done" && (
+                          <DropdownMenuItem
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleUpNext(bookmark); }}
+                            className={bookmark.queue_status === "up_next" ? "text-wm-gold" : "text-white/90"}
+                          >
+                            <Star className={cn("w-4 h-4 mr-2", bookmark.queue_status === "up_next" && "fill-current")} />
+                            {bookmark.queue_status === "up_next" ? "Remove from Up Next" : "Add to Up Next"}
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAddToPlan?.(); }} className="text-white/90">
+                          <Plus className="w-4 h-4 mr-2" />Add to Plan
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator className="bg-white/10" />
+                        {bookmark.is_public ? (
+                          <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSharePrivate(); }} className="text-white/90">
+                            <Globe className="w-4 h-4 mr-2" />Make private
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSharePublic(); }} className="text-white/90">
+                            <Share2 className="w-4 h-4 mr-2" />Share publicly
+                          </DropdownMenuItem>
+                        )}
+                        {bookmark.is_vaulted ? (
+                          <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUnvault(); }} className="text-white/90">
+                            <Unlock className="w-4 h-4 mr-2" />Remove from Vault
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onVault(); }} className="text-white/90">
+                            <Lock className="w-4 h-4 mr-2" />Move to Vault
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator className="bg-white/10" />
+                        <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleOpenSource(); }} className="text-white/90">
+                          <ExternalLink className="w-4 h-4 mr-2" />Open Source
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator className="bg-white/10" />
+                        <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(); }} className="text-destructive focus:text-destructive">
+                          <Trash2 className="w-4 h-4 mr-2" />Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </Link>
 
-        {/* Prime Video-style expanded info panel — appears below on hover */}
-        {!isSelectable && (
+        {/* Expanded info panel — appears below on hover (poster variant only) */}
+        {!isSelectable && variant === "poster" && (
           <div
             aria-hidden={!showExpanded}
             className="absolute left-0 right-0 bg-[#141414] rounded-b-sm shadow-[0_24px_48px_rgba(0,0,0,0.7)] overflow-hidden"
@@ -1089,8 +1214,8 @@ export function PosterCard({
             </div>
           </div>
         )}
-        {/* Non-hover title (always visible when not expanded) */}
-        {!showExpanded && (
+        {/* Title below card — poster only; backdrop shows title as image overlay */}
+        {!showExpanded && variant === "poster" && (
           <div className="pt-1.5 px-0.5">
             <p className="text-xs font-medium text-white/90 truncate leading-tight">
               {bookmark.title}
