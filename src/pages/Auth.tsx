@@ -71,12 +71,17 @@ const Auth = () => {
   const resolvePostAuthDestination = () => {
     const pendingUrl = sessionStorage.getItem("pendingShareUrl");
     const pendingTitle = sessionStorage.getItem("pendingShareTitle");
+    const pendingText = sessionStorage.getItem("pendingShareText");
     if (pendingUrl) {
       sessionStorage.removeItem("pendingShareUrl");
       sessionStorage.removeItem("pendingShareTitle");
+      sessionStorage.removeItem("pendingShareText");
       const shareParams = new URLSearchParams({ url: pendingUrl });
       if (pendingTitle) {
         shareParams.set("title", pendingTitle);
+      }
+      if (pendingText) {
+        shareParams.set("text", pendingText);
       }
       return `/share-target?${shareParams.toString()}`;
     }

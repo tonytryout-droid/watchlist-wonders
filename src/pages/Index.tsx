@@ -4,6 +4,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Download,
   Loader2,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -11,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { LinkToCardDemo } from "@/components/LinkToCardDemo";
 import { DemoSheet } from "@/components/DemoSheet";
+import { usePwaInstallPrompt } from "@/hooks/usePwaInstallPrompt";
 
 /* ─── FAQ ────────────────────────────────────────────────────── */
 
@@ -48,6 +50,7 @@ const Index = () => {
   const navigate = useNavigate();
   const [openFaq, setOpenFaq] = useState(-1);
   const [demoOpen, setDemoOpen] = useState(false);
+  const { canInstall, promptInstall } = usePwaInstallPrompt();
 
   useEffect(() => {
     if (!loading && user) navigate("/dashboard");
@@ -118,6 +121,19 @@ const Index = () => {
                   >
                     See it in action
                   </Button>
+                  {canInstall && (
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      onClick={() => {
+                        void promptInstall();
+                      }}
+                      className="h-12 px-8 text-base font-semibold border-white/20 text-white/75 hover:text-white hover:border-white/40 hover:bg-white/5 bg-transparent"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Install app
+                    </Button>
+                  )}
                 </div>
                 <p className="mt-4 text-sm text-white/40">Takes 30 seconds to set up.</p>
               </div>
