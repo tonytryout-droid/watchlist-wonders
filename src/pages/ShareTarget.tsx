@@ -1,20 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { httpsCallable } from "firebase/functions";
-import { Loader2, Link as LinkIcon, AlertCircle } from "lucide-react";
-import { fbFunctions } from "@/lib/firebase";
+import { useQueryClient } from "@tanstack/react-query";
+import { AlertCircle, Link as LinkIcon, Loader2 } from "lucide-react";
 import { bookmarkService } from "@/services/bookmarks";
 import { detectProvider } from "@/lib/utils";
-import { buildSmartFillData } from "@/lib/enrichmentSmartFill";
-import { ConfirmMetadataDialog, type ConfirmMetadataPayload } from "@/components/bookmarks/ConfirmMetadataDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import type { Bookmark } from "@/types/database";
-import { buildCreatePayloadFromShare } from "@/pages/shareTargetPayload";
 
-const PROVIDER_LABELS: Record<string, string> = {
+const PROVIDER_LABELS: Record<Bookmark["provider"], string> = {
   youtube: "YouTube",
   instagram: "Instagram",
   facebook: "Facebook",
@@ -24,11 +19,11 @@ const PROVIDER_LABELS: Record<string, string> = {
   letterboxd: "Letterboxd",
   rottentomatoes: "Rotten Tomatoes",
   netflix: "Netflix",
-  imdb: "IMDB",
+  imdb: "IMDb",
   generic: "the web",
 };
 
-const PROVIDER_MARKS: Record<string, string> = {
+const PROVIDER_MARKS: Record<Bookmark["provider"], string> = {
   youtube: "YT",
   instagram: "IG",
   facebook: "FB",
@@ -42,30 +37,30 @@ const PROVIDER_MARKS: Record<string, string> = {
   generic: "WEB",
 };
 
-function resolveTypeFromEnrichment(
-  data: Record<string, unknown>,
-  fallbackProvider: Bookmark["provider"],
-): Bookmark["type"] {
-  const contentType = typeof data.contentType === "string" ? data.contentType : "";
-  if (contentType === "video") return "video";
-  if (contentType === "episode") return "episode";
-  if (contentType === "series") return "series";
-  if (contentType === "movie") return "movie";
-
-  const mediaType = typeof data.mediaType === "string" ? data.mediaType : "";
-  if (mediaType === "movie") return "movie";
-  if (mediaType === "tv") return "series";
-  if (fallbackProvider === "youtube") return "video";
-  return "movie";
-}
-
 function extractUrlFromText(text: string): string | null {
   const match = text.match(/https?:\/\/[^\s)]+/i);
   if (!match?.[0]) return null;
   return match[0].replace(/[.,!?]+$/, "");
 }
 
-type EnrichState = "idle" | "loading" | "done";
+function resolveFallbackTitle(url: string, provider: Bookmark["provider"]): string {
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./i, "");
+    const sourceLabel =
+      provider !== "generic" ? PROVIDER_LABELS[provider] : hostname || PROVIDER_LABELS.generic;
+    return `Shared from ${sourceLabel}`;
+  } catch {
+    return `Shared from ${PROVIDER_LABELS[provider]}`;
+  }
+}
+
+function resolveType(provider: Bookmark["provider"]): Bookmark["type"] {
+  const videoProviders = ["youtube", "instagram", "tiktok", "facebook", "x", "twitch"];
+  if (videoProviders.includes(provider)) return "video";
+  return "movie";
+}
+
+type SaveState = "saving" | "saved" | "error";
 
 const ShareTarget = () => {
   const [searchParams] = useSearchParams();
@@ -74,195 +69,112 @@ const ShareTarget = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const enrichedRef = useRef(false);
-  const [enrichState, setEnrichState] = useState<EnrichState>("idle");
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmInitial, setConfirmInitial] = useState<ConfirmMetadataPayload | null>(null);
-  const [enrichedRaw, setEnrichedRaw] = useState<Record<string, unknown> | null>(null);
-  const [enrichError, setEnrichError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveState, setSaveState] = useState<SaveState>("saving");
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const saveStartedRef = useRef(false);
 
   const sharedUrl = searchParams.get("url") ?? "";
   const sharedText = searchParams.get("text") ?? "";
   const sharedTitle = searchParams.get("title") ?? "";
 
-  // Prefer explicit url param; fallback to first URL found in text
-  const targetUrl = sharedUrl || extractUrlFromText(sharedText) || "";
-  const detectedProvider = targetUrl ? detectProvider(targetUrl) : null;
+  const targetUrl = useMemo(
+    () => sharedUrl || extractUrlFromText(sharedText) || "",
+    [sharedUrl, sharedText],
+  );
+  const detectedProvider = useMemo<Bookmark["provider"]>(
+    () => (targetUrl ? detectProvider(targetUrl) : "generic"),
+    [targetUrl],
+  );
 
-  const createMutation = useMutation({
-    mutationFn: (data: Parameters<typeof bookmarkService.createBookmark>[0]) =>
-      bookmarkService.createBookmark(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
-      toast({ title: "Saved!", description: "Added to your watchlist." });
-      navigate("/dashboard", { replace: true });
-    },
-    onError: () => {
-      setIsSubmitting(false);
-      toast({
-        title: "Save failed",
-        description: "Could not save bookmark. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
+  const saveShare = useCallback(async () => {
+    if (!targetUrl) return;
 
-  // Restore pending share URL/title from sessionStorage if searchParams are empty
+    const trimmedTitle = sharedTitle.trim();
+    const trimmedText = sharedText.trim();
+    const note =
+      trimmedText.length > 0 && trimmedText !== targetUrl ? trimmedText.slice(0, 500) : null;
+
+    await bookmarkService.createBookmark({
+      title: trimmedTitle || resolveFallbackTitle(targetUrl, detectedProvider),
+      type: resolveType(detectedProvider),
+      provider: detectedProvider,
+      source_url: targetUrl,
+      status: "backlog",
+      notes: note,
+      metadata: {
+        share_target: true,
+        share_raw_title: trimmedTitle || null,
+        share_raw_text: trimmedText || null,
+        share_received_at: new Date().toISOString(),
+      },
+    });
+  }, [detectedProvider, sharedText, sharedTitle, targetUrl]);
+
+  // Restore pending share payload from sessionStorage when we return from auth.
   useEffect(() => {
-    // Only proceed if no URL params are set
     if (sharedUrl || sharedText || sharedTitle) return;
 
     const pendingUrl = sessionStorage.getItem("pendingShareUrl");
     const pendingTitle = sessionStorage.getItem("pendingShareTitle");
+    const pendingText = sessionStorage.getItem("pendingShareText");
+    if (!pendingUrl) return;
 
-    if (pendingUrl) {
-      // Build query string and navigate to populate searchParams
-      const params = new URLSearchParams();
-      params.set("url", pendingUrl);
-      if (pendingTitle) params.set("title", pendingTitle);
-      
-      // Navigate with the restored params
-      navigate(`/share-target?${params.toString()}`, { replace: true });
-      
-      // Clean up sessionStorage
-      sessionStorage.removeItem("pendingShareUrl");
-      sessionStorage.removeItem("pendingShareTitle");
-    }
-  }, []); // Empty deps to run only once on mount
+    const params = new URLSearchParams();
+    params.set("url", pendingUrl);
+    if (pendingTitle) params.set("title", pendingTitle);
+    if (pendingText) params.set("text", pendingText);
+    navigate(`/share-target?${params.toString()}`, { replace: true });
 
-  // Auth guard: if not logged in, persist the URL and redirect to auth
+    sessionStorage.removeItem("pendingShareUrl");
+    sessionStorage.removeItem("pendingShareTitle");
+    sessionStorage.removeItem("pendingShareText");
+  }, [navigate, sharedText, sharedTitle, sharedUrl]);
+
+  // If not logged in, persist payload and hand off to auth.
   useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
-      if (targetUrl) {
-        sessionStorage.setItem("pendingShareUrl", targetUrl);
-        if (sharedTitle) sessionStorage.setItem("pendingShareTitle", sharedTitle);
-      }
-      navigate(`/auth?redirect=${encodeURIComponent("/share-target")}`, { replace: true });
-    }
-  }, [authLoading, user]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (authLoading || user) return;
 
-  // Auto-enrich once user is confirmed
+    if (targetUrl) {
+      sessionStorage.setItem("pendingShareUrl", targetUrl);
+      if (sharedTitle) sessionStorage.setItem("pendingShareTitle", sharedTitle);
+      if (sharedText) sessionStorage.setItem("pendingShareText", sharedText);
+    }
+
+    navigate(`/auth?redirect=${encodeURIComponent("/share-target")}`, { replace: true });
+  }, [authLoading, navigate, sharedText, sharedTitle, targetUrl, user]);
+
+  // Save immediately once auth is ready. Enrichment happens asynchronously server-side.
   useEffect(() => {
-    if (authLoading || !user || !targetUrl || enrichedRef.current) return;
-    enrichedRef.current = true;
-    doEnrich(targetUrl);
-  }, [authLoading, user, targetUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (authLoading || !user || !targetUrl || saveStartedRef.current) return;
 
-  const doEnrich = async (url: string) => {
-    setEnrichState("loading");
-    setEnrichError(null);
-    const dp = detectProvider(url);
+    saveStartedRef.current = true;
+    setSaveState("saving");
+    setSaveError(null);
 
-    try {
-      const enrichCallable = httpsCallable(fbFunctions, "enrich");
-      const result = await enrichCallable({ url });
-      const data = result.data as Record<string, unknown>;
-      setEnrichedRaw(data);
-      const smartFill = buildSmartFillData(data);
-
-      const resolvedProvider =
-        typeof data.provider === "string" && data.provider !== "unknown"
-          ? data.provider
-          : dp;
-
-      const type = resolveTypeFromEnrichment(data, resolvedProvider as Bookmark["provider"]);
-
-      const resolvedTitle = typeof data.title === "string" ? data.title.trim() : "";
-      const canAutoSave =
-        resolvedTitle.length > 0 &&
-        !data.blocked &&
-        smartFill.matchConfidence !== "low";
-
-      if (canAutoSave) {
-        setIsSubmitting(true);
-        createMutation.mutate(
-          buildCreatePayloadFromShare(
-            {
-              title: resolvedTitle,
-              type,
-              provider: resolvedProvider,
-              url,
-              posterUrl: typeof data.posterUrl === "string" ? data.posterUrl : undefined,
-              runtimeMinutes:
-                typeof data.runtimeMinutes === "number" ? data.runtimeMinutes : null,
-            },
-            smartFill,
-          ),
-          {
-            onSettled: () => setIsSubmitting(false),
-          },
-        );
-        return;
+    void (async () => {
+      try {
+        await saveShare();
+        await queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
+        setSaveState("saved");
+        toast({ title: "Saved", description: "Added to your watchlist." });
+        navigate("/dashboard", { replace: true });
+      } catch {
+        saveStartedRef.current = false;
+        setSaveState("error");
+        setSaveError("Could not save this share right now.");
       }
+    })();
+  }, [authLoading, navigate, queryClient, saveShare, targetUrl, toast, user, retryCount]);
 
-      setConfirmInitial({
-        url,
-        provider: resolvedProvider,
-        title: resolvedTitle || sharedTitle,
-        posterUrl: typeof data.posterUrl === "string" ? data.posterUrl : undefined,
-        runtimeMinutes:
-          typeof data.runtimeMinutes === "number" ? data.runtimeMinutes : undefined,
-        type,
-        blocked: !data.title,
-        debugMessage:
-          !data.title ? "Could not fetch details for this link." : undefined,
-      });
-      setConfirmOpen(true);
-    } catch {
-      setEnrichedRaw(null);
-      setConfirmInitial(null);
-      setEnrichError("Could not fetch details for this link. Try again or add it manually.");
-    } finally {
-      setEnrichState("done");
-    }
+  const handleRetry = () => {
+    if (!targetUrl) return;
+    saveStartedRef.current = false;
+    setSaveState("saving");
+    setSaveError(null);
+    setRetryCount((prev) => prev + 1);
   };
 
-  const handleConfirm = (data: {
-    url: string;
-    provider?: string;
-    title: string;
-    posterUrl?: string;
-    runtimeMinutes: number | null;
-    type: Bookmark["type"];
-  }) => {
-    const smartFill = enrichedRaw ? buildSmartFillData(enrichedRaw) : null;
-    setIsSubmitting(true);
-    createMutation.mutate(
-      buildCreatePayloadFromShare(
-        {
-          title: data.title,
-          type: data.type,
-          provider: data.provider || "generic",
-          url: data.url,
-          posterUrl: data.posterUrl,
-          runtimeMinutes: data.runtimeMinutes,
-        },
-        smartFill,
-      ),
-      {
-        onSettled: () => setIsSubmitting(false),
-      },
-    );
-  };
-
-  const handleDialogClose = (open: boolean) => {
-    setConfirmOpen(open);
-    if (!open && !isSubmitting && !createMutation.isPending) {
-      navigate("/dashboard", { replace: true });
-    }
-  };
-
-  const handleManualFallback = () => {
-    if (!targetUrl) {
-      navigate("/new");
-      return;
-    }
-    navigate(`/new?url=${encodeURIComponent(targetUrl)}`);
-  };
-
-  // No URL provided
   if (!authLoading && user && !targetUrl) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4 px-6 text-center">
@@ -275,63 +187,49 @@ const ShareTarget = () => {
     );
   }
 
-  if (enrichError && enrichState === "done") {
+  if (saveState === "error") {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-5 px-6 text-center">
         <div className="w-14 h-14 bg-destructive/10 rounded-2xl flex items-center justify-center">
           <AlertCircle className="w-7 h-7 text-destructive" />
         </div>
         <div className="space-y-1">
-          <p className="text-lg font-semibold text-foreground">Could not auto-fetch details</p>
-          <p className="text-sm text-muted-foreground">{enrichError}</p>
+          <p className="text-lg font-semibold text-foreground">Could not save share</p>
+          <p className="text-sm text-muted-foreground">{saveError}</p>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" onClick={() => doEnrich(targetUrl)}>
+          <Button variant="outline" onClick={handleRetry}>
             Retry
           </Button>
-          <Button onClick={handleManualFallback}>Add manually</Button>
+          <Button onClick={() => navigate(`/new?url=${encodeURIComponent(targetUrl)}`)}>
+            Add manually
+          </Button>
         </div>
       </div>
     );
   }
 
-  // Loading state (auth check + enrichment)
-  if (authLoading || enrichState === "loading" || isSubmitting || createMutation.isPending) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
-        <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center text-sm font-semibold text-primary">
-          {PROVIDER_MARKS[detectedProvider ?? "generic"] ?? PROVIDER_MARKS.generic}
-        </div>
-        <Loader2 className="w-7 h-7 text-primary animate-spin" />
-        <div className="text-center space-y-1">
-          <p className="text-lg font-semibold text-foreground">
-            Saving from{" "}
-            {PROVIDER_LABELS[detectedProvider ?? ""] ?? "the web"}...
-          </p>
-          <p className="text-sm text-muted-foreground">Fetching details automatically</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Confirmation dialog (rendered over a plain background)
   return (
-    <>
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3 text-muted-foreground">
-          <LinkIcon className="w-8 h-8" />
-          <p className="text-sm">Opening WatchMarks...</p>
-        </div>
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
+      <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center text-sm font-semibold text-primary">
+        {PROVIDER_MARKS[detectedProvider]}
       </div>
-      {confirmInitial && (
-        <ConfirmMetadataDialog
-          open={confirmOpen}
-          onOpenChange={handleDialogClose}
-          initial={confirmInitial}
-          onConfirm={handleConfirm}
-        />
+      <Loader2 className="w-7 h-7 text-primary animate-spin" />
+      <div className="text-center space-y-1">
+        <p className="text-lg font-semibold text-foreground">
+          Saving from {PROVIDER_LABELS[detectedProvider]}...
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Capturing now, details will enrich in the background.
+        </p>
+      </div>
+      {saveState === "saved" && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <LinkIcon className="w-4 h-4" />
+          Redirecting...
+        </div>
       )}
-    </>
+    </div>
   );
 };
 
