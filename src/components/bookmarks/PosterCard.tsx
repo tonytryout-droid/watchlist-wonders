@@ -656,28 +656,6 @@ export function PosterCard({
               );
             })()}
 
-            {/* Watch Now CTA — visible on hover (desktop) or always (mobile) when availability exists */}
-            {!isSelectable && (bookmark.availability?.providers?.length ?? 0) > 0 && (showExpanded || isMobile) && (
-              <div className="absolute bottom-7 left-1.5 right-1.5 z-20 flex justify-start">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const providers = bookmark.availability?.providers ?? [];
-                    if (providers.length === 1) {
-                      openSafe(providers[0].url);
-                    } else {
-                      setWatchModalOpen(true);
-                    }
-                  }}
-                  className="flex items-center gap-1 bg-white text-black text-[9px] font-bold px-2 py-1 rounded-sm shadow-md hover:bg-white/90 transition-colors uppercase tracking-wide"
-                >
-                  <Play className="w-2.5 h-2.5 fill-current" />
-                  Watch
-                </button>
-              </div>
-            )}
 
             {/* Watch progress bar */}
             {(bookmark.progress_percent ?? 0) > 0 && !isSelectable && (
@@ -879,11 +857,11 @@ export function PosterCard({
           </div>
         </Link>
 
-        {/* Netflix-style expanded info panel Ã¢â‚¬â€ appears below on hover */}
+        {/* Prime Video-style expanded info panel — appears below on hover */}
         {!isSelectable && (
           <div
             aria-hidden={!showExpanded}
-            className="absolute left-0 right-0 bg-card rounded-b-sm shadow-[0_20px_40px_rgba(0,0,0,0.5)]"
+            className="absolute left-0 right-0 bg-[#141414] rounded-b-sm shadow-[0_24px_48px_rgba(0,0,0,0.7)] overflow-hidden"
             style={{
               top: "100%",
               zIndex: 30,
@@ -895,63 +873,89 @@ export function PosterCard({
               transitionTimingFunction: "var(--wm-ease-fluid, cubic-bezier(0.16, 1, 0.3, 1))",
             }}
           >
-            <div className="p-2.5">
-              {/* Action row */}
-              {/* Row 1: Primary — Watch (full width) */}
-              <div className="mb-1.5">
-                <button
-                  type="button"
-                  onClick={handlePlay}
-                  className="w-full h-8 rounded-md bg-white text-black text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-white/90 transition-colors"
-                  aria-label={`Watch now: ${bookmark.title}`}
-                >
-                  <Play className="w-3.5 h-3.5 fill-black text-black" />
-                  <span>Watch now</span>
-                </button>
-              </div>
-
-              {/* Row 2: Schedule | Mark Done */}
-              <div className="grid grid-cols-2 gap-1.5 mb-1.5">
-                <button
-                  type="button"
-                  onClick={handleScheduleClick}
-                  className="h-8 rounded-md border border-white/30 text-white text-xs font-medium flex items-center justify-center gap-1.5 hover:border-white transition-colors"
-                  aria-label={`Schedule ${bookmark.title}`}
-                >
-                  <CalendarPlus className="w-3.5 h-3.5" />
-                  <span>Schedule</span>
-                </button>
-                {bookmark.status === "done" ? (
-                  <button
-                    type="button"
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUndoDone?.(); }}
-                    className="h-8 rounded-md border border-[#46d369] text-[#46d369] text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-[#46d369]/10 transition-colors"
-                    aria-label="Undo watched"
-                  >
-                    <Undo2 className="w-3.5 h-3.5" />
-                    <span>Undo</span>
-                  </button>
+            {/* Backdrop image — poster variant only; primes desire before the CTA */}
+            {variant === "poster" && (
+              <div className="relative w-full aspect-video overflow-hidden">
+                {(bookmark.backdrop_url || bookmark.poster_url) ? (
+                  <img
+                    src={bookmark.backdrop_url || bookmark.poster_url || ""}
+                    alt={bookmark.title}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
                 ) : (
-                  <button
-                    type="button"
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onMarkDone?.(); }}
-                    className="h-8 rounded-md border border-white/30 text-white text-xs font-medium flex items-center justify-center gap-1.5 hover:border-[#46d369] hover:text-[#46d369] transition-colors"
-                    aria-label={`Mark ${bookmark.title} as done`}
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Done</span>
-                  </button>
+                  <div className="w-full h-full bg-[#1a1a1a] flex items-center justify-center">
+                    <Film className="w-8 h-8 text-white/20" />
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-[#141414] via-[#141414]/20 to-transparent" />
+              </div>
+            )}
+
+            <div className="px-3 pt-2 pb-3">
+              {/* Title */}
+              <p className="text-sm font-bold text-white leading-tight mb-1.5 line-clamp-2">
+                {bookmark.title}
+              </p>
+
+              {/* Availability / status badge */}
+              <div className="flex items-center gap-1 mb-3">
+                {(bookmark.availability?.providers?.length ?? 0) > 0 ? (
+                  <>
+                    <Check className="w-3 h-3 text-[#46d369] flex-shrink-0" />
+                    <span className="text-[10px] text-[#46d369] font-semibold truncate">
+                      Available on {bookmark.availability!.providers[0].name}
+                    </span>
+                  </>
+                ) : bookmark.status === "watching" ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-[#00a8e1] animate-pulse flex-shrink-0" />
+                    <span className="text-[10px] text-[#00a8e1] font-semibold">Currently Watching</span>
+                  </>
+                ) : bookmark.status === "done" ? (
+                  <>
+                    <Check className="w-3 h-3 text-[#46d369] flex-shrink-0" />
+                    <span className="text-[10px] text-[#46d369] font-semibold">Watched</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3 h-3 text-[#00a8e1] flex-shrink-0" />
+                    <span className="text-[10px] text-[#00a8e1] font-semibold">In your watchlist</span>
+                  </>
                 )}
               </div>
 
-              {/* Row 3: Overflow — tertiary actions */}
-              <div className="flex justify-end mb-2">
+              {/* Action row — Play (primary, flex-1) + Schedule (circle) + More (circle dropdown) */}
+              <div className="flex items-center gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={handlePlay}
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-white text-black text-xs font-bold h-8 rounded-md hover:bg-white/90 transition-colors min-w-0"
+                  aria-label={`Play ${bookmark.title}`}
+                >
+                  <Play className="w-3.5 h-3.5 fill-black flex-shrink-0" />
+                  <span className="truncate">
+                    {bookmark.type === "series" && bookmark.status === "watching" && episodesWatched > 0
+                      ? `S1 E${episodesWatched + 1}`
+                      : "Play"}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleScheduleClick}
+                  className="w-8 h-8 rounded-full border-2 border-white/50 flex items-center justify-center text-white hover:border-white hover:bg-white/10 transition-colors flex-shrink-0"
+                  aria-label="Schedule"
+                >
+                  <CalendarPlus className="w-3.5 h-3.5" />
+                </button>
+
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                      className="w-8 h-8 rounded-full border border-white/30 flex items-center justify-center hover:border-white transition-colors text-white"
+                      className="w-8 h-8 rounded-full border-2 border-white/50 flex items-center justify-center text-white hover:border-white hover:bg-white/10 transition-colors flex-shrink-0"
                       aria-label="More options"
                     >
                       <MoreHorizontal className="w-4 h-4" />
@@ -966,6 +970,15 @@ export function PosterCard({
                     {bookmark.status !== "done" && (
                       <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSkip?.(); }} className="text-white/90">
                         <SkipForward className="w-4 h-4 mr-2" />Skip for now
+                      </DropdownMenuItem>
+                    )}
+                    {bookmark.status === "done" ? (
+                      <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUndoDone?.(); }} className="text-white/90">
+                        <Undo2 className="w-4 h-4 mr-2" />Add Back to List
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onMarkDone?.(); }} className="text-white/90">
+                        <Check className="w-4 h-4 mr-2" />Mark as Watched
                       </DropdownMenuItem>
                     )}
                     {onToggleUpNext && bookmark.status !== "done" && (
@@ -1011,21 +1024,62 @@ export function PosterCard({
                 </DropdownMenu>
               </div>
 
-              {/* Title + meta */}
-              <p className="text-xs font-bold text-white truncate leading-tight mb-1">
-                {bookmark.title}
-              </p>
-              <div className="flex items-center gap-2 flex-wrap">
+              {/* Metadata row — year • episodes/runtime • rating */}
+              <div className="flex items-center gap-1.5 flex-wrap mb-2.5">
                 {bookmark.release_year && (
-                  <span className="text-[10px] text-[#46d369] font-semibold">{bookmark.release_year}</span>
+                  <span className="text-[10px] text-white/70">{bookmark.release_year}</span>
                 )}
-                {bookmark.runtime_minutes && (
-                  <span className="text-[10px] text-white/60">{formatRuntime(bookmark.runtime_minutes)}</span>
+                {bookmark.type === "series" && totalEpisodes && (
+                  <>
+                    <span className="text-white/25 text-[10px]">•</span>
+                    <span className="text-[10px] text-white/70">{totalEpisodes} ep</span>
+                  </>
                 )}
-                {bookmark.mood_tags && bookmark.mood_tags.length > 0 && (
-                  <span className="text-[10px] text-white/50">{bookmark.mood_tags.slice(0, 2).join(" | ")}</span>
+                {bookmark.type !== "series" && bookmark.runtime_minutes && (
+                  <>
+                    <span className="text-white/25 text-[10px]">•</span>
+                    <span className="text-[10px] text-white/70">{formatRuntime(bookmark.runtime_minutes)}</span>
+                  </>
+                )}
+                {bookmark.tmdb?.rating && (
+                  <>
+                    <span className="text-white/25 text-[10px]">•</span>
+                    <span className="text-[10px] text-white/70">&#9733; {bookmark.tmdb.rating.toFixed(1)}</span>
+                  </>
+                )}
+                {!bookmark.tmdb?.rating && bookmark.mood_tags && bookmark.mood_tags.length > 0 && (
+                  <>
+                    <span className="text-white/25 text-[10px]">•</span>
+                    <span className="text-[10px] text-white/50 truncate max-w-[80px]">{bookmark.mood_tags[0]}</span>
+                  </>
                 )}
               </div>
+
+              {/* Watch trailer — only shown when a trailer URL is resolved */}
+              {trailerUrl && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openSafe(toYouTubeWatchUrl(trailerUrl) ?? trailerUrl);
+                  }}
+                  className="mb-2.5 flex items-center gap-1.5 border border-white/35 text-white/85 text-[10px] font-semibold px-3 py-[5px] rounded-full hover:border-white hover:text-white transition-colors"
+                  aria-label="Watch trailer"
+                >
+                  <Play className="w-2.5 h-2.5" />
+                  Watch trailer
+                </button>
+              )}
+
+              {/* Overview / description */}
+              {(bookmark.tmdb?.overview || bookmark.notes) && (
+                <p className="text-[10px] text-white/50 leading-relaxed line-clamp-3">
+                  {bookmark.tmdb?.overview || bookmark.notes}
+                </p>
+              )}
+
+              {/* Recommendation reason */}
               {recommendationReason && (
                 <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-[#54b3d6]">
                   <Info className="h-3 w-3 shrink-0" />
@@ -1035,7 +1089,6 @@ export function PosterCard({
             </div>
           </div>
         )}
-
         {/* Non-hover title (always visible when not expanded) */}
         {!showExpanded && (
           <div className="pt-1.5 px-0.5">

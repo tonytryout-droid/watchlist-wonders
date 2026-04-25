@@ -70,7 +70,6 @@ async function tmdbFetch<T>(
       await sleep(attempt * 500);
     }
   }
-  }
 
   throw new Error(`TMDB ${endpoint} exhausted retries`);
 }
