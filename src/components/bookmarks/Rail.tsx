@@ -63,7 +63,7 @@ function SkeletonCard({ variant }: { variant: "poster" | "backdrop" }) {
     <div
       className={cn(
         "shrink-0 rounded-md bg-muted animate-pulse snap-start",
-        isBackdrop ? "w-[240px] h-[135px]" : "w-[120px] md:w-[140px] h-[180px] md:h-[210px]"
+        isBackdrop ? "w-[260px] h-[146px]" : "w-[120px] md:w-[140px] h-[180px] md:h-[210px]"
       )}
       aria-hidden="true"
     />
@@ -77,7 +77,7 @@ export function Rail({
   itemReasons,
   itemSchedules,
   highlightBookmarkId,
-  variant = "poster",
+  variant = "backdrop",
   showRanks = false,
   cardSize = "default",
   onSchedule,
