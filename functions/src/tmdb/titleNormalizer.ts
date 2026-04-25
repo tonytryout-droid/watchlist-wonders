@@ -1,11 +1,11 @@
 const STRIP_PATTERNS: RegExp[] = [
-  /\s*[\|–—-]\s*(netflix|hulu|disney\+?|hbo\s*max|max|prime\s*video|amazon\s*prime|apple\s*tv\+?|paramount\+?|peacock|crunchyroll|shudder|mubi|showtime|starz|youtube|vimeo|tiktok|instagram|twitter|x\.com|facebook|imdb|rotten\s*tomatoes|letterboxd|themoviedb|tmdb|fandango|vudu|google\s*play|rakuten)/gi,
+  /\s*[|–—-]\s*(netflix|hulu|disney\+?|hbo\s*max|max|prime\s*video|amazon\s*prime|apple\s*tv\+?|paramount\+?|peacock|crunchyroll|shudder|mubi|showtime|starz|youtube|vimeo|tiktok|instagram|twitter|x\.com|facebook|imdb|rotten\s*tomatoes|letterboxd|themoviedb|tmdb|fandango|vudu|google\s*play|rakuten)/gi,
   /^(watch|stream|now\s*streaming|streaming\s*now)\s+/gi,
   /\s+on\s+(netflix|hulu|disney\+?|hbo|max|prime|amazon|apple|peacock|paramount)\s*$/gi,
   /\s*[|–—-]\s*season\s+\d+(\s+episode\s+\d+)?/gi,
   /\s*[|–—-]\s*s\d{1,2}e\d{1,3}/gi,
   /\s*[|–—-]\s*episode\s+\d+/gi,
-  /\s*[\(\[](hd|4k|uhd|full\s*hd|trailer|official|clip|scene)[\)\]]/gi,
+  /\s*[([](hd|4k|uhd|full\s*hd|trailer|official|clip|scene)[)\]]/gi,
   /\s*[|–—]\s*$/g,
   /^\s*[|–—]\s*/g,
 ];
@@ -32,7 +32,7 @@ export function normalizeTitle(rawTitle: string | undefined): NormalizedTitle {
     wordCount <= 10 &&
     clean.length >= 2 &&
     !/\b(how|why|what|best|top\s*\d+)\b/i.test(clean) &&
-    !/[\?!]{2,}/.test(clean);
+    !/[?!]{2,}/.test(clean);
 
   return { cleanTitle: clean, isLikelyMedia };
 }
