@@ -405,7 +405,7 @@ const BookmarkDetail = () => {
       {/* ── HERO ── */}
       <div
         className="relative w-full overflow-hidden"
-        style={{ aspectRatio: "16/7", maxHeight: "52vh", minHeight: "220px" }}
+        style={{ aspectRatio: "16/7", maxHeight: "40vh", minHeight: "200px" }}
       >
         {imageUrl ? (
           <img src={imageUrl} alt={bookmark.title} className="w-full h-full object-cover" />
@@ -1116,7 +1116,7 @@ const BookmarkDetail = () => {
                 <p className="text-sm">No similar titles found</p>
               </div>
             ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                 {similarTitles.map((item) => {
                   const alreadyOwned = ownedTmdbIds.has(item.id);
                   return (

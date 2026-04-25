@@ -249,7 +249,7 @@ const Auth = () => {
         </div>
 
         {/* Auth Card — Netflix-style semi-transparent */}
-        <div className="bg-background/75 backdrop-blur-sm rounded-sm p-8 md:p-10 shadow-2xl">
+        <div className="bg-background/75 backdrop-blur-sm rounded-sm p-4 sm:p-6 md:p-10 shadow-2xl">
           <h1 className="text-2xl md:text-3xl font-bold text-white mb-1.5">
             {mode === "login"
               ? "Sign In"

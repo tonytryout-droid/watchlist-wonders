@@ -484,7 +484,7 @@ export function PosterCard({
               : "w-36 sm:w-40 md:w-44 lg:w-48"
             : cardSize === "featured"
             ? "w-72 sm:w-80 md:w-[22rem]"
-            : "w-64 sm:w-72 md:w-80",
+            : "w-56 sm:w-64 md:w-72 lg:w-80",
           rank && "ml-6",
           showExpanded && "z-30",
           isHighlighted && "ring-2 ring-primary/70 ring-offset-2 ring-offset-background rounded-md motion-safe:animate-[pulse_2.2s_ease-in-out_infinite] motion-reduce:animate-none",
