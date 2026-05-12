@@ -47,6 +47,7 @@ interface RailProps {
   onSharePrivate?: (bookmark: Bookmark) => void;
   onVault?: (bookmark: Bookmark) => void;
   onUnvault?: (bookmark: Bookmark) => void;
+  onViewAll?: () => void;
   emptyMessage?: string;
   emptyState?: React.ReactNode;
   className?: string;
@@ -94,6 +95,7 @@ export function Rail({
   onSharePrivate,
   onVault,
   onUnvault,
+  onViewAll,
   emptyMessage = "No items yet",
   emptyState,
   className,
@@ -181,14 +183,25 @@ export function Rail({
   return (
     <section className={cn("relative py-4 group/rail overflow-visible", className)}>
       {/* Row header */}
-      <div className="px-4 sm:px-6 lg:px-8 mb-3 flex items-baseline gap-3">
-        <h2 className="text-lg md:text-xl font-bold text-white tracking-tight hover:text-white/85 cursor-default transition-colors">
-          {title}
-        </h2>
-        {subtitle && (
-          <span className="text-xs text-[#54b3d6] font-semibold hidden lg:inline opacity-0 group-hover/rail:opacity-100 transition-opacity">
-            {subtitle}
-          </span>
+      <div className="px-4 sm:px-6 lg:px-8 mb-4 flex items-baseline justify-between gap-3">
+        <div className="flex items-baseline gap-3">
+          <h2 className="text-xl md:text-2xl font-bold text-white tracking-tight">
+            {title}
+          </h2>
+          {subtitle && (
+            <span className="text-xs text-[#54b3d6] font-semibold hidden lg:inline opacity-0 group-hover/rail:opacity-100 group-focus-within/rail:opacity-100 transition-opacity">
+              {subtitle}
+            </span>
+          )}
+        </div>
+        {onViewAll && (
+          <button
+            type="button"
+            onClick={onViewAll}
+            className="hidden md:block text-sm text-white/45 hover:text-white transition-colors duration-200 shrink-0"
+          >
+            View All
+          </button>
         )}
       </div>
 
