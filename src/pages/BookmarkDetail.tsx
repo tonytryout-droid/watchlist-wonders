@@ -118,6 +118,11 @@ const BookmarkDetail = () => {
     enabled: !!id,
   });
 
+  useEffect(() => {
+    if (!id) return;
+    void bookmarkService.recordView(id);
+  }, [id]);
+
   const { data: attachments = [], refetch: refetchAttachments } = useQuery({
     queryKey: ["attachments", id],
     queryFn: () => attachmentService.getAttachments(id!),
