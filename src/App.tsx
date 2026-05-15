@@ -34,6 +34,12 @@ const Terms = lazy(() => import("./pages/Terms"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Activity = lazy(() => import("./pages/Activity"));
 const Import = lazy(() => import("./pages/Import"));
+const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
+const AdminSystemHealth = lazy(() => import("./pages/admin/SystemHealth"));
+const AdminUserBehavior = lazy(() => import("./pages/admin/UserBehavior"));
+const AdminIntelligenceQuality = lazy(() => import("./pages/admin/IntelligenceQuality"));
+const AdminContentGraph = lazy(() => import("./pages/admin/ContentGraph"));
+const AdminRetention = lazy(() => import("./pages/admin/Retention"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -134,6 +140,15 @@ const App = () => (
                       {FEATURES.importBookmarks && (
                         <Route path="/import" element={<ErrorBoundary><Import /></ErrorBoundary>} />
                       )}
+                    </Route>
+                    {/* Admin dashboard — gated by admin custom claim inside AdminLayout */}
+                    <Route path="/admin" element={<ErrorBoundary><AdminLayout /></ErrorBoundary>}>
+                      <Route index element={<ErrorBoundary><AdminSystemHealth /></ErrorBoundary>} />
+                      <Route path="health" element={<ErrorBoundary><AdminSystemHealth /></ErrorBoundary>} />
+                      <Route path="users" element={<ErrorBoundary><AdminUserBehavior /></ErrorBoundary>} />
+                      <Route path="intelligence" element={<ErrorBoundary><AdminIntelligenceQuality /></ErrorBoundary>} />
+                      <Route path="graph" element={<ErrorBoundary><AdminContentGraph /></ErrorBoundary>} />
+                      <Route path="retention" element={<ErrorBoundary><AdminRetention /></ErrorBoundary>} />
                     </Route>
                   </Route>
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
