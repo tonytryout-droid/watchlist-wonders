@@ -103,6 +103,82 @@ export interface Bookmark {
   enriched_at?: string | null;
   enrich_fail_reason?: string | null;
   tmdb?: TmdbEnrichment | null;
+  // ── Memory + retrieval layer ──
+  context?: BookmarkContext;
+  auto_tags?: string[];
+  embedding_ref?: string | null;
+  fingerprint?: BookmarkFingerprint | null;
+  canonical_entity?: CanonicalEntity | null;
+  cluster_id?: string | null;
+  last_viewed_at?: string | null;
+  view_count?: number;
+  importance_score?: number;
+  pending_cluster_assignment?: boolean;
+  pipeline_version?: number;
+}
+
+export interface BookmarkContext {
+  note?: string | null;
+  reason?: string | null;
+  mood?: string | null;
+  inferred_tags?: string[];
+  domain_type?: "video" | "article" | "social" | "product" | "media" | "other";
+}
+
+export interface BookmarkFingerprint {
+  text_embedding_id: string;
+  image_embedding_id?: string | null;
+  extracted_keywords: string[];
+  platform: string;
+}
+
+export type CanonicalEntitySource = "tmdb" | "imdb" | "youtube" | "spotify" | "unresolved";
+export type CanonicalEntityType =
+  | "movie" | "tv" | "anime" | "music" | "clip" | "meme" | "article" | "unknown";
+
+export interface CanonicalEntity {
+  source: CanonicalEntitySource;
+  id: string;
+  type: CanonicalEntityType;
+  title: string;
+  year?: number | null;
+  genres?: string[];
+  runtime?: number | null;
+  poster?: string | null;
+  confidence: number;
+  matched_at: string;
+  suggested?: boolean;
+}
+
+export interface BookmarkCluster {
+  id: string;
+  name: string;
+  centroid_ref: string;
+  centroid_embedding?: number[];
+  member_count: number;
+  last_updated: string;
+  emerging_trend?: boolean;
+  top_titles?: string[];
+}
+
+export interface ResurfaceEvent {
+  id: string;
+  bookmark_id: string;
+  reason: "forgotten_high_value" | "cluster_dormant" | "similar_to_recent";
+  surfaced_at: string;
+  dismissed_at?: string | null;
+  opened_at?: string | null;
+}
+
+export interface EntityCacheEntry {
+  url_hash: string;
+  canonical_entity: CanonicalEntity;
+  cached_at: string;
+}
+
+export interface AnalyticsDaily {
+  date: string;
+  counters: Record<string, number>;
 }
 
 export interface Attachment {

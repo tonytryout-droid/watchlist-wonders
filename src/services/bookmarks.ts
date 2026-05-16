@@ -15,7 +15,8 @@ import {
   runTransaction,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { auth, db, fbFunctions } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
 import type { Bookmark } from '@/types/database';
 import { buildLifecycleUpdate, deriveLifecycleState } from "@/engine/lifecycle";
 import { normalizeBookmark } from '@/services/bookmarkNormalizer';
@@ -30,6 +31,21 @@ import {
   validateBookmarkCreateVisibility,
   validateBookmarkUpdateVisibility,
 } from "@/services/bookmarkVisibility";
+
+export interface SemanticSearchResult {
+  id: string;
+  title: string;
+  poster_url: string | null;
+  type: string;
+  provider: string;
+  tags: string[];
+  auto_tags: string[];
+  canonical_entity: unknown;
+  cluster_id: string | null;
+  score: number;
+  breakdown: { semantic: number; recency: number; engagement: number; importance: number };
+  reason: string;
+}
 
 function getUid(): string {
   const user = auth.currentUser;
@@ -371,7 +387,7 @@ export const bookmarkService = {
   },
 
   /**
-   * Search bookmarks by title or notes (client-side filtering)
+   * Search bookmarks by title or notes (client-side filtering — legacy fallback)
    */
   async searchBookmarks(queryStr: string): Promise<Bookmark[]> {
     const bookmarks = await this.getBookmarks();
@@ -381,6 +397,62 @@ export const bookmarkService = {
         b.title.toLowerCase().includes(lower) ||
         (b.notes && b.notes.toLowerCase().includes(lower)),
     );
+  },
+
+  /**
+   * Semantic + ranked search via Cloud Function. Falls back to client-side
+   * keyword filter when the callable is unavailable (offline, missing config).
+   */
+  async semanticSearch(
+    queryStr: string,
+    opts?: { topK?: number; mode?: 'auto' | 'semantic' | 'keyword' | 'temporal' | 'context' },
+  ): Promise<SemanticSearchResult[]> {
+    try {
+      const callable = httpsCallable<
+        { query: string; topK?: number; mode?: string },
+        { results: SemanticSearchResult[] }
+      >(fbFunctions, 'searchBookmarks');
+      const result = await callable({
+        query: queryStr,
+        topK: opts?.topK ?? 20,
+        mode: opts?.mode ?? 'auto',
+      });
+      return result.data.results ?? [];
+    } catch (err) {
+      console.warn('[bookmarkService] semanticSearch fallback to client filter', err);
+      const bookmarks = await this.searchBookmarks(queryStr);
+      return bookmarks.slice(0, opts?.topK ?? 20).map((b) => ({
+        id: b.id,
+        title: b.title,
+        poster_url: b.poster_url ?? null,
+        type: b.type,
+        provider: b.provider,
+        tags: b.tags ?? [],
+        auto_tags: (b as Bookmark & { auto_tags?: string[] }).auto_tags ?? [],
+        canonical_entity: (b as Bookmark & { canonical_entity?: unknown }).canonical_entity ?? null,
+        cluster_id: (b as Bookmark & { cluster_id?: string | null }).cluster_id ?? null,
+        score: 0,
+        breakdown: { semantic: 0, recency: 0, engagement: 0, importance: 0 },
+        reason: 'fallback_keyword',
+      }));
+    }
+  },
+
+  /**
+   * Record that the current user opened this bookmark. Cheap fire-and-forget
+   * for view-count + last_viewed_at tracking that feeds importance scoring.
+   */
+  async recordView(bookmarkId: string): Promise<void> {
+    try {
+      const callable = httpsCallable<{ bookmarkId: string }, { ok: boolean }>(
+        fbFunctions,
+        'recordView',
+      );
+      await callable({ bookmarkId });
+    } catch (err) {
+      // Non-fatal — view tracking must never break the UI.
+      if (import.meta.env.DEV) console.warn('[bookmarkService] recordView failed', err);
+    }
   },
 
   /**

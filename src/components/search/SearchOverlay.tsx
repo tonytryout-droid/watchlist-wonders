@@ -84,17 +84,59 @@ export function SearchOverlay({ isOpen, onClose, bookmarks }: SearchOverlayProps
 
   useEffect(() => {
     if (!query.trim()) { setResults([]); setSelectedIndex(-1); return; }
-    const term = query.toLowerCase();
-    const filtered = bookmarks.filter(
-      (b) =>
-        b.title.toLowerCase().includes(term) ||
-        b.type.toLowerCase().includes(term) ||
-        b.provider.toLowerCase().includes(term) ||
-        (b.tags ?? []).some((tag) => tag.toLowerCase().includes(term)) ||
-        (b.mood_tags ?? []).some((mood) => mood.toLowerCase().includes(term)),
-    );
-    setResults(filtered.slice(0, MAX_RESULTS));
+    let active = true;
+    const trimmed = query.trim();
+    const localResults = (() => {
+      const term = trimmed.toLowerCase();
+      return bookmarks
+        .filter(
+          (b) =>
+            b.title.toLowerCase().includes(term) ||
+            b.type.toLowerCase().includes(term) ||
+            b.provider.toLowerCase().includes(term) ||
+            (b.tags ?? []).some((tag) => tag.toLowerCase().includes(term)) ||
+            (b.mood_tags ?? []).some((mood) => mood.toLowerCase().includes(term)),
+        )
+        .slice(0, MAX_RESULTS);
+    })();
+    setResults(localResults);
     setSelectedIndex(-1);
+
+    const timer = window.setTimeout(() => {
+      bookmarkService
+        .semanticSearch(trimmed, { topK: MAX_RESULTS })
+        .then((semantic) => {
+          if (!active || !semantic.length) return;
+          const localById = new Map(bookmarks.map((b) => [b.id, b]));
+          const merged: Bookmark[] = semantic
+            .map((r): Bookmark | null => {
+              const local = localById.get(r.id);
+              if (local) return local;
+              return {
+                id: r.id,
+                title: r.title,
+                poster_url: r.poster_url ?? null,
+                type: r.type,
+                provider: r.provider,
+                tags: r.tags,
+                mood_tags: [],
+                metadata: undefined,
+              };
+            })
+            .filter((b): b is Bookmark => b !== null);
+          if (merged.length) {
+            setResults(merged.slice(0, MAX_RESULTS));
+          }
+        })
+        .catch(() => {
+          // Silent — local results already shown.
+        });
+    }, 220);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
   }, [query, bookmarks]);
 
   const recommendationSeed = results[0] ?? null;

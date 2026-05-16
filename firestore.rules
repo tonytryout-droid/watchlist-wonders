@@ -1,6 +1,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null && request.auth.token.admin == true;
+    }
+
     // User's own data — full access
     match /users/{uid}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
@@ -31,9 +35,19 @@ service cloud.firestore {
     // Social graph — followers list: owner can read; authenticated users can write/delete
     // their own record (so User A can add/remove themselves from User B's followers list)
     match /users/{uid}/followers/{followerUid} {
-      allow read: if request.auth != null && request.auth.uid == uid;
+      allow read: if request.auth != null && request.auth.uid == followerUid;
       allow write: if request.auth != null && request.auth.uid == followerUid;
+    }
+
+    // Analytics aggregates — admin-only read; writes are server-side (Functions) only
+    match /analytics/{date} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // Entity cache — read by Cloud Functions; clients have no business reading it.
+    match /entityCache/{hash} {
+      allow read, write: if false;
     }
   }
 }
-

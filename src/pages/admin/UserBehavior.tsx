@@ -1,0 +1,74 @@
+import { useQuery } from '@tanstack/react-query';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { adminService } from '@/services/admin';
+import { AdminPageHeader, MetricCard, Panel, formatNumber, formatPercent } from './AdminCards';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
+
+export default function UserBehavior() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['admin', 'userBehavior'],
+    queryFn: () => adminService.getUserBehavior(),
+    refetchInterval: 5 * 60_000,
+  });
+
+  if (isLoading) return <div className="flex justify-center py-16"><LoadingSpinner /></div>;
+  if (error || !data) return <p className="text-sm text-muted-foreground">Failed to load user behavior.</p>;
+
+  const totalRecentSaves = data.savesByDay.reduce((s, d) => s + d.saves, 0);
+  const avgPerUser = data.totalUsers === 0 ? 0 : totalRecentSaves / data.totalUsers;
+
+  return (
+    <div className="space-y-6">
+      <AdminPageHeader title="User Behavior" subtitle="Engagement, save velocity, and retrieval signal." />
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <MetricCard label="Total users" value={formatNumber(data.totalUsers)} />
+        <MetricCard label="Total bookmarks" value={formatNumber(data.totalBookmarks)} />
+        <MetricCard
+          label="Avg saves / user (14d)"
+          value={avgPerUser.toFixed(1)}
+          hint={`${formatNumber(totalRecentSaves)} saves in window`}
+        />
+        <MetricCard
+          label="Dead bookmark ratio"
+          value={formatPercent(data.deadBookmarkRatio)}
+          hint="no canonical entity resolved"
+          tone={data.deadBookmarkRatio > 0.4 ? 'warning' : 'default'}
+        />
+      </div>
+
+      <Panel title="Saves per day (14 days)">
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data.savesByDay}>
+              <XAxis dataKey="date" tick={{ fill: '#71717a', fontSize: 11 }} />
+              <YAxis tick={{ fill: '#71717a', fontSize: 11 }} />
+              <Tooltip contentStyle={{ background: '#0e0e10', border: '1px solid rgba(255,255,255,0.08)', fontSize: 12 }} />
+              <Bar dataKey="saves" fill="#60a5fa" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </Panel>
+
+      <Panel title="Search activity">
+        <div className="grid grid-cols-2 gap-6">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground mb-2">Hit rate</p>
+            <p className="text-2xl font-semibold">{formatPercent(data.revisitRate)}</p>
+            <p className="text-xs text-muted-foreground mt-1">queries returning at least one result</p>
+          </div>
+          <div className="h-32">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data.searchUsage}>
+                <XAxis dataKey="date" tick={{ fill: '#71717a', fontSize: 10 }} hide />
+                <Tooltip contentStyle={{ background: '#0e0e10', border: '1px solid rgba(255,255,255,0.08)', fontSize: 12 }} />
+                <Bar dataKey="queries" fill="#a78bfa" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="hits" fill="#34d399" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </Panel>
+    </div>
+  );
+}
