@@ -1877,7 +1877,16 @@ export const enrich = onCall(
     }
 
     try {
-      const { url } = request.data;
+      const { url, title: titleQuery } = request.data as { url?: unknown; title?: unknown };
+
+      // Title-only path: caller wants a TMDB title search without a source URL
+      if (!url && titleQuery && typeof titleQuery === 'string' && titleQuery.trim()) {
+        const trimmedTitle = titleQuery.trim();
+        logger.info('Enriching by title:', trimmedTitle.slice(0, 60));
+        const result = await enrichTMDB(trimmedTitle);
+        return withResolutionDefaults(result);
+      }
+
       if (!url || typeof url !== 'string') {
         throw new HttpsError('invalid-argument', 'URL is required.');
       }

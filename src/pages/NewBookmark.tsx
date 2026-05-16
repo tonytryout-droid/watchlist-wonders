@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Link as LinkIcon, Loader2, Upload, X, Plus, Clock,
-  Tag, FileText, Film, Tv, Play, ChevronRight, Sparkles, Check,
+  Tag, FileText, Film, Tv, Play, ChevronRight, Sparkles, Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import { attachmentService } from "@/services/attachments";
 import { buildSmartFillData, mapGenresToMoodTags, type EnrichmentMatchCandidate, type MatchConfidence } from "@/lib/enrichmentSmartFill";
 import { getSafeErrorMessage } from "@/lib/errorMessage";
 import { ConfirmMetadataDialog, type ConfirmMetadataPayload } from "@/components/bookmarks/ConfirmMetadataDialog";
+import { CandidateGrid } from "@/components/bookmarks/CandidateGrid";
 import { QuickScheduleSheet } from "@/components/schedules/QuickScheduleSheet";
 import type { Bookmark } from "@/types/database";
 
@@ -151,7 +152,10 @@ const NewBookmark = () => {
   const [metadata, setMetadata] = useState<Record<string, unknown>>({});
   const [matchCandidates, setMatchCandidates] = useState<EnrichmentMatchCandidate[]>([]);
   const [matchConfidence, setMatchConfidence] = useState<MatchConfidence>("unknown");
-  const [selectedCandidateId, setSelectedCandidateId] = useState<number | null>(null);
+  const [selectedCandidateKey, setSelectedCandidateKey] = useState<string | null>(null);
+  const [showManualSearch, setShowManualSearch] = useState(false);
+  const [manualSearchQuery, setManualSearchQuery] = useState("");
+  const [isManualSearching, setIsManualSearching] = useState(false);
   const [selectedMoods, setSelectedMoods] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
@@ -244,7 +248,8 @@ const NewBookmark = () => {
   };
 
   const applyMatchCandidate = (candidate: EnrichmentMatchCandidate, selectedBy: "auto" | "user" = "user") => {
-    setSelectedCandidateId(candidate.tmdbId);
+    setSelectedCandidateKey(`${candidate.tmdbId}-${candidate.mediaType}`);
+    setShowManualSearch(false);
     setMatchConfidence("high");
     setTitle(candidate.title);
     if (candidate.posterUrl) setPosterUrl(candidate.posterUrl);
@@ -261,6 +266,18 @@ const NewBookmark = () => {
     else if (candidate.contentType === "series") setType("series");
     else setType(candidate.mediaType === "tv" ? "series" : "movie");
     setCanonicalUrl(`https://www.themoviedb.org/${candidate.mediaType}/${candidate.tmdbId}`);
+
+    const rejectedCandidates = matchCandidates
+      .filter((c) => c.tmdbId !== candidate.tmdbId)
+      .map((c) => ({
+        tmdbId: c.tmdbId,
+        title: c.title,
+        mediaType: c.mediaType,
+        releaseYear: c.releaseYear,
+        score: c.score,
+        selected: false,
+      }));
+
     setMetadata((prev) => ({
       ...prev,
       tmdb_id: candidate.tmdbId,
@@ -272,6 +289,7 @@ const NewBookmark = () => {
       resolution_requires_selection: false,
       resolution_selected_by: selectedBy,
       resolution_selected_candidate: candidate,
+      resolution_candidate_history: rejectedCandidates,
       ...(candidate.backdropUrl ? { backdrop_url: candidate.backdropUrl } : {}),
       ...(candidate.description ? { overview: candidate.description } : {}),
       ...(candidate.voteAverage !== undefined ? { vote_average: candidate.voteAverage } : {}),
@@ -322,7 +340,7 @@ const NewBookmark = () => {
             applyMatchCandidate(topCandidate, "auto");
           } else {
             setTitle(fallbackTitleFromUrl(trimmed));
-            setSelectedCandidateId(null);
+            setSelectedCandidateKey(null);
             setType(resolveTypeFromEnrichment(data, fallbackProvider));
           }
 
@@ -375,7 +393,7 @@ const NewBookmark = () => {
       if (shouldAutoSelectTopCandidate && topCandidate) {
         applyMatchCandidate(topCandidate, "auto");
       } else {
-        setSelectedCandidateId(null);
+        setSelectedCandidateKey(null);
       }
 
       setType(resolveTypeFromEnrichment(data, fallbackProvider));
@@ -397,7 +415,7 @@ const NewBookmark = () => {
     } catch (error: unknown) {
       setMatchCandidates([]);
       setMatchConfidence("unknown");
-      setSelectedCandidateId(null);
+      setSelectedCandidateKey(null);
       const dp2 = detectProvider(trimmed);
       setConfirmInitial({
         url: trimmed,
@@ -421,7 +439,7 @@ const NewBookmark = () => {
     setType(data.type);
     setMatchCandidates([]);
     setMatchConfidence("unknown");
-    setSelectedCandidateId(null);
+    setSelectedCandidateKey(null);
     setStep("confirm");
   };
 
@@ -433,6 +451,41 @@ const NewBookmark = () => {
     if (tagInput.trim() && !tags.includes(tagInput.trim())) {
       setTags([...tags, tagInput.trim()]);
       setTagInput("");
+    }
+  };
+
+  const openManualEntry = (searchTitle: string) => {
+    setConfirmInitial({ url: url || "", title: searchTitle });
+    setConfirmOpen(true);
+    setShowManualSearch(false);
+  };
+
+  const handleManualSearch = async (query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    setIsManualSearching(true);
+    try {
+      const enrichCallable = httpsCallable(fbFunctions, 'enrich');
+      const result = await enrichCallable({ title: trimmed });
+      const data = (result.data ?? {}) as Record<string, unknown>;
+      const smartFill = buildSmartFillData(data);
+      if (smartFill.matchCandidates.length > 0) {
+        setMatchCandidates(smartFill.matchCandidates);
+        setMatchConfidence(smartFill.matchConfidence === "unknown" ? "low" : smartFill.matchConfidence);
+        setSelectedCandidateKey(null);
+        setMetadata((prev) => ({
+          ...prev,
+          resolution_status: "needs_selection",
+          resolution_requires_selection: true,
+          match_candidates: smartFill.matchCandidates,
+        }));
+      } else {
+        openManualEntry(trimmed);
+      }
+    } catch {
+      openManualEntry(trimmed);
+    } finally {
+      setIsManualSearching(false);
     }
   };
 
@@ -586,7 +639,7 @@ const NewBookmark = () => {
               onClick={() => {
                 setMatchCandidates([]);
                 setMatchConfidence("unknown");
-                setSelectedCandidateId(null);
+                setSelectedCandidateKey(null);
                 setStep("confirm");
               }}
             >
@@ -611,7 +664,7 @@ const NewBookmark = () => {
       {/* Header */}
       <div className="sticky top-[68px] z-40 bg-background/95 backdrop-blur border-b border-border">
         <div className="container mx-auto px-4 lg:px-8 flex items-center gap-4 h-16">
-          <Button variant="ghost" size="icon" onClick={() => setStep("paste")}>
+          <Button variant="ghost" size="icon" onClick={() => { setStep("paste"); setShowManualSearch(false); }}>
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div>
@@ -638,97 +691,84 @@ const NewBookmark = () => {
         )}
         {matchCandidates.length > 0 && (matchConfidence !== "high" || matchCandidates.length > 1) && (
           <div className="mb-6 rounded-xl border border-border bg-wm-surface p-4">
-            {/* Header — differentiate "pick one" (no title) vs "confirm this" (title found) */}
-            <div className="mb-4">
-              <p className="text-sm font-semibold text-foreground">
-                {!title && matchConfidence === "low"
-                  ? "We couldn't find an exact match"
-                  : matchCandidates.length === 1 ? "Is this the right title?" : "Choose the best match"}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {!title && matchConfidence === "low"
-                  ? "Pick the closest result — we'll fill in title, synopsis, runtime, and genre."
-                  : "Select to auto-fill synopsis, runtime, and genre."}
-              </p>
+            <div className="mb-4 flex items-start justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  {matchCandidates.length === 1 ? "Is this the right title?" : "We found possible matches"}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Select to auto-fill synopsis, runtime, and genre.
+                </p>
+              </div>
+              {!showManualSearch && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-2 text-xs text-muted-foreground shrink-0"
+                  onClick={() => {
+                    setSelectedCandidateKey(null);
+                    setShowManualSearch(true);
+                    setManualSearchQuery("");
+                    setMetadata((prev) => ({
+                      ...stripCanonicalMetadata(prev),
+                      resolution_status: "needs_selection",
+                      resolution_requires_selection: true,
+                      match_candidates: matchCandidates,
+                    }));
+                  }}
+                >
+                  None of these
+                </Button>
+              )}
             </div>
 
-            {/* Candidate grid — poster-dominant layout */}
-            <div className="mb-4 flex justify-end">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 px-2 text-xs text-muted-foreground"
-                onClick={() => {
-                  setSelectedCandidateId(null);
-                  setMetadata((prev) => ({
-                    ...stripCanonicalMetadata(prev),
-                    resolution_status: "needs_selection",
-                    resolution_requires_selection: true,
-                    match_candidates: matchCandidates,
-                  }));
-                }}
-              >
-                None of these
-              </Button>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              {matchCandidates.slice(0, 5).map((candidate, index) => {
-                const isActive = selectedCandidateId === candidate.tmdbId;
-                return (
-                  <button
-                    key={`${candidate.tmdbId}-${candidate.mediaType}`}
-                    type="button"
-                    onClick={() => applyMatchCandidate(candidate)}
-                    className={cn(
-                      "flex flex-col rounded-lg border overflow-hidden text-left transition-all duration-150",
-                      isActive
-                        ? "border-primary ring-1 ring-primary"
-                        : "border-border hover:border-primary/50"
-                    )}
+            <CandidateGrid
+              candidates={matchCandidates}
+              selectedKey={selectedCandidateKey}
+              onSelect={(candidate) => applyMatchCandidate(candidate)}
+            />
+
+            {showManualSearch && (
+              <div className="mt-4 space-y-2">
+                <p className="text-xs text-muted-foreground font-medium">Search for the correct title</p>
+                <form
+                  className="flex gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void handleManualSearch(manualSearchQuery);
+                  }}
+                >
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <Input
+                      autoFocus
+                      placeholder="e.g. Pain (2021 documentary)…"
+                      value={manualSearchQuery}
+                      onChange={(e) => setManualSearchQuery(e.target.value)}
+                      className="h-9 pl-8 text-sm"
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    className="h-9 px-4 shrink-0"
+                    disabled={!manualSearchQuery.trim() || isManualSearching}
                   >
-                    {/* Poster — 2:3 ratio, fills the width */}
-                    <div className="aspect-[2/3] w-full bg-muted relative overflow-hidden">
-                      {candidate.posterUrl ? (
-                        <img
-                          src={candidate.posterUrl}
-                          alt={candidate.title}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-2xl font-bold text-muted-foreground/20">
-                          {candidate.title.charAt(0)}
-                        </div>
-                      )}
-                      {isActive && (
-                        <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                          <Check className="w-6 h-6 text-white drop-shadow" />
-                        </div>
-                      )}
-                      {index === 0 && (
-                        <span className="absolute left-1.5 top-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-semibold text-white">
-                          Best match
-                        </span>
-                      )}
-                    </div>
-                    {/* Meta */}
-                    <div className="p-2">
-                      <p className="text-xs font-medium text-foreground line-clamp-2 leading-tight">{candidate.title}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">
-                        {candidate.mediaType === "tv" ? "Series" : "Movie"}
-                        {candidate.releaseYear ? ` · ${candidate.releaseYear}` : ""}
-                        {candidate.runtimeMinutes ? ` · ${candidate.runtimeMinutes}m` : ""}
-                      </p>
-                      {candidate.description && (
-                        <p className="mt-1 text-[10px] text-muted-foreground line-clamp-2 leading-snug">
-                          {candidate.description}
-                        </p>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                    {isManualSearching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Search"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 px-3 shrink-0"
+                    onClick={() => setShowManualSearch(false)}
+                  >
+                    Cancel
+                  </Button>
+                </form>
+              </div>
+            )}
           </div>
         )}
 
@@ -960,7 +1000,7 @@ const NewBookmark = () => {
                 <Loader2 className="w-5 h-5 animate-spin" />
                 {uploadProgress > 0 ? `Uploading ${uploadProgress}/${attachments.length}…` : "Saving…"}
               </>
-            ) : selectedCandidateId === null && matchCandidates.length > 0 ? "Save Link Only" : "Save to Watchlist"}
+            ) : selectedCandidateKey === null && matchCandidates.length > 0 ? "Save Link Only" : "Save to Watchlist"}
           </Button>
         </div>
       </div>
