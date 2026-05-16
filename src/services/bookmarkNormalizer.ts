@@ -1,4 +1,40 @@
 import type { Bookmark } from "@/types/database";
+import { z } from "zod";
+
+const bookmarkFingerprintSchema = z.object({
+  text_embedding_id: z.string().min(1),
+  image_embedding_id: z.string().nullable().optional(),
+  extracted_keywords: z.array(z.string()),
+  platform: z.string().min(1),
+});
+
+const canonicalEntitySchema = z.object({
+  source: z.enum(["tmdb", "imdb", "youtube", "spotify", "unresolved"]),
+  id: z.string().min(1),
+  type: z.enum(["movie", "tv", "anime", "music", "clip", "meme", "article", "unknown"]),
+  title: z.string().min(1),
+  year: z.number().nullable().optional(),
+  genres: z.array(z.string()).optional(),
+  runtime: z.number().nullable().optional(),
+  poster: z.string().nullable().optional(),
+  confidence: z.number(),
+  matched_at: z.string().min(1),
+  suggested: z.boolean().optional(),
+});
+
+function validateFingerprint(value: unknown): Bookmark["fingerprint"] | null {
+  const record = asOptionalRecord(value);
+  if (!record) return null;
+  const result = bookmarkFingerprintSchema.safeParse(record);
+  return result.success ? (result.data as Bookmark["fingerprint"]) : null;
+}
+
+function validateCanonicalEntity(value: unknown): Bookmark["canonical_entity"] | null {
+  const record = asOptionalRecord(value);
+  if (!record) return null;
+  const result = canonicalEntitySchema.safeParse(record);
+  return result.success ? (result.data as Bookmark["canonical_entity"]) : null;
+}
 
 const KNOWN_STATUSES = new Set<Bookmark["status"]>([
   "backlog",
@@ -173,5 +209,15 @@ export function normalizeBookmark(id: string, raw: unknown): Bookmark {
     enriched_at: enrichedAt,
     enrich_fail_reason: enrichFailReason,
     tmdb,
+    auto_tags: asStringArray(data.auto_tags),
+    embedding_ref: asTrimmedString(data.embedding_ref),
+    fingerprint: validateFingerprint(data.fingerprint),
+    canonical_entity: validateCanonicalEntity(data.canonical_entity),
+    cluster_id: asTrimmedString(data.cluster_id),
+    last_viewed_at: asIsoString(data.last_viewed_at),
+    view_count: asNonNegativeInteger(data.view_count, 0),
+    importance_score: asFiniteNumber(data.importance_score) ?? undefined,
+    pending_cluster_assignment: asBoolean(data.pending_cluster_assignment),
+    pipeline_version: asFiniteNumber(data.pipeline_version) ?? undefined,
   };
 }

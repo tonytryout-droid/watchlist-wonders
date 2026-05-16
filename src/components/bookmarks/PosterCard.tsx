@@ -298,6 +298,9 @@ export function PosterCard({
   const episodeProgress = totalEpisodes ? (episodesWatched / totalEpisodes) * 100 : 0;
 
   const isNew = isNewBookmark(bookmark.created_at);
+  const needsResolution =
+    bookmark.metadata?.resolution_status === "needs_selection" ||
+    (bookmark.metadata?.resolution_requires_selection === true && !bookmark.canonical_entity);
 
   const handlePlay = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -591,7 +594,17 @@ export function PosterCard({
             )}
 
             {/* Enrichment pending indicator */}
-            {enrichmentState.status === "pending" && !isSelectable && !isNew && (
+            {needsResolution && !isSelectable && !isNew && (
+              <div className="absolute top-1.5 right-1.5 z-10">
+                <span className="flex items-center gap-1 text-[9px] font-bold bg-amber-500/95 text-black px-1.5 py-0.5 rounded-sm uppercase tracking-wide">
+                  <Sparkles className="w-2.5 h-2.5" />
+                  Match needed
+                </span>
+              </div>
+            )}
+
+            {/* Enrichment pending indicator */}
+            {enrichmentState.status === "pending" && !needsResolution && !isSelectable && !isNew && (
               <div className="absolute top-1.5 right-1.5 z-10">
                 <span className="flex items-center gap-1 text-[9px] font-bold bg-purple-600/90 text-white px-1.5 py-0.5 rounded-sm uppercase tracking-wide animate-pulse">
                   <Sparkles className="w-2.5 h-2.5" />

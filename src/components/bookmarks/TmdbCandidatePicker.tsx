@@ -55,7 +55,7 @@ export function TmdbCandidatePicker({
       <DialogContent className="sm:max-w-lg max-h-[92dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {isSingleCandidate ? "Is this the right title?" : "Choose the best match"}
+            {isSingleCandidate ? "Is this the right title?" : "We found possible matches"}
           </DialogTitle>
           <DialogDescription>
             {extractedTitle ? (
@@ -71,8 +71,8 @@ export function TmdbCandidatePicker({
         </DialogHeader>
 
         {/* Candidate grid — poster-dominant, 2-col on mobile, up to 4-col on sm+ */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-2">
-          {candidates.slice(0, 4).map((candidate) => {
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 py-2">
+          {candidates.slice(0, 5).map((candidate, index) => {
             const isActive = selectedId === candidate.tmdbId;
             return (
               <button
@@ -105,6 +105,11 @@ export function TmdbCandidatePicker({
                       <Check className="w-6 h-6 text-white drop-shadow" />
                     </div>
                   )}
+                  {index === 0 && (
+                    <span className="absolute left-1.5 top-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+                      Best match
+                    </span>
+                  )}
                 </div>
                 {/* Meta row */}
                 <div className="p-2">
@@ -114,7 +119,13 @@ export function TmdbCandidatePicker({
                   <p className="text-[10px] text-muted-foreground mt-0.5">
                     {candidate.mediaType === "tv" ? "Series" : "Movie"}
                     {candidate.releaseYear ? ` · ${candidate.releaseYear}` : ""}
+                    {candidate.runtimeMinutes ? ` · ${candidate.runtimeMinutes}m` : ""}
                   </p>
+                  {candidate.description && (
+                    <p className="mt-1 text-[10px] text-muted-foreground line-clamp-2 leading-snug">
+                      {candidate.description}
+                    </p>
+                  )}
                 </div>
               </button>
             );

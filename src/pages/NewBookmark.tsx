@@ -84,6 +84,24 @@ function toNumericId(value: unknown): number | null {
   return null;
 }
 
+function fallbackTitleFromUrl(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.hostname.replace(/^www\./, "");
+  } catch {
+    return "Saved link";
+  }
+}
+
+function stripCanonicalMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...metadata };
+  delete next.tmdb_id;
+  delete next.tmdbId;
+  delete next.media_type;
+  delete next.resolution_selected_by;
+  return next;
+}
+
 function resolveTypeFromEnrichment(
   data: Record<string, unknown>,
   fallbackProvider: Bookmark["provider"],
@@ -225,7 +243,7 @@ const NewBookmark = () => {
     return merged;
   };
 
-  const applyMatchCandidate = (candidate: EnrichmentMatchCandidate) => {
+  const applyMatchCandidate = (candidate: EnrichmentMatchCandidate, selectedBy: "auto" | "user" = "user") => {
     setSelectedCandidateId(candidate.tmdbId);
     setMatchConfidence("high");
     setTitle(candidate.title);
@@ -242,10 +260,18 @@ const NewBookmark = () => {
     if (candidate.contentType === "episode") setType("episode");
     else if (candidate.contentType === "series") setType("series");
     else setType(candidate.mediaType === "tv" ? "series" : "movie");
+    setCanonicalUrl(`https://www.themoviedb.org/${candidate.mediaType}/${candidate.tmdbId}`);
     setMetadata((prev) => ({
       ...prev,
       tmdb_id: candidate.tmdbId,
+      media_type: candidate.mediaType,
       match_confidence: "high",
+      resolution_status: "matched",
+      resolution_confidence: candidate.score ?? 1,
+      resolution_confidence_band: "high",
+      resolution_requires_selection: false,
+      resolution_selected_by: selectedBy,
+      resolution_selected_candidate: candidate,
       ...(candidate.backdropUrl ? { backdrop_url: candidate.backdropUrl } : {}),
       ...(candidate.description ? { overview: candidate.description } : {}),
       ...(candidate.voteAverage !== undefined ? { vote_average: candidate.voteAverage } : {}),
@@ -289,25 +315,26 @@ const NewBookmark = () => {
           const resolvedConfidence =
             smartFill.matchConfidence === "unknown" ? "low" : smartFill.matchConfidence;
           const shouldAutoSelectTopCandidate =
-            resolvedConfidence === "high" ||
-            (resolvedConfidence === "medium" && smartFill.matchCandidates.length === 1);
+            smartFill.resolutionStatus === "matched" && resolvedConfidence === "high";
           const topCandidate = smartFill.matchCandidates[0];
 
-          if (topCandidate) {
-            applyMatchCandidate(topCandidate);
-            if (!shouldAutoSelectTopCandidate) {
-              setSelectedCandidateId(null);
-            }
+          if (topCandidate && shouldAutoSelectTopCandidate) {
+            applyMatchCandidate(topCandidate, "auto");
           } else {
+            setTitle(fallbackTitleFromUrl(trimmed));
+            setSelectedCandidateId(null);
             setType(resolveTypeFromEnrichment(data, fallbackProvider));
           }
 
           setMatchCandidates(smartFill.matchCandidates);
           setMatchConfidence(resolvedConfidence);
 
-          const metadataFromSmartFill = { ...smartFill.metadata };
+          let metadataFromSmartFill = { ...smartFill.metadata };
           if (!shouldAutoSelectTopCandidate) {
-            delete metadataFromSmartFill.tmdb_id;
+            metadataFromSmartFill = stripCanonicalMetadata(metadataFromSmartFill);
+            metadataFromSmartFill.resolution_status = "needs_selection";
+            metadataFromSmartFill.resolution_requires_selection = true;
+            metadataFromSmartFill.match_candidates = smartFill.matchCandidates;
           }
           setMetadata((prev) => ({ ...prev, ...metadataFromSmartFill }));
           setStep("confirm");
@@ -327,6 +354,10 @@ const NewBookmark = () => {
         return;
       }
 
+      const shouldAutoSelectTopCandidate =
+        smartFill.resolutionStatus === "matched" && smartFill.matchConfidence === "high";
+      const topCandidate = smartFill.matchCandidates[0];
+
       setTitle(rawTitle);
       if (typeof data.posterUrl === "string") setPosterUrl(data.posterUrl);
       if (typeof data.runtimeMinutes === "number") setRuntimeMinutes(data.runtimeMinutes);
@@ -341,17 +372,23 @@ const NewBookmark = () => {
       }
       setMatchCandidates(smartFill.matchCandidates);
       setMatchConfidence(smartFill.matchConfidence);
-      const selectedTmdb = smartFill.matchConfidence === "low"
-        ? null
-        : toNumericId(smartFill.metadata.tmdb_id);
-      setSelectedCandidateId(selectedTmdb);
+      if (shouldAutoSelectTopCandidate && topCandidate) {
+        applyMatchCandidate(topCandidate, "auto");
+      } else {
+        setSelectedCandidateId(null);
+      }
 
       setType(resolveTypeFromEnrichment(data, fallbackProvider));
 
       // Store TMDB metadata
-      const metadataFromSmartFill = { ...smartFill.metadata };
-      if (smartFill.matchConfidence === "low") {
-        delete metadataFromSmartFill.tmdb_id;
+      let metadataFromSmartFill = { ...smartFill.metadata };
+      if (!shouldAutoSelectTopCandidate) {
+        metadataFromSmartFill = stripCanonicalMetadata(metadataFromSmartFill);
+        metadataFromSmartFill.resolution_status = smartFill.matchCandidates.length > 0 ? "needs_selection" : "unresolved";
+        metadataFromSmartFill.resolution_requires_selection = true;
+        if (smartFill.matchCandidates.length > 0) {
+          metadataFromSmartFill.match_candidates = smartFill.matchCandidates;
+        }
       }
       setMetadata((prev) => ({ ...prev, ...metadataFromSmartFill }));
 
@@ -616,8 +653,27 @@ const NewBookmark = () => {
             </div>
 
             {/* Candidate grid — poster-dominant layout */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {matchCandidates.slice(0, 4).map((candidate) => {
+            <div className="mb-4 flex justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-xs text-muted-foreground"
+                onClick={() => {
+                  setSelectedCandidateId(null);
+                  setMetadata((prev) => ({
+                    ...stripCanonicalMetadata(prev),
+                    resolution_status: "needs_selection",
+                    resolution_requires_selection: true,
+                    match_candidates: matchCandidates,
+                  }));
+                }}
+              >
+                None of these
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              {matchCandidates.slice(0, 5).map((candidate, index) => {
                 const isActive = selectedCandidateId === candidate.tmdbId;
                 return (
                   <button
@@ -649,6 +705,11 @@ const NewBookmark = () => {
                           <Check className="w-6 h-6 text-white drop-shadow" />
                         </div>
                       )}
+                      {index === 0 && (
+                        <span className="absolute left-1.5 top-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+                          Best match
+                        </span>
+                      )}
                     </div>
                     {/* Meta */}
                     <div className="p-2">
@@ -656,7 +717,13 @@ const NewBookmark = () => {
                       <p className="text-[10px] text-muted-foreground mt-0.5">
                         {candidate.mediaType === "tv" ? "Series" : "Movie"}
                         {candidate.releaseYear ? ` · ${candidate.releaseYear}` : ""}
+                        {candidate.runtimeMinutes ? ` · ${candidate.runtimeMinutes}m` : ""}
                       </p>
+                      {candidate.description && (
+                        <p className="mt-1 text-[10px] text-muted-foreground line-clamp-2 leading-snug">
+                          {candidate.description}
+                        </p>
+                      )}
                     </div>
                   </button>
                 );
@@ -893,7 +960,7 @@ const NewBookmark = () => {
                 <Loader2 className="w-5 h-5 animate-spin" />
                 {uploadProgress > 0 ? `Uploading ${uploadProgress}/${attachments.length}…` : "Saving…"}
               </>
-            ) : "Save to Watchlist"}
+            ) : selectedCandidateId === null && matchCandidates.length > 0 ? "Save Link Only" : "Save to Watchlist"}
           </Button>
         </div>
       </div>

@@ -1,4 +1,5 @@
 export type MatchConfidence = 'high' | 'medium' | 'low' | 'unknown';
+export type ResolutionStatus = 'matched' | 'needs_selection' | 'unresolved' | 'unknown';
 
 export interface EnrichmentMatchCandidate {
   tmdbId: number;
@@ -13,6 +14,15 @@ export interface EnrichmentMatchCandidate {
   runtimeMinutes?: number;
   genres?: string[];
   score?: number;
+  scoreBreakdown?: {
+    title?: number;
+    year?: number;
+    type?: number;
+    overview?: number;
+    popularity?: number;
+    embedding?: number;
+    total?: number;
+  };
 }
 
 export interface SmartFillData {
@@ -24,6 +34,10 @@ export interface SmartFillData {
   metadata: Record<string, unknown>;
   matchCandidates: EnrichmentMatchCandidate[];
   matchConfidence: MatchConfidence;
+  resolutionStatus: ResolutionStatus;
+  resolutionConfidence: number | null;
+  resolutionConfidenceBand: MatchConfidence;
+  requiresUserSelection: boolean;
 }
 
 const GENRE_ALIASES: Record<string, string> = {
@@ -113,6 +127,11 @@ function normalizeMatchConfidence(value: unknown): MatchConfidence {
   return 'unknown';
 }
 
+function normalizeResolutionStatus(value: unknown): ResolutionStatus {
+  if (value === 'matched' || value === 'needs_selection' || value === 'unresolved') return value;
+  return 'unknown';
+}
+
 export function parseMatchCandidates(input: unknown): EnrichmentMatchCandidate[] {
   if (!Array.isArray(input)) return [];
   const candidates: EnrichmentMatchCandidate[] = [];
@@ -141,9 +160,25 @@ export function parseMatchCandidates(input: unknown): EnrichmentMatchCandidate[]
       runtimeMinutes: asNumber(item.runtimeMinutes) ?? undefined,
       genres: genres.length ? genres : undefined,
       score: asNumber(item.score) ?? undefined,
+      scoreBreakdown:
+        item.scoreBreakdown && typeof item.scoreBreakdown === "object" && !Array.isArray(item.scoreBreakdown)
+          ? (item.scoreBreakdown as EnrichmentMatchCandidate["scoreBreakdown"])
+          : undefined,
     });
   }
   return candidates;
+}
+
+function deriveResolutionStatus(
+  explicitStatus: ResolutionStatus,
+  confidence: MatchConfidence,
+  candidates: EnrichmentMatchCandidate[],
+  tmdbId: number | null,
+): ResolutionStatus {
+  if (explicitStatus !== "unknown") return explicitStatus;
+  if (confidence === "high" && tmdbId) return "matched";
+  if (candidates.length > 0) return "needs_selection";
+  return "unresolved";
 }
 
 export function buildSmartFillData(raw: Record<string, unknown>): SmartFillData {
@@ -155,11 +190,25 @@ export function buildSmartFillData(raw: Record<string, unknown>): SmartFillData 
   const tags = normalizeHashtags(raw.hashtags);
   const matchCandidates = parseMatchCandidates(raw.matchCandidates);
   const matchConfidence = normalizeMatchConfidence(raw.matchConfidence);
+  const resolutionConfidence = asNumber(raw.confidenceScore ?? raw.resolutionConfidence ?? raw.resolution_confidence);
+  const resolutionConfidenceBand = normalizeMatchConfidence(
+    raw.confidenceBand ?? raw.resolutionConfidenceBand ?? raw.resolution_confidence_band ?? raw.matchConfidence,
+  );
 
   const tmdbId = asNumber(raw.tmdbId);
   const backdropUrl = asString(raw.backdropUrl);
   const posterUrl = asString(raw.posterUrl);
   const voteAverage = asNumber(raw.voteAverage);
+  const resolutionStatus = deriveResolutionStatus(
+    normalizeResolutionStatus(raw.resolutionStatus ?? raw.resolution_status),
+    matchConfidence,
+    matchCandidates,
+    tmdbId,
+  );
+  const requiresUserSelection =
+    typeof raw.requiresUserSelection === "boolean"
+      ? raw.requiresUserSelection
+      : resolutionStatus !== "matched";
 
   const metadata: Record<string, unknown> = {
     ...(tmdbId ? { tmdb_id: tmdbId } : {}),
@@ -170,6 +219,11 @@ export function buildSmartFillData(raw: Record<string, unknown>): SmartFillData 
     ...(genres.length ? { genres } : {}),
     ...(matchConfidence !== 'unknown' ? { match_confidence: matchConfidence } : {}),
     ...(matchCandidates.length ? { match_candidates: matchCandidates } : {}),
+    resolution_status: resolutionStatus,
+    resolution_requires_selection: requiresUserSelection,
+    ...(resolutionConfidence !== null ? { resolution_confidence: resolutionConfidence } : {}),
+    ...(resolutionConfidenceBand !== 'unknown' ? { resolution_confidence_band: resolutionConfidenceBand } : {}),
+    ...(resolutionStatus === 'matched' ? { resolution_selected_by: 'auto' } : {}),
   };
 
   return {
@@ -181,5 +235,9 @@ export function buildSmartFillData(raw: Record<string, unknown>): SmartFillData 
     metadata,
     matchCandidates,
     matchConfidence,
+    resolutionStatus,
+    resolutionConfidence,
+    resolutionConfidenceBand,
+    requiresUserSelection,
   };
 }

@@ -59,6 +59,8 @@ import {
   resolveAndFetchAvailability,
   type BookmarkAvailability,
 } from "@/services/watchAvailability";
+import { TmdbCandidatePicker } from "@/components/bookmarks/TmdbCandidatePicker";
+import { parseMatchCandidates, type EnrichmentMatchCandidate } from "@/lib/enrichmentSmartFill";
 import type { Bookmark } from "@/types/database";
 
 type Tab = "overview" | "details" | "similar";
@@ -103,6 +105,7 @@ const BookmarkDetail = () => {
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
   const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
   const [watchDialogOpen, setWatchDialogOpen] = useState(false);
+  const [resolutionPickerOpen, setResolutionPickerOpen] = useState(false);
   const [isOpeningWatch, setIsOpeningWatch] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -231,6 +234,20 @@ const BookmarkDetail = () => {
     },
   });
 
+  const selectResolutionMutation = useMutation({
+    mutationFn: (candidate: EnrichmentMatchCandidate) =>
+      bookmarkService.selectResolutionCandidate(id!, candidate),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["bookmark", id] });
+      queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
+      setResolutionPickerOpen(false);
+      toast({ title: "Match saved", description: updated.title });
+    },
+    onError: () => {
+      toast({ title: "Couldn't save match", description: "Please try again.", variant: "destructive" });
+    },
+  });
+
   const addSimilarMutation = useMutation({
     mutationFn: (item: { id: number; title: string; posterUrl: string | null; release_year: number | null; media_type: "movie" | "tv" }) =>
       bookmarkService.createBookmark({
@@ -352,6 +369,10 @@ const BookmarkDetail = () => {
   const trailerUrl = bookmark.metadata?.trailer_url as string | undefined;
   const totalSeasons = typeof bookmark.metadata?.total_seasons === "number" ? bookmark.metadata.total_seasons : null;
   const totalEpisodes = typeof bookmark.metadata?.total_episodes === "number" ? bookmark.metadata.total_episodes : null;
+  const resolutionCandidates = parseMatchCandidates(bookmark.metadata?.match_candidates);
+  const needsResolution =
+    bookmark.metadata?.resolution_status === "needs_selection" ||
+    (bookmark.metadata?.resolution_requires_selection === true && !bookmark.canonical_entity);
 
   const availableNowProviders = currentAvailability?.providers.filter((p) => p.type === "subscription") ?? [];
   const rentOrBuyProviders = currentAvailability?.providers.filter((p) => p.type !== "subscription") ?? [];
@@ -464,6 +485,16 @@ const BookmarkDetail = () => {
         </button>
 
         {/* Mark as watched — filled ring when active for immediate feedback */}
+        {needsResolution && resolutionCandidates.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setResolutionPickerOpen(true)}
+            className="h-10 px-3 rounded-sm border border-amber-400/60 text-amber-200 text-sm font-semibold hover:bg-amber-400/10 transition-colors shrink-0"
+          >
+            Match needed
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => handleStatusChange(bookmark.status === "done" ? "backlog" : "done")}
@@ -1166,6 +1197,20 @@ const BookmarkDetail = () => {
       </div>
 
       {/* ── WATCH DIALOG ── */}
+      <TmdbCandidatePicker
+        open={resolutionPickerOpen}
+        onOpenChange={setResolutionPickerOpen}
+        candidates={resolutionCandidates}
+        extractedTitle={
+          typeof bookmark.metadata?.raw_title === "string" ? bookmark.metadata.raw_title : bookmark.title
+        }
+        onSelect={(candidate) => selectResolutionMutation.mutate(candidate)}
+        onSkip={() => {
+          bookmarkService.skipResolutionSelection(bookmark.id).catch(() => undefined);
+          setResolutionPickerOpen(false);
+        }}
+      />
+
       <Dialog open={watchDialogOpen} onOpenChange={setWatchDialogOpen}>
         <DialogContent className="sm:max-w-lg bg-[#1c1c1c] border-white/10 text-white">
           <DialogHeader>

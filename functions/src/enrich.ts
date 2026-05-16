@@ -1,6 +1,13 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
 import * as logger from 'firebase-functions/logger';
+import {
+  confidenceFromScores,
+  requiresUserSelection,
+  resolutionStatusFromConfidence,
+  type ConfidenceBand,
+  type ResolutionStatus,
+} from './resolution/scoring';
 
 const youtubeApiKey = defineSecret('YOUTUBE_API_KEY');
 const tmdbApiKey = defineSecret('TMDB_API_KEY');
@@ -20,8 +27,14 @@ interface EnrichResponse {
   hashtags?: string[];
   genres?: string[];
   voteAverage?: number;
-  matchConfidence?: 'high' | 'medium' | 'low';
+  matchConfidence?: ConfidenceBand;
   matchCandidates?: TmdbMatchCandidate[];
+  resolutionStatus?: ResolutionStatus;
+  confidenceScore?: number;
+  confidenceBand?: ConfidenceBand;
+  requiresUserSelection?: boolean;
+  primaryCandidate?: TmdbMatchCandidate;
+  alternatives?: TmdbMatchCandidate[];
   matchedBy?: 'tmdb' | 'metadata';
   error?: { message: string };
 }
@@ -386,12 +399,6 @@ function titleSimilarityScore(query: string, candidateTitle: string): number {
   return Math.max(0, Math.min(1, overlap * 0.85 + startsWithBonus + containsBonus - lengthPenalty));
 }
 
-function confidenceFromScores(bestScore: number, gapToSecond: number): 'high' | 'medium' | 'low' {
-  if (bestScore >= 0.82 && gapToSecond >= 0.12) return 'high';
-  if (bestScore >= 0.68 && gapToSecond >= 0.06) return 'medium';
-  return 'low';
-}
-
 function extractYearHint(...values: Array<string | undefined | null>): number | undefined {
   for (const value of values) {
     if (!value) continue;
@@ -547,17 +554,125 @@ function isLikelyMediaTitle(value: string): boolean {
   return cleaned.split(/\s+/).length <= 12;
 }
 
-async function maybeMergeTMDB(base: EnrichResponse): Promise<EnrichResponse> {
-  if (!base.title || !isLikelyMediaTitle(base.title)) return base;
+function isSearchableTmdbTitle(value: string): boolean {
+  const cleaned = cleanTitleForTMDB(value);
+  if (!cleaned) return false;
+  if (cleaned.length < 2 || cleaned.length > 140) return false;
+  return cleaned.split(/\s+/).length <= 16;
+}
 
-  const tmdb = await enrichTMDB(base.title, {
-    description: base.description,
-    preferredMediaType: base.mediaType,
-    alternateTitles: [cleanTitleForTMDB(base.title)],
-    sourceYear: base.releaseYear ?? extractYearHint(base.title, base.description),
-  });
-  if (!tmdb.title) return base;
-  return mergeWithTMDB(base, tmdb);
+function collectTmdbTitleCandidates(base: EnrichResponse): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  const add = (value: string | undefined | null): void => {
+    if (!value) return;
+    const cleanedSource = cleanSocialText(value);
+    const cleaned = cleanTitleForTMDB(cleanedSource || value);
+    if (!cleaned || !isSearchableTmdbTitle(cleaned)) return;
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(cleaned);
+  };
+
+  add(base.title);
+  add(cleanTitleForTMDB(base.title ?? ""));
+  if (base.description) {
+    add(firstSentence(base.description));
+    add(base.description);
+  }
+
+  return out.slice(0, 5);
+}
+
+function confidenceRank(value: EnrichResponse["matchConfidence"]): number {
+  if (value === "high") return 3;
+  if (value === "medium") return 2;
+  if (value === "low") return 1;
+  return 0;
+}
+
+function withResolutionDefaults(result: EnrichResponse): EnrichResponse {
+  const candidates = result.matchCandidates ?? [];
+  const candidateCount = candidates.length;
+  const confidenceBand = result.confidenceBand ?? result.matchConfidence;
+  const confidenceScore =
+    result.confidenceScore ?? candidates[0]?.score ?? (confidenceBand === "high" ? 1 : undefined);
+  const resolutionStatus =
+    result.resolutionStatus ??
+    resolutionStatusFromConfidence(confidenceBand, result.tmdbId || candidateCount > 0 ? Math.max(candidateCount, 1) : 0);
+
+  return {
+    ...result,
+    matchConfidence: confidenceBand ?? result.matchConfidence,
+    confidenceBand,
+    confidenceScore,
+    resolutionStatus,
+    requiresUserSelection: result.requiresUserSelection ?? requiresUserSelection(resolutionStatus),
+    primaryCandidate: result.primaryCandidate ?? candidates[0],
+    alternatives: result.alternatives ?? candidates.slice(1),
+  };
+}
+
+async function maybeMergeTMDB(base: EnrichResponse): Promise<EnrichResponse> {
+  const knownSourceCandidates = [
+    base.canonicalUrl,
+    ...extractUrlsFromText(base.title, base.description),
+  ];
+  const sourceResolved = await resolveKnownSourceToTmdb(knownSourceCandidates);
+  if (sourceResolved?.title) {
+    return mergeWithTMDB(base, sourceResolved);
+  }
+
+  const titleCandidates = collectTmdbTitleCandidates(base);
+  const sourceYear = base.releaseYear ?? extractYearHint(base.title, base.description);
+  let fallbackLowConfidence: EnrichResponse | null = null;
+
+  for (const titleCandidate of titleCandidates) {
+    const tmdb = await enrichTMDB(titleCandidate, {
+      description: base.description,
+      preferredMediaType: base.mediaType,
+      alternateTitles: titleCandidates,
+      sourceYear,
+    });
+    if (!tmdb.title) continue;
+
+    if (confidenceRank(tmdb.matchConfidence) >= 2) {
+      return mergeWithTMDB(base, tmdb);
+    }
+
+    if (
+      !fallbackLowConfidence ||
+      confidenceRank(tmdb.matchConfidence) > confidenceRank(fallbackLowConfidence.matchConfidence)
+    ) {
+      fallbackLowConfidence = tmdb;
+    }
+  }
+
+  if (fallbackLowConfidence?.title) {
+    return mergeWithTMDB(base, fallbackLowConfidence);
+  }
+
+  if (base.hashtags?.length) {
+    const hashtagFallback = await tryHashtagTmdbFallback(base);
+    if (hashtagFallback.tmdbId) {
+      return hashtagFallback;
+    }
+  }
+
+  // Backward-compatible last pass for simple high-signal social titles.
+  if (base.title && isLikelyMediaTitle(base.title)) {
+    const tmdb = await enrichTMDB(base.title, {
+      description: base.description,
+      preferredMediaType: base.mediaType,
+      alternateTitles: [cleanTitleForTMDB(base.title)],
+      sourceYear,
+    });
+    if (tmdb.title) return mergeWithTMDB(base, tmdb);
+  }
+
+  return base;
 }
 
 function mergeWithTMDB(base: EnrichResponse, tmdb: EnrichResponse): EnrichResponse {
@@ -576,6 +691,12 @@ function mergeWithTMDB(base: EnrichResponse, tmdb: EnrichResponse): EnrichRespon
     voteAverage: tmdb.voteAverage ?? base.voteAverage,
     matchConfidence: tmdb.matchConfidence ?? base.matchConfidence,
     matchCandidates: tmdb.matchCandidates ?? base.matchCandidates,
+    resolutionStatus: tmdb.resolutionStatus ?? base.resolutionStatus,
+    confidenceScore: tmdb.confidenceScore ?? base.confidenceScore,
+    confidenceBand: tmdb.confidenceBand ?? base.confidenceBand,
+    requiresUserSelection: tmdb.requiresUserSelection ?? base.requiresUserSelection,
+    primaryCandidate: tmdb.primaryCandidate ?? base.primaryCandidate,
+    alternatives: tmdb.alternatives ?? base.alternatives,
     matchedBy: tmdb.matchedBy ?? base.matchedBy,
     hashtags: base.hashtags ?? tmdb.hashtags,
   };
@@ -663,6 +784,12 @@ async function enrichYouTube(videoId: string): Promise<EnrichResponse> {
       voteAverage: tmdbData.voteAverage,
       matchConfidence: tmdbData.matchConfidence,
       matchCandidates: tmdbData.matchCandidates,
+      resolutionStatus: tmdbData.resolutionStatus,
+      confidenceScore: tmdbData.confidenceScore,
+      confidenceBand: tmdbData.confidenceBand,
+      requiresUserSelection: tmdbData.requiresUserSelection,
+      primaryCandidate: tmdbData.primaryCandidate,
+      alternatives: tmdbData.alternatives,
       matchedBy: tmdbData.matchedBy,
       hashtags: tmdbData.hashtags ?? (hashtags.length ? hashtags : undefined),
       provider: 'youtube',
@@ -1258,10 +1385,11 @@ async function enrichViaOG(url: string, provider: string): Promise<EnrichRespons
   }
 
   // PHASE 3: Hashtag fallback for social providers
-  if (isSocialProvider && titleCandidates.length === 0) {
-    logger.info('[enrichViaOG] no title candidates, trying hashtag fallback');
+  if (isSocialProvider && hashtags.length > 0) {
+    logger.info('[enrichViaOG] trying hashtag TMDB fallback');
     const hashtagResult = await tryHashtagTmdbFallback({
-      title: undefined,
+      title: titleCandidates[0],
+      description: primaryDescription,
       hashtags,
       provider,
     } as EnrichResponse);
@@ -1707,6 +1835,8 @@ async function enrichTMDB(title: string, hint?: TmdbSearchHint): Promise<EnrichR
         },
       };
     });
+    const resolutionStatus = resolutionStatusFromConfidence(confidence, candidates.length);
+    const confidenceScore = Number(best.score.toFixed(3));
 
     return {
       title: best.title,
@@ -1722,6 +1852,12 @@ async function enrichTMDB(title: string, hint?: TmdbSearchHint): Promise<EnrichR
       voteAverage: best.voteAverage,
       matchConfidence: confidence,
       matchCandidates: candidates,
+      resolutionStatus,
+      confidenceScore,
+      confidenceBand: confidence,
+      requiresUserSelection: requiresUserSelection(resolutionStatus),
+      primaryCandidate: candidates[0],
+      alternatives: candidates.slice(1),
       matchedBy: 'tmdb',
       provider: 'generic',
     };
@@ -1785,11 +1921,12 @@ export const enrich = onCall(
           break;
       }
 
-      const normalizedHashtags = normalizeHashtagList(result.hashtags);
+      const resultWithResolution = withResolutionDefaults(result);
+      const normalizedHashtags = normalizeHashtagList(resultWithResolution.hashtags);
       return {
-        ...result,
-        provider: result.provider ?? provider,
-        canonicalUrl: result.canonicalUrl ?? normalizedUrl,
+        ...resultWithResolution,
+        provider: resultWithResolution.provider ?? provider,
+        canonicalUrl: resultWithResolution.canonicalUrl ?? normalizedUrl,
         hashtags: normalizedHashtags,
       };
     } catch (error) {

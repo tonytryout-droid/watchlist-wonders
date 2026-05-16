@@ -59,6 +59,15 @@ export interface BookmarkMetadata {
   tmdbId?: number;
   // Streaming availability snapshot (mirrors top-level availability field)
   availability?: unknown;
+  match_candidates?: unknown[];
+  resolution_status?: "matched" | "needs_selection" | "unresolved";
+  resolution_confidence?: number;
+  resolution_confidence_band?: "high" | "medium" | "low";
+  resolution_requires_selection?: boolean;
+  resolution_selected_by?: "auto" | "user" | "manual";
+  resolution_selected_rank?: number;
+  resolution_candidate_history?: unknown[];
+  raw_title?: string;
   [key: string]: unknown;
 }
 

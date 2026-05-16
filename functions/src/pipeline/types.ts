@@ -57,6 +57,28 @@ export interface ResolveResult {
   poster: string | null;
   confidence: number;
   suggested: boolean;
+  status?: "matched" | "needs_selection" | "unresolved";
+  confidenceBand?: "high" | "medium" | "low";
+  candidates?: ResolutionCandidate[];
+  requiresUserSelection?: boolean;
+}
+
+export interface ResolutionCandidate {
+  source: "tmdb";
+  id: string;
+  tmdbId: number;
+  type: "movie" | "tv";
+  title: string;
+  year: number | null;
+  poster: string | null;
+  confidence: number;
+  scoreBreakdown: {
+    title: number;
+    year: number;
+    popularity: number;
+    embedding: number;
+    total: number;
+  };
 }
 
 export interface AutoTagResult {

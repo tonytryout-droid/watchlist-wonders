@@ -87,7 +87,44 @@ const EMPTY_SMART_FILL: SmartFillData = {
   metadata: {},
   matchCandidates: [],
   matchConfidence: "unknown",
+  resolutionStatus: "unknown",
+  resolutionConfidence: null,
+  resolutionConfidenceBand: "unknown",
+  requiresUserSelection: false,
 };
+
+function fallbackTitleFromUrl(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.hostname.replace(/^www\./, "");
+  } catch {
+    return "Saved link";
+  }
+}
+
+function withoutCanonicalMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...metadata };
+  delete next.tmdb_id;
+  delete next.tmdbId;
+  delete next.media_type;
+  return next;
+}
+
+function metadataForPendingResolution(
+  data: Record<string, unknown>,
+  fill: SmartFillData,
+): Record<string, unknown> {
+  const rawTitle = typeof data.title === "string" ? data.title.trim() : "";
+  return {
+    ...withoutCanonicalMetadata(fill.metadata),
+    ...(rawTitle ? { raw_title: rawTitle } : {}),
+    resolution_status: fill.matchCandidates.length > 0 ? "needs_selection" : "unresolved",
+    resolution_requires_selection: true,
+    ...(fill.resolutionConfidence !== null ? { resolution_confidence: fill.resolutionConfidence } : {}),
+    ...(fill.resolutionConfidenceBand !== "unknown" ? { resolution_confidence_band: fill.resolutionConfidenceBand } : {}),
+    ...(fill.matchCandidates.length ? { match_candidates: fill.matchCandidates } : {}),
+  };
+}
 
 export function QuickAddBar({
   className,
@@ -116,6 +153,7 @@ export function QuickAddBar({
   const [pickerCandidates, setPickerCandidates] = useState<EnrichmentMatchCandidate[]>([]);
   const [pendingUrl, setPendingUrl] = useState("");
   const [pendingProvider, setPendingProvider] = useState("");
+  const [pendingBookmarkId, setPendingBookmarkId] = useState<string | null>(null);
 
   const url = value ?? internalUrl;
   const setUrl = (nextValue: string) => {
@@ -165,6 +203,67 @@ export function QuickAddBar({
       mood_tags: smartFill.moodTags,
       status: "backlog",
       metadata: smartFill.metadata,
+    });
+  };
+
+  const savePendingBookmark = async (
+    trimmed: string,
+    resolvedProvider: string,
+    data: Record<string, unknown>,
+    fill: SmartFillData,
+  ) => {
+    const fallbackProvider = (resolvedProvider as Bookmark["provider"]) || "generic";
+    const rawTitle = typeof data.title === "string" && data.title.trim()
+      ? data.title.trim()
+      : fallbackTitleFromUrl(trimmed);
+    const bookmark = await bookmarkService.createBookmark({
+      title: rawTitle,
+      type: resolveTypeFromEnrichment(data, fallbackProvider),
+      provider: fallbackProvider,
+      source_url: trimmed,
+      canonical_url: fill.canonicalUrl ?? trimmed,
+      runtime_minutes: typeof data.runtimeMinutes === "number" ? data.runtimeMinutes : null,
+      release_year: fill.releaseYear,
+      poster_url: typeof data.posterUrl === "string" ? data.posterUrl : null,
+      notes: null,
+      tags: fill.tags,
+      mood_tags: fill.moodTags,
+      status: "backlog",
+      metadata: metadataForPendingResolution(data, fill),
+    });
+    queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
+    toast.success(`"${bookmark.title}" saved. Choose the matching title when ready.`);
+    return bookmark;
+  };
+
+  const saveAutoMatchedBookmark = (
+    trimmed: string,
+    resolvedProvider: string,
+    data: Record<string, unknown>,
+    fill: SmartFillData,
+  ) => {
+    const fallbackProvider = (resolvedProvider as Bookmark["provider"]) || "generic";
+    createMutation.mutate({
+      title: typeof data.title === "string" && data.title.trim()
+        ? data.title.trim()
+        : fallbackTitleFromUrl(trimmed),
+      type: resolveTypeFromEnrichment(data, fallbackProvider),
+      provider: fallbackProvider,
+      source_url: trimmed,
+      canonical_url: fill.canonicalUrl,
+      runtime_minutes: typeof data.runtimeMinutes === "number" ? data.runtimeMinutes : null,
+      release_year: fill.releaseYear,
+      poster_url: typeof data.posterUrl === "string" ? data.posterUrl : null,
+      notes: null,
+      tags: fill.tags,
+      mood_tags: fill.moodTags,
+      status: "backlog",
+      metadata: {
+        ...fill.metadata,
+        resolution_status: "matched",
+        resolution_requires_selection: false,
+        resolution_selected_by: "auto",
+      },
     });
   };
 
@@ -254,19 +353,25 @@ export function QuickAddBar({
           ? data.provider
           : dp;
 
-      // When multiple candidates exist and confidence isn't high, show the picker first
-      const needsPicker =
-        fill.matchCandidates.length > 1 && fill.matchConfidence !== "high";
+      if (fill.resolutionStatus === "matched" && !fill.requiresUserSelection) {
+        setSmartFill(fill);
+        saveAutoMatchedBookmark(trimmed, resolvedProvider, data, fill);
+        return;
+      }
 
-      if (needsPicker) {
-        // Store context so picker callbacks can build the confirm dialog
+      if (fill.matchCandidates.length > 0) {
+        const pendingBookmark = await savePendingBookmark(trimmed, resolvedProvider, data, fill);
         setSmartFill(fill);
         setPendingUrl(trimmed);
         setPendingProvider(resolvedProvider);
+        setPendingBookmarkId(pendingBookmark.id);
         setPickerCandidates(fill.matchCandidates);
-        // Store raw data for use in picker callbacks via a ref
         pendingEnrichDataRef.current = data;
         setPickerOpen(true);
+      } else if (fill.requiresUserSelection || fill.resolutionStatus === "unresolved") {
+        await savePendingBookmark(trimmed, resolvedProvider, data, fill);
+        setUrl("");
+        setSmartFill(EMPTY_SMART_FILL);
       } else {
         setSmartFill(fill);
         openConfirmDialog(trimmed, resolvedProvider, data, fill);
@@ -415,10 +520,37 @@ export function QuickAddBar({
             ? pendingEnrichDataRef.current.title
             : ""
         }
-        onSelect={(candidate) => {
-          applyCandidate(candidate, pendingUrl, pendingProvider, pendingEnrichDataRef.current);
+        onSelect={async (candidate) => {
+          if (!pendingBookmarkId) {
+            applyCandidate(candidate, pendingUrl, pendingProvider, pendingEnrichDataRef.current);
+            return;
+          }
+          try {
+            await bookmarkService.selectResolutionCandidate(pendingBookmarkId, candidate);
+            queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
+            toast.success(`Matched to "${candidate.title}".`);
+          } catch (err) {
+            toast.error(getSafeErrorMessage(err, "Could not apply this match."));
+          } finally {
+            setPendingBookmarkId(null);
+            setPendingUrl("");
+            setPendingProvider("");
+            setPickerCandidates([]);
+            setSmartFill(EMPTY_SMART_FILL);
+            setUrl("");
+          }
         }}
         onSkip={() => {
+          if (pendingBookmarkId) {
+            void bookmarkService.skipResolutionSelection(pendingBookmarkId).catch(() => undefined);
+            setPendingBookmarkId(null);
+            setPendingUrl("");
+            setPendingProvider("");
+            setPickerCandidates([]);
+            setSmartFill(EMPTY_SMART_FILL);
+            setUrl("");
+            return;
+          }
           // Skip TMDB data — open confirm with just the extracted title
           const fallbackFill: SmartFillData = {
             ...EMPTY_SMART_FILL,

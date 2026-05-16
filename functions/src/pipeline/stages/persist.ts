@@ -1,5 +1,6 @@
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import type { TmdbEnrichment } from "../../tmdb/types";
+import { logResolutionEvent } from "../../resolution/events";
 import type {
   AutoTagResult,
   ClassifyResult,
@@ -52,6 +53,16 @@ export async function persist(
   const db = getFirestore();
   const ref = db.collection("users").doc(bookmark.userId).collection("bookmarks").doc(bookmark.id);
   const now = new Date().toISOString();
+  const currentSnap = await ref.get().catch(() => null);
+  const currentData = currentSnap?.data() ?? {};
+  const currentMetadata =
+    currentData.metadata && typeof currentData.metadata === "object" && !Array.isArray(currentData.metadata)
+      ? (currentData.metadata as Record<string, unknown>)
+      : {};
+  const userConfirmedResolution =
+    currentMetadata.resolution_selected_by === "user" ||
+    currentMetadata.resolution_selected_by === "manual" ||
+    Boolean(currentData.canonical_entity && currentMetadata.resolution_selected_by !== "auto");
 
   const update: Record<string, unknown> = {
     updated_at: now,
@@ -79,7 +90,16 @@ export async function persist(
     pending_cluster_assignment: cluster.pending,
   };
 
-  if (resolveResult.source !== "unresolved") {
+  if (!userConfirmedResolution) {
+    update["metadata.resolution_status"] = resolveResult.status ?? (resolveResult.source === "unresolved" ? "unresolved" : "matched");
+    update["metadata.resolution_confidence"] = resolveResult.confidence;
+    update["metadata.resolution_confidence_band"] = resolveResult.confidenceBand ?? "low";
+    update["metadata.resolution_requires_selection"] = resolveResult.requiresUserSelection ?? resolveResult.status !== "matched";
+    update["metadata.resolution_source"] = resolveResult.source;
+    update["metadata.match_candidates"] = resolveResult.candidates ?? [];
+  }
+
+  if (!userConfirmedResolution && resolveResult.status === "matched" && resolveResult.source !== "unresolved") {
     update.canonical_entity = {
       source: resolveResult.source,
       id: resolveResult.id,
@@ -93,6 +113,7 @@ export async function persist(
       matched_at: now,
       suggested: resolveResult.suggested,
     };
+    update["metadata.resolution_selected_by"] = "auto";
 
     const legacy = buildLegacyTmdb(resolveResult);
     if (legacy && !bookmark.enriched && !bookmark.tmdb) {
@@ -108,11 +129,19 @@ export async function persist(
       if (resolveResult.runtime) update.runtime_minutes = resolveResult.runtime;
       update.type = resolveResult.type === "tv" ? "series" : "movie";
     }
-  } else {
+  } else if (!userConfirmedResolution && resolveResult.status === "needs_selection") {
     update.canonical_entity = null;
     if (!bookmark.enriched) {
-      update.enriched = true;
-      update.enriched_at = now;
+      update.enriched = false;
+      update.enriched_at = null;
+      update.enrich_fail_reason = null;
+      update.tmdb = null;
+    }
+  } else if (!userConfirmedResolution) {
+    update.canonical_entity = null;
+    if (!bookmark.enriched) {
+      update.enriched = false;
+      update.enriched_at = null;
       update.enrich_fail_reason = resolveResult.id;
       update.tmdb = null;
     }
@@ -126,6 +155,23 @@ export async function persist(
   }
 
   await ref.set(update, { merge: true });
+
+  if (!userConfirmedResolution) {
+    await logResolutionEvent({
+      userId: bookmark.userId,
+      bookmarkId: bookmark.id,
+      action: resolveResult.status === "matched" ? "auto_matched" : resolveResult.status === "needs_selection" ? "needs_selection" : "unresolved",
+      status: resolveResult.status ?? "unresolved",
+      platform: signals.platform,
+      rawTitle: signals.rawTitle,
+      sourceUrl: bookmark.canonical_url ?? bookmark.source_url ?? null,
+      confidence: resolveResult.confidence,
+      confidenceBand: resolveResult.confidenceBand ?? "low",
+      candidates: resolveResult.candidates ?? [],
+      selectedCandidate: resolveResult.status === "matched" ? (resolveResult.candidates?.[0] ?? null) : null,
+      selectedRank: resolveResult.status === "matched" ? 1 : null,
+    });
+  }
 }
 
 export async function bumpView(userId: string, bookmarkId: string): Promise<void> {

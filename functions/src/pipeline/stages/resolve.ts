@@ -4,16 +4,21 @@ import { searchMulti, getDetails, buildEnrichment } from "../../tmdb/client";
 import { titleSimilarity } from "../../tmdb/titleNormalizer";
 import { embedText, isVertexConfigured } from "../../ai/vertex";
 import { cosineSimilarity } from "../../ai/vectorIndex";
+import {
+  confidenceFromScores,
+  requiresUserSelection,
+  resolutionStatusFromConfidence,
+  type ConfidenceBand,
+} from "../../resolution/scoring";
 import type {
   ClassifyResult,
   ExtractedSignals,
   FingerprintResult,
   PipelineBookmark,
+  ResolutionCandidate,
   ResolveResult,
 } from "../types";
 
-const CONFIDENCE_MATCH = 0.75;
-const CONFIDENCE_SUGGESTED = 0.55;
 const EMBED_RERANK_THRESHOLD = 0.78;
 
 function urlHash(url: string | null | undefined): string {
@@ -33,6 +38,10 @@ function unresolved(reason: string): ResolveResult {
     poster: null,
     confidence: 0,
     suggested: false,
+    status: "unresolved",
+    confidenceBand: "low",
+    candidates: [],
+    requiresUserSelection: true,
   };
 }
 
@@ -89,14 +98,21 @@ async function readCache(hash: string): Promise<ResolveResult | null> {
     const data = snap.data();
     if (!data?.canonical_entity) return null;
     const ce = data.canonical_entity as ResolveResult & { suggested?: boolean };
-    return { ...ce, suggested: ce.suggested ?? false };
+    return {
+      ...ce,
+      suggested: ce.suggested ?? false,
+      status: ce.status ?? (ce.suggested ? "suggested" : "matched"),
+      confidenceBand: ce.confidenceBand ?? (ce.suggested ? "low" : "high"),
+      candidates: ce.candidates ?? [],
+      requiresUserSelection: ce.requiresUserSelection ?? !!ce.suggested,
+    };
   } catch {
     return null;
   }
 }
 
 async function writeCache(hash: string, entity: ResolveResult): Promise<void> {
-  if (!hash || entity.source === "unresolved") return;
+  if (!hash || entity.source === "unresolved" || entity.status !== "matched") return;
   try {
     await getFirestore().collection("entityCache").doc(hash).set({
       url_hash: hash,
@@ -141,21 +157,20 @@ export async function resolve(
   }
 
   const primary = titles[0].toLowerCase();
-  const scored = candidates.map((c) => ({
-    candidate: c,
-    tokenOverlap: titleSimilarity(primary, c.title.toLowerCase()),
-    popularity: normalizePopularity(c.popularity),
-    yearAligned: classifyResult.year && c.year ? (Math.abs(c.year - classifyResult.year) <= 1 ? 1 : 0) : 0.5,
-  }));
+  const scored = candidates.map((c) => {
+    const tokenOverlap = titleSimilarity(primary, c.title.toLowerCase());
+    const popularity = normalizePopularity(c.popularity);
+    const yearAligned = classifyResult.year && c.year ? (Math.abs(c.year - classifyResult.year) <= 1 ? 1 : 0) : 0.5;
+    return {
+      candidate: c,
+      tokenOverlap,
+      popularity,
+      yearAligned,
+      embeddingSimilarity: 0,
+      score: 0.65 * tokenOverlap + 0.2 * yearAligned + 0.15 * popularity,
+    };
+  });
 
-  let bestScored = scored[0];
-  for (const s of scored) {
-    if (s.tokenOverlap + s.popularity * 0.2 > bestScored.tokenOverlap + bestScored.popularity * 0.2) {
-      bestScored = s;
-    }
-  }
-
-  let embeddingSimilarity = 0;
   if (fp?.textEmbedding.length && isVertexConfigured()) {
     try {
       const embeds = await Promise.all(
@@ -172,25 +187,41 @@ export async function resolve(
           maxIdx = i;
         }
       });
-      embeddingSimilarity = maxSim;
-      if (maxSim >= EMBED_RERANK_THRESHOLD) {
-        bestScored = scored[maxIdx];
+      if (maxSim >= EMBED_RERANK_THRESHOLD && scored[maxIdx]) {
+        scored[maxIdx].embeddingSimilarity = maxSim;
+        scored[maxIdx].score = Math.min(1, scored[maxIdx].score * 0.7 + maxSim * 0.3);
       }
     } catch (err) {
       console.warn("[resolve] embed rerank failed", err instanceof Error ? err.message : err);
     }
   }
 
-  const confidence =
-    0.5 * bestScored.tokenOverlap +
-    0.4 * embeddingSimilarity +
-    0.1 * bestScored.popularity;
-
-  if (confidence < CONFIDENCE_SUGGESTED) {
-    const result = unresolved(`low_confidence:${bestScored.candidate.title}`);
-    await writeCache(cacheKey, result);
-    return result;
-  }
+  scored.sort((left, right) => right.score - left.score);
+  const bestScored = scored[0];
+  const secondBest = scored[1];
+  const confidence = Number(bestScored.score.toFixed(3));
+  const confidenceBand: ConfidenceBand = confidenceFromScores(
+    bestScored.score,
+    secondBest ? Math.max(0, bestScored.score - secondBest.score) : 1,
+  );
+  const status = resolutionStatusFromConfidence(confidenceBand, scored.length);
+  const resolutionCandidates: ResolutionCandidate[] = scored.slice(0, 5).map((s) => ({
+    source: "tmdb",
+    id: String(s.candidate.tmdbId),
+    tmdbId: s.candidate.tmdbId,
+    type: s.candidate.mediaType,
+    title: s.candidate.title,
+    year: s.candidate.year,
+    poster: s.candidate.posterPath ? `https://image.tmdb.org/t/p/w500${s.candidate.posterPath}` : null,
+    confidence: Number(s.score.toFixed(3)),
+    scoreBreakdown: {
+      title: Number(s.tokenOverlap.toFixed(3)),
+      year: Number(s.yearAligned.toFixed(3)),
+      popularity: Number(s.popularity.toFixed(3)),
+      embedding: Number(s.embeddingSimilarity.toFixed(3)),
+      total: Number(s.score.toFixed(3)),
+    },
+  }));
 
   const detail = await getDetails(tmdbApiKey, bestScored.candidate.tmdbId, bestScored.candidate.mediaType).catch(() => null);
   const enrichment = buildEnrichment(
@@ -215,7 +246,11 @@ export async function resolve(
     runtime: enrichment.runtimeMinutes,
     poster: enrichment.posterUrl,
     confidence,
-    suggested: confidence < CONFIDENCE_MATCH,
+    suggested: status !== "matched",
+    status,
+    confidenceBand,
+    candidates: resolutionCandidates,
+    requiresUserSelection: requiresUserSelection(status),
   };
   await writeCache(cacheKey, result);
   return result;

@@ -45,6 +45,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Resolver training/debug events are written by Cloud Functions only.
+    match /resolutionEvents/{eventId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // Entity cache — read by Cloud Functions; clients have no business reading it.
     match /entityCache/{hash} {
       allow read, write: if false;

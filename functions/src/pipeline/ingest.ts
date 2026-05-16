@@ -71,6 +71,8 @@ export async function runIngestionPipeline(
   try {
     ctx.resolve = await resolve(bookmark, ctx.extracted, ctx.fingerprint ?? null, ctx.classify, tmdbApiKey);
     await incrementMetric(`pipeline.resolve.source.${ctx.resolve.source}`);
+    await incrementMetric(`pipeline.resolve.status.${ctx.resolve.status ?? "unresolved"}`);
+    await incrementMetric(`pipeline.resolve.confidence.${ctx.resolve.confidenceBand ?? "low"}`);
     if (ctx.resolve.source !== "unresolved") {
       await incrementMetric(ctx.resolve.suggested ? "pipeline.resolve.suggested" : "pipeline.resolve.matched");
     }
@@ -88,6 +90,10 @@ export async function runIngestionPipeline(
       poster: null,
       confidence: 0,
       suggested: false,
+      status: "unresolved",
+      confidenceBand: "low",
+      candidates: [],
+      requiresUserSelection: true,
     };
   }
 

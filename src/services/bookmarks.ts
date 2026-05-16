@@ -31,6 +31,7 @@ import {
   validateBookmarkCreateVisibility,
   validateBookmarkUpdateVisibility,
 } from "@/services/bookmarkVisibility";
+import type { EnrichmentMatchCandidate } from "@/lib/enrichmentSmartFill";
 
 export interface SemanticSearchResult {
   id: string;
@@ -55,6 +56,33 @@ function getUid(): string {
 
 function bookmarksCol(uid: string) {
   return collection(db, 'users', uid, 'bookmarks');
+}
+
+function buildCanonicalEntityFromTmdb(
+  draft: Partial<Bookmark> & { title: string },
+  now: string,
+): Bookmark["canonical_entity"] | null {
+  const tmdb = draft.tmdb;
+  const metadata = draft.metadata ?? {};
+  if (!tmdb) return null;
+  return {
+    source: "tmdb",
+    id: String(tmdb.tmdbId),
+    type: tmdb.mediaType,
+    title: tmdb.title || draft.title,
+    year: tmdb.releaseYear,
+    genres: tmdb.genres,
+    runtime: tmdb.runtimeMinutes,
+    poster: tmdb.posterUrl,
+    confidence:
+      typeof metadata.resolution_confidence === "number"
+        ? metadata.resolution_confidence
+        : metadata.match_confidence === "high"
+          ? 1
+          : 0,
+    matched_at: now,
+    suggested: metadata.resolution_status !== "matched",
+  };
 }
 
 function docToBookmark(snap: { id: string; data(): Record<string, unknown> }): Bookmark {
@@ -212,6 +240,10 @@ export const bookmarkService = {
       },
       now,
     );
+    const canonicalEntity = buildCanonicalEntityFromTmdb(
+      { ...bookmark, title: bookmark.title, tmdb: inferredEnrichment.tmdb ?? null },
+      now,
+    );
     validateBookmarkCreateVisibility({
       is_vaulted: bookmark.is_vaulted,
       is_public: bookmark.is_public,
@@ -278,6 +310,7 @@ export const bookmarkService = {
       enriched_at: inferredEnrichment.enriched_at,
       enrich_fail_reason: inferredEnrichment.enrich_fail_reason,
       tmdb: inferredEnrichment.tmdb,
+      canonical_entity: canonicalEntity,
       created_at: now,
       updated_at: now,
     };
@@ -351,6 +384,26 @@ export const bookmarkService = {
     const snap = await getDoc(ref);
     if (!snap.exists()) throw new Error('Bookmark not found after update');
     return docToBookmark(snap);
+  },
+
+  async selectResolutionCandidate(
+    id: string,
+    candidate: EnrichmentMatchCandidate,
+  ): Promise<Bookmark> {
+    const callable = httpsCallable<
+      { bookmarkId: string; action: "selected"; candidate: EnrichmentMatchCandidate },
+      { ok: boolean }
+    >(fbFunctions, "selectResolutionCandidate");
+    await callable({ bookmarkId: id, action: "selected", candidate });
+    return this.getBookmark(id);
+  },
+
+  async skipResolutionSelection(id: string): Promise<void> {
+    const callable = httpsCallable<
+      { bookmarkId: string; action: "skipped" },
+      { ok: boolean }
+    >(fbFunctions, "selectResolutionCandidate");
+    await callable({ bookmarkId: id, action: "skipped" });
   },
 
   /**
