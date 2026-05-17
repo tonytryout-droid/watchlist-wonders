@@ -1,15 +1,13 @@
 import { useState, type RefObject } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Play, Search, SkipForward, SlidersHorizontal } from "lucide-react";
+import { Play, SkipForward, SlidersHorizontal } from "lucide-react";
 import { HeroBanner } from "@/components/layout/HeroBanner";
 import { QuickAddBar } from "@/components/QuickAddBar";
 import { Rail } from "@/components/bookmarks/Rail";
 import { PosterCard } from "@/components/bookmarks/PosterCard";
 import { EmptyStateGuide } from "@/components/EmptyStateGuide";
 import { MissedSchedulesBanner } from "@/components/schedules/MissedSchedulesBanner";
-import { MoodPicker } from "@/components/dashboard/MoodPicker";
 import { FilterPanel } from "@/components/dashboard/FilterPanel";
-import { WatchBar } from "@/components/dashboard/WatchBar";
 import { RecommendationRail } from "@/components/recommendations/RecommendationRail";
 import { Button } from "@/components/ui/button";
 import { cn, openSafe } from "@/lib/utils";
@@ -340,42 +338,9 @@ export function DashboardShell({
               </div>
             )}
 
-            {/* ── Search bar — surfaces the "find it instantly" promise ── */}
-            {!isEmpty && !demoActive && (
-              <div className="px-4 sm:px-6 lg:px-8 pt-1 pb-1">
-                <button
-                  type="button"
-                  onClick={() => window.dispatchEvent(new CustomEvent("wm:open-search"))}
-                  className="w-full flex items-center gap-3 bg-muted/50 hover:bg-muted/80 border border-border/50 rounded-xl px-4 py-2.5 text-left transition-colors group"
-                  aria-label="Search your saved titles"
-                >
-                  <Search className="w-4 h-4 text-muted-foreground shrink-0 group-hover:text-foreground transition-colors" />
-                  <span className="text-sm text-muted-foreground group-hover:text-foreground/70 transition-colors">
-                    Search your saved titles...
-                  </span>
-                  <span className="ml-auto hidden sm:flex items-center gap-1 text-[11px] text-muted-foreground/60 font-mono">
-                    <kbd className="px-1.5 py-0.5 rounded border border-border/50 bg-background/40">⌘</kbd>
-                    <kbd className="px-1.5 py-0.5 rounded border border-border/50 bg-background/40">K</kbd>
-                  </span>
-                </button>
-              </div>
-            )}
-
-            {/* ── WatchBar — JustWatch-style provider + quick preset strip ── */}
-            {!isEmpty && !demoActive && (
-              <div className="pt-2 pb-1">
-                <WatchBar filters={advancedFilters} onApply={onFilterApply} />
-              </div>
-            )}
-
             {/* ── Filter bar — persistent filter access with count badge ── */}
             {!isEmpty && !demoActive && (
-              <div className="px-4 sm:px-6 lg:px-8 pt-1 pb-1 flex items-center justify-between gap-2">
-                <MoodPicker
-                  activeMood={activeMood}
-                  onMoodSelect={onMoodSelect}
-                  label="What do you feel like?"
-                />
+              <div className="px-4 sm:px-6 lg:px-8 pt-2 pb-1 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={onFilterToggle}

@@ -1,18 +1,21 @@
-import { useQuery } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { adminService } from '@/services/admin';
-import { AdminPageHeader, MetricCard, Panel, formatNumber, formatPercent } from './AdminCards';
+import { AdminErrorState, AdminPageHeader, MetricCard, Panel, formatNumber, formatPercent } from './AdminCards';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { useAdminPageQuery } from './useAdminPageQuery';
 
 export default function SystemHealth() {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, errorMessage, retryAdminQuery } = useAdminPageQuery({
     queryKey: ['admin', 'systemHealth'],
     queryFn: () => adminService.getSystemHealth(),
     refetchInterval: 60_000,
+    fallbackMessage: 'Failed to load system health.',
   });
 
   if (isLoading) return <div className="flex justify-center py-16"><LoadingSpinner /></div>;
-  if (error || !data) return <ErrorState />;
+  if (error || !data) {
+    return <AdminErrorState message={errorMessage ?? 'Failed to load system health.'} onRetry={retryAdminQuery} />;
+  }
 
   const todayIngest = data.ingestion[data.ingestion.length - 1];
 
@@ -72,14 +75,6 @@ export default function SystemHealth() {
           ))}
         </div>
       </Panel>
-    </div>
-  );
-}
-
-function ErrorState() {
-  return (
-    <div className="rounded-2xl border border-red-500/30 bg-red-500/[0.04] p-6 text-sm text-red-300">
-      Failed to load system health. Make sure your account has the <code>admin</code> custom claim set.
     </div>
   );
 }

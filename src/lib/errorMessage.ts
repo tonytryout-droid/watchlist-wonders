@@ -15,16 +15,33 @@ const ERROR_CODE_MESSAGES: Record<string, string> = {
   "auth/requires-recent-login": "Please sign out and sign back in, then try again.",
 };
 
-function normalizeErrorCode(error: unknown): string | null {
-  if (!error || typeof error !== "object") return null;
+function getErrorCodeCandidates(error: unknown): string[] {
+  if (!error || typeof error !== "object") return [];
   const candidate = (error as ErrorLike).code;
-  if (typeof candidate !== "string") return null;
+  if (typeof candidate !== "string") return [];
   const normalized = candidate.trim();
-  return normalized || null;
+  if (!normalized) return [];
+
+  const candidates = [normalized];
+  if (normalized.includes("/")) {
+    candidates.push(normalized.slice(normalized.lastIndexOf("/") + 1));
+  }
+  return [...new Set(candidates)];
+}
+
+export function errorHasCode(error: unknown, codes: string[]): boolean {
+  const candidates = getErrorCodeCandidates(error);
+  if (!candidates.length) return false;
+  return codes.some((code) => candidates.includes(code));
 }
 
 export function getSafeErrorMessage(error: unknown, fallback: string): string {
-  const code = normalizeErrorCode(error);
-  if (!code) return fallback;
-  return ERROR_CODE_MESSAGES[code] ?? fallback;
+  const candidates = getErrorCodeCandidates(error);
+  if (!candidates.length) return fallback;
+
+  for (const code of candidates) {
+    const message = ERROR_CODE_MESSAGES[code];
+    if (message) return message;
+  }
+  return fallback;
 }

@@ -1,18 +1,21 @@
-import { useQuery } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { adminService } from '@/services/admin';
-import { AdminPageHeader, MetricCard, Panel, formatNumber, formatPercent } from './AdminCards';
+import { AdminErrorState, AdminPageHeader, MetricCard, Panel, formatNumber, formatPercent } from './AdminCards';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { useAdminPageQuery } from './useAdminPageQuery';
 
 export default function UserBehavior() {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, errorMessage, retryAdminQuery } = useAdminPageQuery({
     queryKey: ['admin', 'userBehavior'],
     queryFn: () => adminService.getUserBehavior(),
     refetchInterval: 5 * 60_000,
+    fallbackMessage: 'Failed to load user behavior.',
   });
 
   if (isLoading) return <div className="flex justify-center py-16"><LoadingSpinner /></div>;
-  if (error || !data) return <p className="text-sm text-muted-foreground">Failed to load user behavior.</p>;
+  if (error || !data) {
+    return <AdminErrorState message={errorMessage ?? 'Failed to load user behavior.'} onRetry={retryAdminQuery} />;
+  }
 
   const totalRecentSaves = data.savesByDay.reduce((s, d) => s + d.saves, 0);
   const avgPerUser = data.totalUsers === 0 ? 0 : totalRecentSaves / data.totalUsers;

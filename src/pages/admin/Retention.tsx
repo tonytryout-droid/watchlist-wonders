@@ -1,18 +1,21 @@
-import { useQuery } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { adminService } from '@/services/admin';
-import { AdminPageHeader, MetricCard, Panel, formatNumber, formatPercent } from './AdminCards';
+import { AdminErrorState, AdminPageHeader, MetricCard, Panel, formatNumber, formatPercent } from './AdminCards';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { useAdminPageQuery } from './useAdminPageQuery';
 
 export default function Retention() {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, errorMessage, retryAdminQuery } = useAdminPageQuery({
     queryKey: ['admin', 'retention'],
     queryFn: () => adminService.getRetention(),
     refetchInterval: 5 * 60_000,
+    fallbackMessage: 'Failed to load retention metrics.',
   });
 
   if (isLoading) return <div className="flex justify-center py-16"><LoadingSpinner /></div>;
-  if (error || !data) return <p className="text-sm text-muted-foreground">Failed to load retention metrics.</p>;
+  if (error || !data) {
+    return <AdminErrorState message={errorMessage ?? 'Failed to load retention metrics.'} onRetry={retryAdminQuery} />;
+  }
 
   return (
     <div className="space-y-6">

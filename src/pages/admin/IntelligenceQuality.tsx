@@ -1,17 +1,20 @@
-import { useQuery } from '@tanstack/react-query';
 import { adminService } from '@/services/admin';
-import { AdminPageHeader, MetricCard, Panel, formatPercent } from './AdminCards';
+import { AdminErrorState, AdminPageHeader, MetricCard, Panel, formatPercent } from './AdminCards';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { useAdminPageQuery } from './useAdminPageQuery';
 
 export default function IntelligenceQuality() {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, errorMessage, retryAdminQuery } = useAdminPageQuery({
     queryKey: ['admin', 'intelligenceQuality'],
     queryFn: () => adminService.getIntelligenceQuality(),
     refetchInterval: 5 * 60_000,
+    fallbackMessage: 'Failed to load intelligence metrics.',
   });
 
   if (isLoading) return <div className="flex justify-center py-16"><LoadingSpinner /></div>;
-  if (error || !data) return <p className="text-sm text-muted-foreground">Failed to load intelligence metrics.</p>;
+  if (error || !data) {
+    return <AdminErrorState message={errorMessage ?? 'Failed to load intelligence metrics.'} onRetry={retryAdminQuery} />;
+  }
 
   const classifierTotal = Object.values(data.classifierDistribution).reduce((a, b) => a + b, 0);
   const resolveTotal = Object.values(data.resolveDistribution).reduce((a, b) => a + b, 0);

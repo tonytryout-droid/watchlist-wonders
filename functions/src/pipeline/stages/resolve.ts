@@ -55,6 +55,35 @@ interface Candidate {
   posterPath: string | null;
 }
 
+type LegacyCachedResolveResult = Omit<ResolveResult, "status" | "suggested"> & {
+  suggested?: boolean;
+  status?: ResolveResult["status"] | "suggested";
+};
+
+function normalizeCachedStatus(
+  status: LegacyCachedResolveResult["status"],
+  suggested: boolean,
+): NonNullable<ResolveResult["status"]> {
+  if (status === "suggested") return "needs_selection";
+  if (status) return status;
+  return suggested ? "needs_selection" : "matched";
+}
+
+export function normalizeCachedResolveResult(entity: LegacyCachedResolveResult): ResolveResult {
+  const suggested =
+    entity.suggested ?? (entity.status === "suggested" || entity.status === "needs_selection");
+  const status = normalizeCachedStatus(entity.status, suggested);
+
+  return {
+    ...entity,
+    suggested,
+    status,
+    confidenceBand: entity.confidenceBand ?? (status === "matched" ? "high" : "low"),
+    candidates: entity.candidates ?? [],
+    requiresUserSelection: entity.requiresUserSelection ?? requiresUserSelection(status),
+  };
+}
+
 function normalizePopularity(value: number): number {
   return Math.min(value / 200, 1);
 }
@@ -97,15 +126,8 @@ async function readCache(hash: string): Promise<ResolveResult | null> {
     if (!snap.exists) return null;
     const data = snap.data();
     if (!data?.canonical_entity) return null;
-    const ce = data.canonical_entity as ResolveResult & { suggested?: boolean };
-    return {
-      ...ce,
-      suggested: ce.suggested ?? false,
-      status: ce.status ?? (ce.suggested ? "suggested" : "matched"),
-      confidenceBand: ce.confidenceBand ?? (ce.suggested ? "low" : "high"),
-      candidates: ce.candidates ?? [],
-      requiresUserSelection: ce.requiresUserSelection ?? !!ce.suggested,
-    };
+    const ce = data.canonical_entity as LegacyCachedResolveResult;
+    return normalizeCachedResolveResult(ce);
   } catch {
     return null;
   }

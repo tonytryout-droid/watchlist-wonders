@@ -1,18 +1,21 @@
-import { useQuery } from '@tanstack/react-query';
 import { Sparkles } from 'lucide-react';
 import { adminService } from '@/services/admin';
-import { AdminPageHeader, MetricCard, Panel, formatNumber } from './AdminCards';
+import { AdminErrorState, AdminPageHeader, MetricCard, Panel, formatNumber } from './AdminCards';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { useAdminPageQuery } from './useAdminPageQuery';
 
 export default function ContentGraph() {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, errorMessage, retryAdminQuery } = useAdminPageQuery({
     queryKey: ['admin', 'contentGraph'],
     queryFn: () => adminService.getContentGraph(),
     refetchInterval: 10 * 60_000,
+    fallbackMessage: 'Failed to load content graph.',
   });
 
   if (isLoading) return <div className="flex justify-center py-16"><LoadingSpinner /></div>;
-  if (error || !data) return <p className="text-sm text-muted-foreground">Failed to load content graph.</p>;
+  if (error || !data) {
+    return <AdminErrorState message={errorMessage ?? 'Failed to load content graph.'} onRetry={retryAdminQuery} />;
+  }
 
   const maxSize = data.topClusters.reduce((m, c) => Math.max(m, c.size), 0);
   const emerging = data.topClusters.filter((c) => c.emerging).length;
