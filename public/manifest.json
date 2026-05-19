@@ -9,13 +9,13 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/favicon.png",
+      "src": "/favicon-32x32.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/favicon.png",
+      "src": "/favicon-32x32.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
@@ -36,13 +36,13 @@
       "name": "Add Bookmark",
       "short_name": "Add",
       "url": "/new",
-      "icons": [{ "src": "/favicon.png", "sizes": "96x96" }]
+      "icons": [{ "src": "/favicon-32x32.png", "sizes": "96x96" }]
     },
     {
       "name": "Tonight's Pick",
       "short_name": "Tonight",
       "url": "/tonight",
-      "icons": [{ "src": "/favicon.png", "sizes": "96x96" }]
+      "icons": [{ "src": "/favicon-32x32.png", "sizes": "96x96" }]
     }
   ]
 }
