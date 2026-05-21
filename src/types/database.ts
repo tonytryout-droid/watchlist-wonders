@@ -68,6 +68,18 @@ export interface BookmarkMetadata {
   resolution_selected_rank?: number;
   resolution_candidate_history?: unknown[];
   raw_title?: string;
+  share_target?: boolean;
+  share_raw_title?: string | null;
+  share_raw_text?: string | null;
+  share_received_at?: string;
+  capture_surface?: string;
+  capture_received_at?: string;
+  capture_status?: "auto_saved" | "needs_selection" | "unresolved" | "duplicate";
+  capture_source_platform?: string;
+  capture_client_timestamp?: string | null;
+  capture_latency_ms?: number | null;
+  capture_device_id?: string | null;
+  duplicate_of_bookmark_id?: string | null;
   [key: string]: unknown;
 }
 

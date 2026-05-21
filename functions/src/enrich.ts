@@ -9,10 +9,10 @@ import {
   type ResolutionStatus,
 } from './resolution/scoring';
 
-const youtubeApiKey = defineSecret('YOUTUBE_API_KEY');
-const tmdbApiKey = defineSecret('TMDB_API_KEY');
+export const youtubeApiKey = defineSecret('YOUTUBE_API_KEY');
+export const tmdbApiKey = defineSecret('TMDB_API_KEY');
 
-interface EnrichResponse {
+export interface EnrichResponse {
   title?: string;
   description?: string;
   posterUrl?: string;
@@ -39,7 +39,7 @@ interface EnrichResponse {
   error?: { message: string };
 }
 
-interface TmdbMatchCandidate {
+export interface TmdbMatchCandidate {
   tmdbId: number;
   title: string;
   mediaType: 'movie' | 'tv';
@@ -1869,6 +1869,72 @@ async function enrichTMDB(title: string, hint?: TmdbSearchHint): Promise<EnrichR
 
 // --- Main Handler ---
 
+export async function runEnrichmentRequest(
+  data: { url?: unknown; title?: unknown },
+): Promise<EnrichResponse> {
+  const { url, title: titleQuery } = data;
+
+  // Title-only path: caller wants a TMDB title search without a source URL
+  if (!url && titleQuery && typeof titleQuery === 'string' && titleQuery.trim()) {
+    const trimmedTitle = titleQuery.trim();
+    logger.info('Enriching by title:', trimmedTitle.slice(0, 60));
+    const result = await enrichTMDB(trimmedTitle);
+    return withResolutionDefaults(result);
+  }
+
+  if (!url || typeof url !== 'string') {
+    throw new HttpsError('invalid-argument', 'URL is required.');
+  }
+
+  const validatedUrl = normalizeAndValidateUrl(url);
+  const normalizedUrl = validatedUrl.toString();
+
+  logger.info('Enriching URL:', redactUrlForLog(normalizedUrl));
+  const provider = detectProvider(normalizedUrl);
+  let result: EnrichResponse = { provider };
+
+  switch (provider) {
+    case 'youtube': {
+      const videoId = extractYouTubeVideoId(normalizedUrl);
+      if (videoId) result = await enrichYouTube(videoId);
+      break;
+    }
+    case 'x':
+      result = await enrichTwitter(normalizedUrl);
+      break;
+    case 'tiktok':
+      result = await enrichTikTok(normalizedUrl);
+      break;
+    case 'reddit':
+      result = await enrichReddit(normalizedUrl);
+      break;
+    case 'imdb':
+      result = await enrichIMDb(normalizedUrl);
+      break;
+    case 'letterboxd':
+      result = await enrichLetterboxd(normalizedUrl);
+      break;
+    case 'rottentomatoes':
+      result = await enrichRottenTomatoes(normalizedUrl);
+      break;
+    case 'instagram':
+    case 'facebook':
+    case 'netflix':
+    case 'generic':
+      result = await enrichViaOG(normalizedUrl, provider);
+      break;
+  }
+
+  const resultWithResolution = withResolutionDefaults(result);
+  const normalizedHashtags = normalizeHashtagList(resultWithResolution.hashtags);
+  return {
+    ...resultWithResolution,
+    provider: resultWithResolution.provider ?? provider,
+    canonicalUrl: resultWithResolution.canonicalUrl ?? normalizedUrl,
+    hashtags: normalizedHashtags,
+  };
+}
+
 export const enrich = onCall(
   { memory: '256MiB', timeoutSeconds: 30, secrets: [youtubeApiKey, tmdbApiKey] },
   async (request) => {
@@ -1877,67 +1943,7 @@ export const enrich = onCall(
     }
 
     try {
-      const { url, title: titleQuery } = request.data as { url?: unknown; title?: unknown };
-
-      // Title-only path: caller wants a TMDB title search without a source URL
-      if (!url && titleQuery && typeof titleQuery === 'string' && titleQuery.trim()) {
-        const trimmedTitle = titleQuery.trim();
-        logger.info('Enriching by title:', trimmedTitle.slice(0, 60));
-        const result = await enrichTMDB(trimmedTitle);
-        return withResolutionDefaults(result);
-      }
-
-      if (!url || typeof url !== 'string') {
-        throw new HttpsError('invalid-argument', 'URL is required.');
-      }
-
-      const validatedUrl = normalizeAndValidateUrl(url);
-      const normalizedUrl = validatedUrl.toString();
-
-      logger.info('Enriching URL:', redactUrlForLog(normalizedUrl));
-      const provider = detectProvider(normalizedUrl);
-      let result: EnrichResponse = { provider };
-
-      switch (provider) {
-        case 'youtube': {
-          const videoId = extractYouTubeVideoId(normalizedUrl);
-          if (videoId) result = await enrichYouTube(videoId);
-          break;
-        }
-        case 'x':
-          result = await enrichTwitter(normalizedUrl);
-          break;
-        case 'tiktok':
-          result = await enrichTikTok(normalizedUrl);
-          break;
-        case 'reddit':
-          result = await enrichReddit(normalizedUrl);
-          break;
-        case 'imdb':
-          result = await enrichIMDb(normalizedUrl);
-          break;
-        case 'letterboxd':
-          result = await enrichLetterboxd(normalizedUrl);
-          break;
-        case 'rottentomatoes':
-          result = await enrichRottenTomatoes(normalizedUrl);
-          break;
-        case 'instagram':
-        case 'facebook':
-        case 'netflix':
-        case 'generic':
-          result = await enrichViaOG(normalizedUrl, provider);
-          break;
-      }
-
-      const resultWithResolution = withResolutionDefaults(result);
-      const normalizedHashtags = normalizeHashtagList(resultWithResolution.hashtags);
-      return {
-        ...resultWithResolution,
-        provider: resultWithResolution.provider ?? provider,
-        canonicalUrl: resultWithResolution.canonicalUrl ?? normalizedUrl,
-        hashtags: normalizedHashtags,
-      };
+      return await runEnrichmentRequest(request.data as { url?: unknown; title?: unknown });
     } catch (error) {
       logger.error('Enrichment error:', error);
       if (error instanceof HttpsError) {

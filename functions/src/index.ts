@@ -16,6 +16,7 @@ if (!getApps().length) {
 const tmdbApiKey = defineSecret("TMDB_API_KEY");
 
 export { enrich } from "./enrich.js";
+export { captureShare } from "./captureShare.js";
 export { selectResolutionCandidate } from "./resolution/events.js";
 export { tmdbProxy } from "./tmdb.js";
 export { refreshWatchAvailability } from "./availabilityRefresh.js";
