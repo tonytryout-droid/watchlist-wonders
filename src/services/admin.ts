@@ -20,6 +20,16 @@ export interface UserBehavior {
   totalUsers: number;
   totalBookmarks: number;
   savesByDay: Array<{ date: string; saves: number }>;
+  captureByDay: Array<{
+    date: string;
+    total: number;
+    autoSaved: number;
+    needsSelection: number;
+    unresolved: number;
+    duplicate: number;
+  }>;
+  captureBySurface: Record<string, number>;
+  captureByStatus: Record<string, number>;
   searchUsage: Array<{ date: string; queries: number; hits: number }>;
   deadBookmarkRatio: number;
   revisitRate: number;

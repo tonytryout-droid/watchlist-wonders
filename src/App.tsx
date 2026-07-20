@@ -40,6 +40,7 @@ const AdminUserBehavior = lazy(() => import("./pages/admin/UserBehavior"));
 const AdminIntelligenceQuality = lazy(() => import("./pages/admin/IntelligenceQuality"));
 const AdminContentGraph = lazy(() => import("./pages/admin/ContentGraph"));
 const AdminRetention = lazy(() => import("./pages/admin/Retention"));
+const PostCapture = lazy(() => import("./pages/PostCapture"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -111,6 +112,7 @@ const App = () => (
                       <Route path="/dashboard" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
                       <Route path="/new" element={<ErrorBoundary><NewBookmark /></ErrorBoundary>} />
                       <Route path="/b/:id" element={<ErrorBoundary><BookmarkDetail /></ErrorBoundary>} />
+                      <Route path="/post-capture" element={<ErrorBoundary><PostCapture /></ErrorBoundary>} />
                       <Route path="/settings" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
                       {FEATURES.tonightPick && (
                         <Route path="/tonight" element={<ErrorBoundary><TonightPick /></ErrorBoundary>} />

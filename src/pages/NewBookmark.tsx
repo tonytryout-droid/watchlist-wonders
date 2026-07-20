@@ -13,8 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { detectProvider, cn } from "@/lib/utils";
-import { fbFunctions } from "@/lib/firebase";
-import { httpsCallable } from "firebase/functions";
+import { enrichUrl } from "@/services/functions";
 import { bookmarkService } from "@/services/bookmarks";
 import { attachmentService } from "@/services/attachments";
 import { buildSmartFillData, mapGenresToMoodTags, type EnrichmentMatchCandidate, type MatchConfidence } from "@/lib/enrichmentSmartFill";
@@ -308,9 +307,7 @@ const NewBookmark = () => {
     setProvider(dp);
 
     try {
-      const enrichCallable = httpsCallable(fbFunctions, 'enrich');
-      const result = await enrichCallable({ url: trimmed });
-      const data = (result.data ?? {}) as Record<string, unknown>;
+      const data = await enrichUrl(trimmed);
       const smartFill = buildSmartFillData(data);
       const rawTitle = typeof data.title === "string" ? data.title.trim() : "";
 
@@ -465,9 +462,7 @@ const NewBookmark = () => {
     if (!trimmed) return;
     setIsManualSearching(true);
     try {
-      const enrichCallable = httpsCallable(fbFunctions, 'enrich');
-      const result = await enrichCallable({ title: trimmed });
-      const data = (result.data ?? {}) as Record<string, unknown>;
+      const data = await enrichUrl(trimmed);
       const smartFill = buildSmartFillData(data);
       if (smartFill.matchCandidates.length > 0) {
         setMatchCandidates(smartFill.matchCandidates);

@@ -1,20 +1,20 @@
+import { createHash } from "node:crypto";
 import { getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
+import {
+  isCaptureSurface,
+  type CaptureMatchCandidate,
+  type CaptureShareResult,
+  type CaptureStatus,
+  type CaptureSurface,
+} from "@watchmarks/shared/capture";
 import {
   runEnrichmentRequest,
   tmdbApiKey,
   type EnrichResponse,
   youtubeApiKey,
-  type TmdbMatchCandidate,
 } from "./enrich";
-
-export type CaptureSurface =
-  | "web_quick_add"
-  | "pwa_share_target"
-  | "ios_share_extension"
-  | "android_share_intent";
-
-export type CaptureStatus = "auto_saved" | "needs_selection" | "unresolved" | "duplicate";
+import { incrementMetric } from "./admin/metrics";
 
 type CaptureShareRequest = {
   url?: unknown;
@@ -24,26 +24,6 @@ type CaptureShareRequest = {
   clientTimestamp?: unknown;
   deviceId?: unknown;
 };
-
-type CaptureShareResponse = {
-  status: CaptureStatus;
-  bookmarkId?: string;
-  duplicateOf?: string;
-  resolvedTitle?: string;
-  extractedTitle?: string;
-  provider?: string;
-  posterUrl?: string | null;
-  candidateCount?: number;
-  candidates?: TmdbMatchCandidate[];
-  message?: string;
-};
-
-const SURFACE_SET = new Set<CaptureSurface>([
-  "web_quick_add",
-  "pwa_share_target",
-  "ios_share_extension",
-  "android_share_intent",
-]);
 
 const PROVIDER_LABELS: Record<string, string> = {
   youtube: "YouTube",
@@ -76,7 +56,7 @@ function asTrimmedString(value: unknown): string | null {
 }
 
 function asSurface(value: unknown): CaptureSurface {
-  return typeof value === "string" && SURFACE_SET.has(value as CaptureSurface)
+  return typeof value === "string" && isCaptureSurface(value)
     ? (value as CaptureSurface)
     : "pwa_share_target";
 }
@@ -320,7 +300,47 @@ async function findDuplicate(params: {
   return null;
 }
 
-export const captureShare = onCall<CaptureShareRequest, Promise<CaptureShareResponse>>(
+/**
+ * Compute a deterministic dedup document ID for a new bookmark. When two
+ * concurrent share-captures yield the same dedup ID, `.create()` will let
+ * exactly one succeed — the loser hits `already-exists` and is reconciled
+ * as a duplicate. Returns null when no strong identifier is available
+ * (e.g. unresolved capture with no canonical URL); the caller falls back
+ * to a random ID and there's nothing to race against.
+ */
+function computeDedupDocId(params: {
+  tmdbId: number | undefined;
+  mediaType: string | undefined;
+  canonicalUrl: string | null;
+  sourceUrl: string | null;
+}): string | null {
+  const { tmdbId, mediaType, canonicalUrl, sourceUrl } = params;
+  if (tmdbId && mediaType) {
+    return `tmdb_${mediaType}_${tmdbId}`;
+  }
+  const url = canonicalUrl ?? sourceUrl;
+  if (url) {
+    return `u_${createHash("sha256").update(url).digest("hex").slice(0, 24)}`;
+  }
+  return null;
+}
+
+function buildOpenTarget(bookmarkId: string, status: CaptureStatus) {
+  return status === "auto_saved" || status === "duplicate"
+    ? { route: "bookmark" as const, bookmarkId }
+    : { route: "post_capture" as const, bookmarkId, status };
+}
+
+async function recordCaptureMetrics(surface: CaptureSurface, status: CaptureStatus): Promise<void> {
+  await Promise.all([
+    incrementMetric("capture.request"),
+    incrementMetric(`capture.surface.${surface}`),
+    incrementMetric(`capture.status.${status}`),
+    incrementMetric(`capture.surface_status.${surface}.${status}`),
+  ]);
+}
+
+export const captureShare = onCall<CaptureShareRequest, Promise<CaptureShareResult>>(
   { memory: "256MiB", timeoutSeconds: 30, secrets: [youtubeApiKey, tmdbApiKey] },
   async (request) => {
     if (!request.auth) {
@@ -356,6 +376,7 @@ export const captureShare = onCall<CaptureShareRequest, Promise<CaptureShareResp
     });
 
     if (duplicate) {
+      await recordCaptureMetrics(surface, "duplicate");
       return {
         status: "duplicate",
         bookmarkId: duplicate.id,
@@ -366,8 +387,9 @@ export const captureShare = onCall<CaptureShareRequest, Promise<CaptureShareResp
         posterUrl:
           typeof duplicate.poster_url === "string" ? duplicate.poster_url : (result.posterUrl ?? null),
         candidateCount: result.matchCandidates?.length ?? 0,
-        candidates: result.matchCandidates ?? [],
+        candidates: (result.matchCandidates ?? []) as CaptureMatchCandidate[],
         message: "Already in your watchlist.",
+        openTarget: buildOpenTarget(duplicate.id, "duplicate"),
       };
     }
 
@@ -434,22 +456,79 @@ export const captureShare = onCall<CaptureShareRequest, Promise<CaptureShareResp
       updated_at: now,
     };
 
-    const ref = await getFirestore().collection("users").doc(uid).collection("bookmarks").add(docData);
+    const bookmarksCol = getFirestore().collection("users").doc(uid).collection("bookmarks");
+    const dedupId = computeDedupDocId({
+      tmdbId: result.tmdbId,
+      mediaType: result.mediaType,
+      canonicalUrl,
+      sourceUrl: extractedUrl,
+    });
+
+    // Race-free insert: when a deterministic id is available, .create() is
+    // atomic — concurrent captures of the same item collapse to a single doc
+    // with a clean `already-exists` signal on the loser.
+    let bookmarkId: string;
+    let collapsedDuplicate: { id: string; title?: string; poster_url?: string | null } | null = null;
+    if (dedupId) {
+      const ref = bookmarksCol.doc(dedupId);
+      try {
+        await ref.create(docData);
+        bookmarkId = ref.id;
+      } catch (err) {
+        const code = (err as { code?: string | number })?.code;
+        const isAlreadyExists =
+          code === 6 /* gRPC ALREADY_EXISTS */ ||
+          code === "already-exists" ||
+          (err instanceof Error && /already exists/i.test(err.message));
+        if (!isAlreadyExists) throw err;
+        const existing = await ref.get();
+        const data = existing.data() ?? {};
+        bookmarkId = ref.id;
+        collapsedDuplicate = {
+          id: ref.id,
+          title: typeof data.title === "string" ? data.title : undefined,
+          poster_url: typeof data.poster_url === "string" ? data.poster_url : null,
+        };
+      }
+    } else {
+      const ref = await bookmarksCol.add(docData);
+      bookmarkId = ref.id;
+    }
+
+    if (collapsedDuplicate) {
+      await recordCaptureMetrics(surface, "duplicate");
+      return {
+        status: "duplicate",
+        bookmarkId: collapsedDuplicate.id,
+        duplicateOf: collapsedDuplicate.id,
+        resolvedTitle: collapsedDuplicate.title ?? result.title,
+        extractedTitle: sharedTitle ?? result.title,
+        provider,
+        posterUrl: collapsedDuplicate.poster_url ?? result.posterUrl ?? null,
+        candidateCount: result.matchCandidates?.length ?? 0,
+        candidates: (result.matchCandidates ?? []) as CaptureMatchCandidate[],
+        message: "Already in your watchlist.",
+        openTarget: buildOpenTarget(collapsedDuplicate.id, "duplicate"),
+      };
+    }
+
+    await recordCaptureMetrics(surface, status);
     return {
       status,
-      bookmarkId: ref.id,
+      bookmarkId,
       resolvedTitle: status === "auto_saved" ? result.title ?? bookmarkTitle : bookmarkTitle,
       extractedTitle: sharedTitle ?? result.title ?? undefined,
       provider,
       posterUrl: result.posterUrl ?? null,
       candidateCount: result.matchCandidates?.length ?? 0,
-      candidates: result.matchCandidates ?? [],
+      candidates: (result.matchCandidates ?? []) as CaptureMatchCandidate[],
       message:
         status === "auto_saved"
           ? "Saved to your watchlist."
           : status === "needs_selection"
             ? "Choose the right title to finish matching."
             : "Saved for later review.",
+      openTarget: buildOpenTarget(bookmarkId, status),
     };
   },
 );

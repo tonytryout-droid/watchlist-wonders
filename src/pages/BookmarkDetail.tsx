@@ -9,6 +9,7 @@ import {
   CalendarCheck, ThumbsUp, ThumbsDown, Share2, MoreHorizontal,
 } from "lucide-react";
 import { format } from "date-fns";
+import { buildBookmarkDeepLink } from "@watchmarks/shared/deep-links";
 import { useWatchProviders } from "@/hooks/useWatchProviders";
 import { useTmdbSearch } from "@/hooks/useTmdbSearch";
 import { useSimilarTitles } from "@/hooks/useSimilarTitles";
@@ -384,6 +385,26 @@ const BookmarkDetail = () => {
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
+  const mobileDeepLink = buildBookmarkDeepLink(bookmark.id);
+
+  const openInApp = () => {
+    window.location.href = mobileDeepLink;
+    toast({ title: "Opening mobile app", description: "If the app is installed, this bookmark will open there." });
+  };
+
+  const copyAppLink = async () => {
+    try {
+      await navigator.clipboard.writeText(mobileDeepLink);
+      toast({ title: "Mobile link copied", description: mobileDeepLink });
+    } catch {
+      toast({
+        title: "Couldn't copy mobile link",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const persistAvailability = async (availability: BookmarkAvailability, resolvedId?: number | null) => {
     const nextMetadata = {
       ...(bookmark.metadata || {}),
@@ -592,6 +613,12 @@ const BookmarkDetail = () => {
                 <ExternalLink className="w-4 h-4 mr-2" />Open Source
               </DropdownMenuItem>
             )}
+            <DropdownMenuItem onClick={openInApp} className="text-white/85 focus:text-white focus:bg-white/10">
+              <ExternalLink className="w-4 h-4 mr-2" />Open in mobile app
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => { void copyAppLink(); }} className="text-white/85 focus:text-white focus:bg-white/10">
+              <Copy className="w-4 h-4 mr-2" />Copy mobile link
+            </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-white/10" />
             <DropdownMenuItem onClick={() => setDeleteDialogOpen(true)} className="text-red-400 focus:text-red-400 focus:bg-white/10">
               <Trash2 className="w-4 h-4 mr-2" />Remove

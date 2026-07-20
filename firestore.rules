@@ -22,7 +22,8 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Public profiles — anyone can read
+    // Public profiles — readable by anyone. These docs contain only display_name/bio
+    // and avatar metadata, so the public profile route can be exposed without auth.
     match /users/{uid}/profile/public {
       allow read: if true;
     }
@@ -32,10 +33,12 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
 
-    // Social graph — followers list: owner can read; authenticated users can write/delete
-    // their own record (so User A can add/remove themselves from User B's followers list)
+    // Social graph — followers list. Cross-user WRITE only (User A adds/removes themselves
+    // from User B's followers list). Owner reads via the catch-all /users/{uid}/{document=**}
+    // rule above. We deliberately do NOT allow followerUid==auth.uid reads here — that would
+    // let an attacker probe "do I follow uid X?" via Bob's followers list. The owner of the
+    // following list (the catch-all) is the right place to answer that question.
     match /users/{uid}/followers/{followerUid} {
-      allow read: if request.auth != null && request.auth.uid == followerUid;
       allow write: if request.auth != null && request.auth.uid == followerUid;
     }
 
@@ -54,6 +57,16 @@ service cloud.firestore {
     // Entity cache — read by Cloud Functions; clients have no business reading it.
     match /entityCache/{hash} {
       allow read, write: if false;
+    }
+
+    // Client-side error reports — authenticated users can append; admins read.
+    // No update/delete (immutable audit log). Shape is validated at the report
+    // sink (src/services/errorMonitoring.ts); rules just gate the action.
+    match /errorReports/{reportId} {
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid;
+      allow read: if isAdmin();
+      allow update, delete: if false;
     }
   }
 }

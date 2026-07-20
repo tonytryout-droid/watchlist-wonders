@@ -102,6 +102,10 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     chunkSizeWarningLimit: 950,
+    // Generate source maps but exclude the comment that would expose them in
+    // production browsers. They're still available in the build output for
+    // upload to a monitoring service (Sentry, etc.).
+    sourcemap: "hidden",
     rollupOptions: {
       output: {
         manualChunks(id) {

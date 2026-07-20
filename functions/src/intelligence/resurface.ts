@@ -39,11 +39,16 @@ async function recentEventBookmarkIds(uid: string, now = Date.now()): Promise<Se
 }
 
 async function loadCandidates(uid: string): Promise<ResurfaceCandidate[]> {
+  // Order by importance_score DESC so the .limit(200) returns the most
+  // valuable candidates rather than an arbitrary subset. Requires a composite
+  // index on importance_score (single field, descending) — auto-created by
+  // Firestore on first query.
   const snap = await getFirestore()
     .collection("users")
     .doc(uid)
     .collection("bookmarks")
     .where("importance_score", ">=", IMPORTANCE_FLOOR)
+    .orderBy("importance_score", "desc")
     .limit(200)
     .get();
   return snap.docs.map((d) => {

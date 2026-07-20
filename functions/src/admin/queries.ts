@@ -2,6 +2,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 import { readRange } from "./metrics";
 import { requireAdmin } from "./auth";
+import { memoizeAdminQuery } from "./cache";
 
 export interface SystemHealthResponse {
   ingestion: Array<{ date: string; created: number; success: number; partial: number; error: number }>;
@@ -14,6 +15,16 @@ export interface UserBehaviorResponse {
   totalUsers: number;
   totalBookmarks: number;
   savesByDay: Array<{ date: string; saves: number }>;
+  captureByDay: Array<{
+    date: string;
+    total: number;
+    autoSaved: number;
+    needsSelection: number;
+    unresolved: number;
+    duplicate: number;
+  }>;
+  captureBySurface: Record<string, number>;
+  captureByStatus: Record<string, number>;
   searchUsage: Array<{ date: string; queries: number; hits: number }>;
   deadBookmarkRatio: number;
   revisitRate: number;
@@ -60,7 +71,8 @@ function sumCounter(counters: Record<string, number>, prefix: string): number {
   return total;
 }
 
-export const adminSystemHealth = callable<unknown, SystemHealthResponse>(async () => {
+export const adminSystemHealth = callable<unknown, SystemHealthResponse>(() =>
+  memoizeAdminQuery("adminSystemHealth", async () => {
   const range = await readRange(14);
   const ingestion = range.map((d) => ({
     date: d.date,
@@ -95,19 +107,42 @@ export const adminSystemHealth = callable<unknown, SystemHealthResponse>(async (
   const embedQueue = pendingSnap?.data().count ?? 0;
 
   return { ingestion, failureRate, recentErrors, embedQueue };
-});
+}));
 
-export const adminUserBehavior = callable<unknown, UserBehaviorResponse>(async () => {
+export const adminUserBehavior = callable<unknown, UserBehaviorResponse>(() =>
+  memoizeAdminQuery("adminUserBehavior", async () => {
   const range = await readRange(14);
   const savesByDay = range.map((d) => ({
     date: d.date,
     saves: d.counters["pipeline.completed"] ?? 0,
+  }));
+  const captureByDay = range.map((d) => ({
+    date: d.date,
+    total: d.counters["capture.request"] ?? 0,
+    autoSaved: d.counters["capture.status.auto_saved"] ?? 0,
+    needsSelection: d.counters["capture.status.needs_selection"] ?? 0,
+    unresolved: d.counters["capture.status.unresolved"] ?? 0,
+    duplicate: d.counters["capture.status.duplicate"] ?? 0,
   }));
   const searchUsage = range.map((d) => ({
     date: d.date,
     queries: d.counters["search.query"] ?? 0,
     hits: d.counters["search.hit"] ?? 0,
   }));
+  const captureBySurface: Record<string, number> = {};
+  const captureByStatus: Record<string, number> = {};
+  for (const d of range) {
+    for (const [key, value] of Object.entries(d.counters)) {
+      if (key.startsWith("capture.surface.")) {
+        const surface = key.slice("capture.surface.".length);
+        captureBySurface[surface] = (captureBySurface[surface] ?? 0) + (typeof value === "number" ? value : 0);
+      }
+      if (key.startsWith("capture.status.")) {
+        const status = key.slice("capture.status.".length);
+        captureByStatus[status] = (captureByStatus[status] ?? 0) + (typeof value === "number" ? value : 0);
+      }
+    }
+  }
 
   const usersSnap = await getFirestore().collection("users").count().get().catch(() => null);
   const bookmarksSnap = await getFirestore().collectionGroup("bookmarks").count().get().catch(() => null);
@@ -127,10 +162,21 @@ export const adminUserBehavior = callable<unknown, UserBehaviorResponse>(async (
   const totalHits = searchUsage.reduce((s, d) => s + d.hits, 0);
   const revisitRate = totalQueries === 0 ? 0 : totalHits / totalQueries;
 
-  return { totalUsers, totalBookmarks, savesByDay, searchUsage, deadBookmarkRatio, revisitRate };
-});
+  return {
+    totalUsers,
+    totalBookmarks,
+    savesByDay,
+    captureByDay,
+    captureBySurface,
+    captureByStatus,
+    searchUsage,
+    deadBookmarkRatio,
+    revisitRate,
+  };
+}));
 
-export const adminIntelligenceQuality = callable<unknown, IntelligenceQualityResponse>(async () => {
+export const adminIntelligenceQuality = callable<unknown, IntelligenceQualityResponse>(() =>
+  memoizeAdminQuery("adminIntelligenceQuality", async () => {
   const range = await readRange(14);
   const classifierDistribution: Record<string, number> = {};
   const resolveDistribution: Record<string, number> = {};
@@ -163,9 +209,10 @@ export const adminIntelligenceQuality = callable<unknown, IntelligenceQualityRes
     suggestedRatio: totalResolved === 0 ? 0 : suggested / totalResolved,
     autoTagsPerBookmark: autoTagBookmarks === 0 ? 0 : autoTagSuccess / autoTagBookmarks,
   };
-});
+}));
 
-export const adminContentGraph = callable<unknown, ContentGraphResponse>(async () => {
+export const adminContentGraph = callable<unknown, ContentGraphResponse>(() =>
+  memoizeAdminQuery("adminContentGraph", async () => {
   const snap = await getFirestore()
     .collectionGroup("clusters")
     .orderBy("member_count", "desc")
@@ -188,9 +235,10 @@ export const adminContentGraph = callable<unknown, ContentGraphResponse>(async (
   const countSnap = await getFirestore().collectionGroup("clusters").count().get().catch(() => null);
   const totalClusters = countSnap?.data().count ?? topClusters.length;
   return { topClusters, totalClusters };
-});
+}));
 
-export const adminRetention = callable<unknown, RetentionResponse>(async () => {
+export const adminRetention = callable<unknown, RetentionResponse>(() =>
+  memoizeAdminQuery("adminRetention", async () => {
   const range = await readRange(14);
   const byDay = range.map((d) => ({
     date: d.date,
@@ -209,7 +257,7 @@ export const adminRetention = callable<unknown, RetentionResponse>(async () => {
     dismissRate: surfaced === 0 ? 0 : dismissed / surfaced,
     byDay,
   };
-});
+}));
 
 export const recordView = onCall<{ bookmarkId: string }>(
   { timeoutSeconds: 10, memory: "256MiB", cors: true },

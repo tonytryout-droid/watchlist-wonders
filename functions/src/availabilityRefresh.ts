@@ -3,6 +3,7 @@ import { defineSecret } from 'firebase-functions/params';
 import * as logger from 'firebase-functions/logger';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore, type Firestore, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
+import { redactSecretsInText } from './lib/logSafety';
 
 const tmdbApiKey = defineSecret('TMDB_API_KEY');
 
@@ -427,7 +428,7 @@ export const refreshWatchAvailability = onSchedule(
         failed += 1;
         logger.error('[availabilityRefresh] Failed to refresh bookmark', {
           path: snapshot.ref.path,
-          error: error instanceof Error ? error.message : String(error),
+          error: redactSecretsInText(error instanceof Error ? error.message : String(error)),
         });
       }
     }

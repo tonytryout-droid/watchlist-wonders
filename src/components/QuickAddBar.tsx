@@ -25,8 +25,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link as LinkIcon, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, detectProvider } from "@/lib/utils";
-import { fbFunctions } from "@/lib/firebase";
-import { httpsCallable } from "firebase/functions";
+import { enrichUrl } from "@/services/functions";
 import { bookmarkService } from "@/services/bookmarks";
 import { ConfirmMetadataDialog, type ConfirmMetadataPayload } from "@/components/bookmarks/ConfirmMetadataDialog";
 import { TmdbCandidatePicker } from "@/components/bookmarks/TmdbCandidatePicker";
@@ -343,9 +342,7 @@ export function QuickAddBar({
     const dp = detectProvider(trimmed);
 
     try {
-      const enrichCallable = httpsCallable(fbFunctions, 'enrich');
-      const result = await enrichCallable({ url: trimmed });
-      const data = (result.data ?? {}) as Record<string, unknown>;
+      const data = await enrichUrl(trimmed);
       const fill = buildSmartFillData(data);
 
       const resolvedProvider =

@@ -1,6 +1,7 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
 import * as logger from 'firebase-functions/logger';
+import { redactError } from './lib/logSafety';
 
 const tmdbApiKey = defineSecret('TMDB_API_KEY');
 
@@ -425,7 +426,7 @@ export const tmdbProxy = onCall(
       }
     } catch (error) {
       if (error instanceof HttpsError) throw error;
-      logger.error('[tmdbProxy] Unexpected error:', error);
+      logger.error('[tmdbProxy] Unexpected error:', redactError(error));
       throw new HttpsError('internal', 'Unable to fetch TMDB data.');
     }
   },

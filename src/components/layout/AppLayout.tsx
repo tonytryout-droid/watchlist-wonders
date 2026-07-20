@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { TopNav } from "./TopNav";
@@ -16,10 +16,22 @@ export function AppLayout() {
   const { isSearchOpen, openSearch, closeSearch } = useSearchShortcut();
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
 
+  // The vault badge only needs a count — avoid downloading the full bookmark
+  // list on routes that never render it (Settings, Admin, etc.).
+  const { data: vaultedCount = 0 } = useQuery({
+    queryKey: ["bookmarks", "vaulted-count"],
+    queryFn: () => bookmarkService.getVaultedCount(),
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Bookmarks for SearchOverlay — only fetched when the overlay opens. The
+  // result is cached under the standard ["bookmarks"] key, so Dashboard /
+  // Vault subsequent navigations get a cache hit.
   const { data: bookmarks = [] } = useQuery({
     queryKey: ["bookmarks"],
     queryFn: () => bookmarkService.getBookmarks(),
-    enabled: !!user,
+    enabled: !!user && isSearchOpen,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -29,8 +41,6 @@ export function AppLayout() {
     enabled: !!user && FEATURES.notifications,
     staleTime: 60 * 1000,
   });
-
-  const vaultedCount = bookmarks.filter((bookmark) => bookmark.is_vaulted).length;
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -43,11 +53,11 @@ export function AppLayout() {
     };
   }, []);
 
+  const handleOpenSearch = useCallback(() => openSearch(), [openSearch]);
   useEffect(() => {
-    const handleOpenSearch = () => openSearch();
     window.addEventListener("wm:open-search", handleOpenSearch);
     return () => window.removeEventListener("wm:open-search", handleOpenSearch);
-  }, [openSearch]);
+  }, [handleOpenSearch]);
 
   return (
     <div className="min-h-screen bg-background" id="main-scroll-container">

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowUpDown } from "lucide-react";
 import { openSafe } from "@/lib/utils";
+import { useDashboardQueries, type ScheduleWithBookmark } from "@/hooks/useDashboardQueries";
 import type { AdvancedFilters } from "@/components/dashboard/FilterPanel";
 
 const FILTER_STORAGE_KEY = "wm_dashboard_filters";
@@ -23,8 +24,6 @@ function loadStoredAdvancedFilters(): AdvancedFilters {
   }
 }
 import { bookmarkService } from "@/services/bookmarks";
-import { scheduleService } from "@/services/schedules";
-import { watchPlanService } from "@/services/watchPlans";
 import { socialService } from "@/services/social";
 import { SkeletonRail } from "@/components/ui/skeleton-card";
 import { Button } from "@/components/ui/button";
@@ -48,13 +47,6 @@ const DEMO_URL = "https://tiktok.com/@user/video/demo";
 const WELCOME_FLOW_KEY_PREFIX = "ww_welcome_flow_v1_";
 const NEW_ACCOUNT_WINDOW_MS = 5 * 60 * 1000;
 const INTENT_VALUES: DecisionIntentSeed[] = ["quick", "deep", "random", "continue"];
-
-type ScheduleWithBookmark = {
-  id: string;
-  bookmark_id: string;
-  scheduled_for: string;
-  bookmarks: Bookmark | null;
-};
 
 function getMetadataTmdbId(bookmark: Bookmark | null): number | null {
   if (!bookmark?.metadata || typeof bookmark.metadata !== "object") return null;
@@ -177,27 +169,12 @@ const Dashboard = () => {
   const hasAutoFocusedWatchNextRef = useRef(false);
 
   // ── Queries ───────────────────────────────────────────────────────────────
-  const { data: bookmarksData = [], isLoading, error, refetch } = useQuery({
-    queryKey: ["bookmarks"],
-    queryFn: () => bookmarkService.getBookmarks(),
-  });
-
-  const { data: upcomingSchedules = [] } = useQuery({
-    queryKey: ["schedules", "upcoming"],
-    queryFn: () => scheduleService.getUpcomingSchedules(8),
-    staleTime: 2 * 60 * 1000,
-  });
-
-  const { data: missedSchedules = [] } = useQuery<ScheduleWithBookmark[]>({
-    queryKey: ["schedules", "missed"],
-    queryFn: () => scheduleService.getMissedSchedules(),
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const { data: plans = [] } = useQuery({
-    queryKey: ["watch-plans"],
-    queryFn: () => watchPlanService.getWatchPlans(),
-  });
+  const dashboardQueries = useDashboardQueries();
+  const bookmarksData = dashboardQueries.bookmarks.data ?? [];
+  const { isLoading, error, refetch } = dashboardQueries.bookmarks;
+  const upcomingSchedules = dashboardQueries.upcomingSchedules.data ?? [];
+  const missedSchedules = dashboardQueries.missedSchedules.data ?? [];
+  const plans = dashboardQueries.plans.data ?? [];
 
   // ── Demo dataset ──────────────────────────────────────────────────────────
   const demoDataset = useMemo(() => buildDemoDataset(now), [now]);

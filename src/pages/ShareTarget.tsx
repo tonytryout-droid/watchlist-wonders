@@ -213,7 +213,13 @@ const ShareTarget = () => {
         <div className="w-14 h-14 bg-destructive/10 rounded-2xl flex items-center justify-center">
           <AlertCircle className="w-7 h-7 text-destructive" />
         </div>
-        <p className="text-muted-foreground">No share data was found.</p>
+        <div className="space-y-2 max-w-sm">
+          <p className="text-muted-foreground">No share data was found.</p>
+          <p className="text-sm text-muted-foreground/80">
+            If Watchmarks does not appear in your mobile share sheet yet, copy the link first, then open
+            Watchmarks and paste it manually.
+          </p>
+        </div>
         <Button onClick={() => navigate("/new")}>Add manually</Button>
       </div>
     );

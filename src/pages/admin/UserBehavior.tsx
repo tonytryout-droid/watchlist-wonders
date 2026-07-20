@@ -19,6 +19,10 @@ export default function UserBehavior() {
 
   const totalRecentSaves = data.savesByDay.reduce((s, d) => s + d.saves, 0);
   const avgPerUser = data.totalUsers === 0 ? 0 : totalRecentSaves / data.totalUsers;
+  const totalCaptures = data.captureByDay.reduce((s, d) => s + d.total, 0);
+  const autoSaved = data.captureByStatus.auto_saved ?? 0;
+  const captureAutoRate = totalCaptures === 0 ? 0 : autoSaved / totalCaptures;
+  const topSurface = Object.entries(data.captureBySurface).sort((a, b) => b[1] - a[1])[0];
 
   return (
     <div className="space-y-6">
@@ -40,6 +44,25 @@ export default function UserBehavior() {
         />
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <MetricCard
+          label="Capture requests (14d)"
+          value={formatNumber(totalCaptures)}
+          hint={topSurface ? `top source: ${topSurface[0]}` : "waiting for native/web capture traffic"}
+        />
+        <MetricCard
+          label="Auto-save rate"
+          value={formatPercent(captureAutoRate)}
+          hint={`${formatNumber(autoSaved)} auto-matched captures`}
+        />
+        <MetricCard
+          label="Needs selection"
+          value={formatNumber(data.captureByStatus.needs_selection ?? 0)}
+          hint="captures that needed user disambiguation"
+          tone={(data.captureByStatus.needs_selection ?? 0) > (data.captureByStatus.auto_saved ?? 0) ? "warning" : "default"}
+        />
+      </div>
+
       <Panel title="Saves per day (14 days)">
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
@@ -50,6 +73,27 @@ export default function UserBehavior() {
               <Bar dataKey="saves" fill="#60a5fa" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
+        </div>
+      </Panel>
+
+      <Panel title="Capture outcomes">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground mb-2">Auto saved</p>
+            <p className="text-2xl font-semibold">{formatNumber(data.captureByStatus.auto_saved ?? 0)}</p>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground mb-2">Needs selection</p>
+            <p className="text-2xl font-semibold">{formatNumber(data.captureByStatus.needs_selection ?? 0)}</p>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground mb-2">Unresolved</p>
+            <p className="text-2xl font-semibold">{formatNumber(data.captureByStatus.unresolved ?? 0)}</p>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground mb-2">Duplicates</p>
+            <p className="text-2xl font-semibold">{formatNumber(data.captureByStatus.duplicate ?? 0)}</p>
+          </div>
         </div>
       </Panel>
 

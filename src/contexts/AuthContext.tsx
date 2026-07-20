@@ -9,6 +9,7 @@ import {
   signInWithPopup,
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
+import { getFriendlyFirebaseError } from '@/lib/firebaseErrorMessages';
 
 interface AuthContextType {
   user: User | null;
@@ -40,12 +41,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (firebaseUser) => {
         window.clearTimeout(authInitTimeout);
         setUser(firebaseUser);
+        setAuthError(null);
         setLoading(false);
       },
       (error) => {
         window.clearTimeout(authInitTimeout);
         console.error('[Auth] Firebase auth initialization failed:', error);
-        setAuthError(error.message || 'Authentication failed. Please reload and try again.');
+        setAuthError(
+          getFriendlyFirebaseError(error, 'Authentication failed. Please reload and try again.'),
+        );
         setUser(null);
         setLoading(false);
       },

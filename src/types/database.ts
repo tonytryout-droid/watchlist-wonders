@@ -1,3 +1,4 @@
+import type { CaptureStatus, CaptureSurface } from "@watchmarks/shared/capture";
 import type { BookmarkAvailability } from "@/services/watchAvailability";
 
 export interface TmdbStreamingProvider {
@@ -72,9 +73,9 @@ export interface BookmarkMetadata {
   share_raw_title?: string | null;
   share_raw_text?: string | null;
   share_received_at?: string;
-  capture_surface?: string;
+  capture_surface?: CaptureSurface;
   capture_received_at?: string;
-  capture_status?: "auto_saved" | "needs_selection" | "unresolved" | "duplicate";
+  capture_status?: CaptureStatus;
   capture_source_platform?: string;
   capture_client_timestamp?: string | null;
   capture_latency_ms?: number | null;

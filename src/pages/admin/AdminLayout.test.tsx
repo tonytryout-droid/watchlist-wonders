@@ -1,6 +1,36 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+
+// Stub firebase/auth before any module load. AdminLayout indirectly imports
+// AuthContext which calls getAuth(); without this, vitest tries to resolve
+// the firebase/auth subpath in a node env and the test suite refuses to load.
+vi.mock("firebase/auth", () => ({
+  getAuth: vi.fn(() => ({ currentUser: null })),
+  onAuthStateChanged: vi.fn(() => () => {}),
+  signInWithEmailAndPassword: vi.fn(),
+  createUserWithEmailAndPassword: vi.fn(),
+  signOut: vi.fn(),
+  updatePassword: vi.fn(),
+  updateProfile: vi.fn(),
+}));
+
+vi.mock("firebase/firestore", () => ({
+  getFirestore: vi.fn(),
+  enableIndexedDbPersistence: vi.fn(() => Promise.resolve()),
+}));
+
+vi.mock("firebase/storage", () => ({ getStorage: vi.fn() }));
+vi.mock("firebase/functions", () => ({ getFunctions: vi.fn() }));
+vi.mock("firebase/app", () => ({ initializeApp: vi.fn(() => ({})) }));
+
+// AdminLayout only consults useAdminClaim; the auth context isn't read directly
+// in the component under test, so a thin stub is enough.
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({ user: null, loading: false }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 import AdminLayout from "@/pages/admin/AdminLayout";
 
 const mockUseAdminClaim = vi.fn();

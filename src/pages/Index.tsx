@@ -135,7 +135,13 @@ const Index = () => {
                     </Button>
                   )}
                 </div>
-                <p className="mt-4 text-sm text-white/40">Takes 30 seconds to set up.</p>
+                <div className="mt-4 space-y-1">
+                  <p className="text-sm text-white/40">Takes 30 seconds to set up.</p>
+                  <p className="text-sm text-white/45 max-w-lg">
+                    Mobile share-sheet support is still rolling out. If Watchmarks is missing from the share sheet,
+                    copy the link first, then open Watchmarks to paste it.
+                  </p>
+                </div>
               </div>
 
               {/* Right: live demo */}

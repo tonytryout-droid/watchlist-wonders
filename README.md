@@ -92,6 +92,24 @@ firebase deploy --only functions
 firebase deploy --only hosting
 ```
 
+## Local emulator usage
+
+When developing locally, you can route Firebase Auth, Firestore, and callable Functions to the emulator by setting these values in `.env`:
+
+```env
+VITE_FIREBASE_AUTH_EMULATOR_HOST=localhost:9099
+VITE_FIREBASE_FIRESTORE_EMULATOR_HOST=localhost:8080
+VITE_FIREBASE_FUNCTIONS_EMULATOR_HOST=localhost:5001
+```
+
+Then run:
+
+```bash
+firebase emulators:start --only auth,firestore,functions
+```
+
+The frontend will automatically connect to the emulator hosts when running in development.
+
 ## Enrichment Flow
 
 - Frontend calls Firebase callable function `enrich` via `httpsCallable`.
@@ -112,4 +130,4 @@ See function details in `functions/README.md`.
 ## Notes
 
 - Root tests currently cover URL/provider detection and enrichment helpers.
-- If you want to run callable functions against local emulators from the frontend, add explicit emulator wiring in `src/lib/firebase.ts` using `connectFunctionsEmulator`.
+- The frontend is now wired to route callable requests to the emulator when the appropriate `VITE_FIREBASE_*_EMULATOR_HOST` values are set in `.env` and you run the Firebase emulators.

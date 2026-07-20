@@ -13,14 +13,20 @@ import {
   startAfter,
   increment,
   runTransaction,
+  getCountFromServer,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import { auth, db, fbFunctions } from '@/lib/firebase';
-import { httpsCallable } from 'firebase/functions';
+import { auth, db } from '@/lib/firebase';
 import type { Bookmark } from '@/types/database';
+import { inferBookmarkEnrichmentState } from '@/lib/tmdbEnrichment';
+import {
+  DEFAULT_WATCH_REGION,
+  resolveAndFetchAvailability,
+  toAvailabilityMetadataUpdate,
+} from '@/services/watchAvailability';
+import { semanticSearchBookmarks, selectResolutionCandidate, skipResolutionSelection, recordBookmarkView } from '@/services/functions';
 import { buildLifecycleUpdate, deriveLifecycleState } from "@/engine/lifecycle";
 import { normalizeBookmark } from '@/services/bookmarkNormalizer';
-import { inferBookmarkEnrichmentState } from '@/lib/tmdbEnrichment';
 import {
   DEFAULT_WATCH_REGION,
   resolveAndFetchAvailability,
@@ -139,7 +145,9 @@ async function prefetchAvailabilityForBookmark(params: {
       transaction.update(ref, payload);
     });
   } catch (error) {
-    console.warn("[bookmarkService] availability prefetch failed", error);
+    if (import.meta.env.DEV) {
+      console.warn("[bookmarkService] availability prefetch failed", error);
+    }
   }
 }
 
@@ -158,6 +166,17 @@ export const bookmarkService = {
       console.error('[bookmarkService] getBookmarks failed', error);
       throw error;
     }
+  },
+
+  /**
+   * Lightweight count of vaulted bookmarks for the current user. Avoids
+   * downloading the full bookmark list when only the badge total is needed.
+   */
+  async getVaultedCount(): Promise<number> {
+    const uid = getUid();
+    const q = query(bookmarksCol(uid), where('is_vaulted', '==', true));
+    const snap = await getCountFromServer(q);
+    return snap.data().count;
   },
 
   /**
@@ -390,20 +409,12 @@ export const bookmarkService = {
     id: string,
     candidate: EnrichmentMatchCandidate,
   ): Promise<Bookmark> {
-    const callable = httpsCallable<
-      { bookmarkId: string; action: "selected"; candidate: EnrichmentMatchCandidate },
-      { ok: boolean }
-    >(fbFunctions, "selectResolutionCandidate");
-    await callable({ bookmarkId: id, action: "selected", candidate });
+    await selectResolutionCandidate(id, 'selected', candidate);
     return this.getBookmark(id);
   },
 
   async skipResolutionSelection(id: string): Promise<void> {
-    const callable = httpsCallable<
-      { bookmarkId: string; action: "skipped" },
-      { ok: boolean }
-    >(fbFunctions, "selectResolutionCandidate");
-    await callable({ bookmarkId: id, action: "skipped" });
+    await skipResolutionSelection(id);
   },
 
   /**
@@ -461,18 +472,15 @@ export const bookmarkService = {
     opts?: { topK?: number; mode?: 'auto' | 'semantic' | 'keyword' | 'temporal' | 'context' },
   ): Promise<SemanticSearchResult[]> {
     try {
-      const callable = httpsCallable<
-        { query: string; topK?: number; mode?: string },
-        { results: SemanticSearchResult[] }
-      >(fbFunctions, 'searchBookmarks');
-      const result = await callable({
-        query: queryStr,
+      const result = await semanticSearchBookmarks(queryStr, {
         topK: opts?.topK ?? 20,
         mode: opts?.mode ?? 'auto',
       });
-      return result.data.results ?? [];
+      return result.results ?? [];
     } catch (err) {
-      console.warn('[bookmarkService] semanticSearch fallback to client filter', err);
+      if (import.meta.env.DEV) {
+        console.warn('[bookmarkService] semanticSearch fallback to client filter', err);
+      }
       const bookmarks = await this.searchBookmarks(queryStr);
       return bookmarks.slice(0, opts?.topK ?? 20).map((b) => ({
         id: b.id,
@@ -497,11 +505,7 @@ export const bookmarkService = {
    */
   async recordView(bookmarkId: string): Promise<void> {
     try {
-      const callable = httpsCallable<{ bookmarkId: string }, { ok: boolean }>(
-        fbFunctions,
-        'recordView',
-      );
-      await callable({ bookmarkId });
+      await recordBookmarkView(bookmarkId);
     } catch (err) {
       // Non-fatal — view tracking must never break the UI.
       if (import.meta.env.DEV) console.warn('[bookmarkService] recordView failed', err);

@@ -8,6 +8,7 @@ import {
   type ConfidenceBand,
   type ResolutionStatus,
 } from './resolution/scoring';
+import { redactUrlForLog as sharedRedactUrlForLog, redactError } from './lib/logSafety';
 
 export const youtubeApiKey = defineSecret('YOUTUBE_API_KEY');
 export const tmdbApiKey = defineSecret('TMDB_API_KEY');
@@ -89,15 +90,8 @@ const DISALLOWED_HOSTS = new Set([
   '169.254.169.254',
 ]);
 
-/** Strip query string and fragment for safe logging (avoids leaking tokens in query params) */
-function redactUrlForLog(url: string): string {
-  try {
-    const u = new URL(url);
-    return `${u.protocol}//${u.host}${u.pathname}`;
-  } catch {
-    return url;
-  }
-}
+/** Re-exported from ./lib/logSafety for backwards-compat with existing call sites. */
+const redactUrlForLog = sharedRedactUrlForLog;
 
 function isPrivateIpv4(hostname: string): boolean {
   const parts = hostname.split('.').map((part) => Number(part));
@@ -795,7 +789,7 @@ async function enrichYouTube(videoId: string): Promise<EnrichResponse> {
       provider: 'youtube',
     };
   } catch (error) {
-    logger.error('YouTube error:', error);
+    logger.error('YouTube error:', redactError(error));
     return { provider: 'youtube' };
   }
 }
@@ -1479,7 +1473,7 @@ async function enrichIMDb(url: string): Promise<EnrichResponse> {
           : undefined;
       }
     } catch (error) {
-      logger.debug('[imdb] detail fetch failed', error);
+      logger.debug('[imdb] detail fetch failed', redactError(error));
     }
 
     return {
@@ -1499,7 +1493,7 @@ async function enrichIMDb(url: string): Promise<EnrichResponse> {
       provider: 'imdb',
     };
   } catch (error) {
-    logger.error('IMDb enrichment error:', error);
+    logger.error('IMDb enrichment error:', redactError(error));
     return enrichViaOG(url, 'imdb');
   }
 }
@@ -1862,7 +1856,7 @@ async function enrichTMDB(title: string, hint?: TmdbSearchHint): Promise<EnrichR
       provider: 'generic',
     };
   } catch (error) {
-    logger.error('TMDB error:', error);
+    logger.error('TMDB error:', redactError(error));
     return { provider: 'generic' };
   }
 }
@@ -1945,7 +1939,7 @@ export const enrich = onCall(
     try {
       return await runEnrichmentRequest(request.data as { url?: unknown; title?: unknown });
     } catch (error) {
-      logger.error('Enrichment error:', error);
+      logger.error('Enrichment error:', redactError(error));
       if (error instanceof HttpsError) {
         throw error;
       }

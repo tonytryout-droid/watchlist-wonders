@@ -5,7 +5,9 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "functions/lib", "node_modules"] },
+  // apps/mobile is its own workspace with its own React-Native toolchain;
+  // packages/shared ships pre-built artifacts (no source to lint here).
+  { ignores: ["dist", "functions/lib", "node_modules", "apps/mobile/**", "packages/shared/**"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],
@@ -20,7 +22,16 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
-      "@typescript-eslint/no-unused-vars": "off",
+      // Enforce dead code detection per zero-warnings policy. Args/vars prefixed with `_`
+      // are exempt (idiomatic for intentionally-unused parameters).
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
     },
   },
 );
