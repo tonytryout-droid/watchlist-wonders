@@ -38,7 +38,7 @@ This is a sister skill to `build-a-brand` — it consumes that skill's `brand.md
 06_close.png           ← optional 6th — closer / CTA / brand flourish
 ```
 
-Plus a contact sheet (`_preview.png`) showing all 6 at a glance.
+Plus a contact sheet (`_preview.png`) showing all rendered screens at a glance.
 
 ## Workflow
 
@@ -222,7 +222,7 @@ grain. Vertical 9:16 portrait."
 
 This is how you get the reference's STYLE without copying its CONTENT. The hand+phone composition transfers; the lighting/cast/setting comes from the brand.
 
-**Pitch the extracted rules back before designing in interactive mode.** Write them out as a short bullet list ("device 75% canvas tilted -8°, headline-on-yellow-pill above device, over-the-shoulder hero, ink callouts with curved arrows") and confirm with the user that you read the reference correctly. In the non-interactive fast lane, record the extracted rules inline and continue. Then build all 6 screens applying those rules consistently. Don't deviate mid-campaign.
+**Pitch the extracted rules back before designing in interactive mode.** Write them out as a short bullet list ("device 75% canvas tilted -8°, headline-on-yellow-pill above device, over-the-shoulder hero, ink callouts with curved arrows") and confirm with the user that you read the reference correctly. In the non-interactive fast lane, record the extracted rules inline and continue. Then build all delivered screens applying those rules consistently. Don't deviate mid-campaign.
 
 Then actually read:
 
@@ -305,9 +305,9 @@ outside the safe content area documented in `references/render-pipeline.md`.
 
 ### Step 5 — Build the contact sheet + deliver
 
-Once all 6 PNGs render cleanly:
+Once all screens render cleanly:
 
-1. Build a `_preview.png` contact sheet with `mcp__pika__html_to_png` — 6 thumbnails in a 3×2 grid at ~25% size, on a neutral background, labeled by role.
+1. Build a `_preview.png` contact sheet with `mcp__pika__html_to_png` — 5 or 6 thumbnails in a grid at ~25% size, on a neutral background, labeled by role.
 2. Present the contact sheet URL plus each individual screenshot `file_url`. If you also saved local copies, include those local paths separately.
 3. Ask: anything to revise? Common revisions are copy tweaks (cheap) or layout swaps (medium) or new imagery (most expensive).
 
@@ -401,14 +401,14 @@ Typical run time is 10-25 minutes, depending on how much user confirmation is ne
 | Brand/screenshot read | 2-5 min | Includes visual inspection and feature mapping |
 | Strategy pitch | 2-5 min | Best place to iterate copy cheaply |
 | Image generation | 2-8 min | Only for backgrounds or reference-driven hero imagery |
-| HTML composite + render | 5-10 min | Six 1290x2796 PNGs plus contact sheet |
+| HTML composite + render | 5-10 min | 5 or 6 1290x2796 PNGs plus contact sheet |
 | QA revisions | variable | Copy tweaks are cheap; new imagery is slower |
 
 ## Failure Modes
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Screens look like six variants of the same layout | Default skeleton was repeated without enough content contrast | Reassign layout archetypes and rotate focal weight, color, and screenshot choice |
+| Screens look like variants of the same layout | Default skeleton was repeated without enough content contrast | Reassign layout archetypes and rotate focal weight, color, and screenshot choice |
 | Headlines are illegible in contact sheet | Type is too small for App Store thumbnail use | Increase headline size, shorten copy to 5-8 words, and rerender |
 | Generated background contains text or fake UI | Prompt over-described brand/product specifics | Regenerate with a no-text/no-logo guardrail and reserve the real UI for screenshots |
 | App Store listing has fewer than 3 usable screenshots | Thin App Store listing, often a companion app or early listing | Use the website-capture path, ask for real screenshots, or stop. For fictional launch-demo concepts only, use Fictional app demo mode with `demo_mode: true`, `demo_brief`, and the demo-only disclosure |

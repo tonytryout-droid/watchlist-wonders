@@ -58,7 +58,7 @@ The workhorse. Phone screen sits centered or slightly off-center on a splash bac
     transform: translateX(-50%);
     width: 900px;
   ">
-    <!-- iPhone frame SVG wrapping the screenshot — see render-pipeline.md -->
+    <!-- phone screenshot container; do not depend on an SVG bezel for alignment -->
   </div>
 </div>
 ```
@@ -352,17 +352,3 @@ The signature "jazzed up" move: pull specific UI components *out* of the phone f
 
 ---
 
-## Picking one per screen
-
-A solid 6-screen mix (jazzed-up mode):
-
-| Position | Role    | Default archetype                            |
-| -------- | ------- | -------------------------------------------- |
-| 1        | Hook    | Full-Bleed UI **or** Floating Device (huge type) |
-| 2        | Value   | Floating Device                              |
-| 3        | Feature | Floating UI Elements                         |
-| 4        | Feature | Parallax Stack (the wow one)                 |
-| 5        | Proof   | Quote Card                                   |
-| 6        | Close   | Floating Device (smaller, branded outro)     |
-
-Don't repeat the same archetype back-to-back unless the user explicitly wants a "feature parade" vibe — in which case do 3 Floating Devices in a row with distinct dominant colors per screen.

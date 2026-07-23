@@ -188,7 +188,7 @@ Remote assets sometimes fail if they block server requests. In that case, upload
 
 ## Contact Sheet
 
-After all six individual PNGs render, build a `_preview.png` contact sheet with one more `html_to_png` call. Use the six returned PNG URLs in a 3x2 grid.
+After all screen PNGs render, build a `_preview.png` contact sheet with one more `html_to_png` call. Use the rendered screen URLs in a grid layout that fits the delivered count (5 or 6 screens).
 
 ```html
 <div style="
@@ -204,7 +204,7 @@ After all six individual PNGs render, build a `_preview.png` contact sheet with 
     <img src="https://cdn.pika.art/.../01_hook.png" style="width: 100%; border-radius: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.1);">
     <p style="font-family: sans-serif; font-size: 18px; margin-top: 12px; opacity: 0.6;">1 - Hook</p>
   </div>
-  <!-- repeat for 02-06 -->
+  <!-- repeat for each rendered screen -->
 </div>
 ```
 
@@ -218,8 +218,8 @@ Before handing files to the user, verify:
 - [ ] Brand fonts loaded, not system fallbacks.
 - [ ] No black bleed at edges.
 - [ ] Safe-zone audit passes: no load-bearing text block bounding boxes at y < 180 or past y=2616; reject and rerender failures.
-- [ ] Device corners look consistent across all six.
+- [ ] Device corners look consistent across all delivered screens.
 - [ ] First two screens are legible when viewed at 25%.
-- [ ] Contact sheet shows visual variety across the six.
-- [ ] All six use colors from `brand.md`'s palette.
+- [ ] Contact sheet shows visual variety across the delivered screens.
+- [ ] All delivered screens use colors from `brand.md`'s palette.
 - [ ] Real app UI appears in the device area; no hallucinated placeholder UI.

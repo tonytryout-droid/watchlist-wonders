@@ -21,6 +21,7 @@ required-capabilities:
   - mcp__pika__generate_reference_video
   - mcp__pika__edit_text_overlay
   - mcp__pika__task_status
+  - mcp__pika__task_cancel
   - mcp__pika__upload_asset
 ---
 
@@ -279,8 +280,8 @@ The accent color is always from the brand — read the icon and primary UI color
 ```python
 generate_reference_video(
     provider="seedance",
-    reference_images=["<url1>", "<url2>", "<url3>", "<url4>", "<url5>"],  # 3–5 screens + icon
-    prompt="<prompt using @Image1 … @Image5 tokens>",
+    reference_images=[...selected_screen_urls, logo_url],  # 3–5 screens + logo/icon
+    prompt="<prompt using @Image1 … @ImageN tokens>",
     resolution="1080p",   # always
     duration=15,          # always
     sound=True,           # always
@@ -313,12 +314,12 @@ Do not keep retrying Seedance after a timeout unless the user explicitly asks to
 ```python
 generate_reference_video(
     provider="kling",
-    reference_images=["<url1>", "<url2>", "<url3>", "<url4>", "<url5>"],
-    prompt="<prompt using <<<image_1>>> … <<<image_5>>> tokens>",
+    reference_images=[...selected_screen_urls, logo_url],  # 3–5 screens + logo/icon
+    prompt="<prompt using <<<image_1>>> … <<<image_N>>> tokens>",
     quality_mode="pro",   # = 1080p on Kling (NOT resolution=)
     duration=15,
     sound=True,
-    aspect_ratio="16:9",
+    aspect_ratio="16:9",  # or 9:16 / 1:1 per user request
 )
 ```
 

@@ -58,9 +58,10 @@ Each of the 6 screens uses the same skeleton — vary the color, the headline, a
 - Width: **1000px** (~78% of canvas).
 - Height: derived from aspect — for iPhone 15/16 Pro source (393×852), `width × 852/393 = 2168px`.
 - Position: `top: 580px; left: 50%; transform: translateX(-50%);` — bottom lands at y=2748, leaving 48px breathing room at the canvas edge.
+- The readable product UI must remain inside y=180..2616. The lower 132px of the device frame (between 2616 and 2748) is permitted only for decorative rounded-corner or shadow overflow, not for load-bearing content.
 - **Pick one: bleed OR full-frame. Never mid-crop the bottom curve.** The default is full-frame (top: 580): rounded bottom corners fully visible inside the canvas. If you want a bleed-off-bottom variant for drama (e.g. the hook screen), push `top` to ≥ 819 so the bottom curve is entirely past y=2796 (since the bottom curve is ~191px tall at radius=75 source / width=1000 display). Anything in between produces an ugly half-cut curve where the canvas slices through the rounded corner mid-arc.
 - Drop shadow: `filter: drop-shadow(0 80px 100px rgba(28,26,24, 0.18))` on light bg; bump alpha to 0.28-0.40 on darker bg.
-- **No CSS `border-radius` needed if the source has been cleaned** (see `render-pipeline.md` → "Cleaning Figma source PNGs"). The cleaned PNG's anti-aliased mask carries the corners.
+- No CSS `border-radius` needed if the source has been cleaned (see `render-pipeline.md` → Device Compositing). The cleaned PNG's anti-aliased mask carries the corners.
 - Optional slight tilt: `transform: translateX(-50%) rotate(-3deg)`. Use sparingly — at most one screen per campaign.
 
 ### Color rotation across 6 screens
