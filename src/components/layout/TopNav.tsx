@@ -15,7 +15,6 @@ import { useAvatar } from "@/hooks/useAvatar";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { FEATURES } from "@/config/features";
 
 interface TopNavProps {
   notificationCount?: number;
@@ -24,19 +23,14 @@ interface TopNavProps {
   vaultedCount?: number;
 }
 
-const primaryLinks = [
-  { href: "/dashboard", label: "Home", exact: true, enabled: true },
-  { href: "/plans", label: "My List", enabled: FEATURES.watchPlans },
-  { href: "/tonight", label: "Tonight", enabled: FEATURES.tonightPick },
-  { href: "/vault", label: "Vault", enabled: FEATURES.vault },
-].filter((l) => l.enabled);
+const primaryLinks: Array<{ href: string; label: string; exact?: boolean }> = [
+  { href: "/library", label: "Library", exact: true },
+  { href: "/tonight", label: "Tonight" },
+  { href: "/search", label: "Search" },
+  { href: "/settings", label: "Settings" },
+];
 
-const moreLinks = [
-  { href: "/stats", label: "Stats", enabled: FEATURES.stats },
-  { href: "/activity", label: "Activity", enabled: FEATURES.activityLog },
-  { href: "/calendar", label: "Calendar", enabled: FEATURES.scheduling },
-  { href: "/notifications", label: "Notifications", enabled: FEATURES.notifications },
-].filter((l) => l.enabled);
+const moreLinks: Array<{ href: string; label: string }> = [];
 
 export function TopNav({ notificationCount = 0, onSearchClick, leftContent, vaultedCount = 0 }: TopNavProps) {
   const [scrolled, setScrolled] = useState(false);
@@ -110,7 +104,7 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent, vaul
     if (!searchExpanded) setTimeout(() => searchInputRef.current?.focus(), 50);
   };
 
-  const openPickForMe = () => navigate("/dashboard?decision=1");
+  const openPickForMe = () => navigate("/tonight");
 
   return (
     <>
@@ -128,7 +122,7 @@ export function TopNav({ notificationCount = 0, onSearchClick, leftContent, vaul
 
           {/* Logo */}
           <Link
-            to="/dashboard"
+            to="/library"
             className="shrink-0 flex items-center gap-2 mr-2 md:mr-4 lg:mr-6 group"
           >
             <span className="text-[#C8A96B] font-black text-[1.7rem] leading-none tracking-tight">W</span>

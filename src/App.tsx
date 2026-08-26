@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import PageTransition from "@/components/layout/PageTransition";
@@ -14,16 +14,17 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { FEATURES } from "@/config/features";
 
 const Index = lazy(() => import("./pages/Index"));
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const Auth = lazy(() => import("./pages/Auth"));
-const NewBookmark = lazy(() => import("./pages/NewBookmark"));
-const TonightPick = lazy(() => import("./pages/TonightPick"));
+const Library = lazy(() => import("./features/library"));
+const SavedSearch = lazy(() => import("./features/search"));
+const Auth = lazy(() => import("./features/auth"));
+const NewBookmark = lazy(() => import("./features/capture"));
+const TonightPick = lazy(() => import("./features/tonight"));
 const Plans = lazy(() => import("./pages/Plans"));
 const PlanDetail = lazy(() => import("./pages/PlanDetail"));
 const Notifications = lazy(() => import("./pages/Notifications"));
 const Calendar = lazy(() => import("./pages/Calendar"));
-const BookmarkDetail = lazy(() => import("./pages/BookmarkDetail"));
-const Settings = lazy(() => import("./pages/Settings"));
+const BookmarkDetail = lazy(() => import("./features/bookmark-detail"));
+const Settings = lazy(() => import("./features/settings"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const PublicProfile = lazy(() => import("./pages/PublicProfile"));
 const ShareView = lazy(() => import("./pages/ShareView"));
@@ -34,7 +35,7 @@ const Terms = lazy(() => import("./pages/Terms"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Activity = lazy(() => import("./pages/Activity"));
 const Import = lazy(() => import("./pages/Import"));
-const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
+const AdminLayout = lazy(() => import("./features/admin"));
 const AdminSystemHealth = lazy(() => import("./pages/admin/SystemHealth"));
 const AdminUserBehavior = lazy(() => import("./pages/admin/UserBehavior"));
 const AdminIntelligenceQuality = lazy(() => import("./pages/admin/IntelligenceQuality"));
@@ -109,7 +110,9 @@ const App = () => (
                   <Route element={<ProtectedRoute />}>
                     <Route element={<AppLayout />}>
                       {/* ── Core routes (always on) ── */}
-                      <Route path="/dashboard" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+                      <Route path="/library" element={<ErrorBoundary><Library /></ErrorBoundary>} />
+                      <Route path="/search" element={<ErrorBoundary><SavedSearch /></ErrorBoundary>} />
+                      <Route path="/dashboard" element={<Navigate to="/library" replace />} />
                       <Route path="/new" element={<ErrorBoundary><NewBookmark /></ErrorBoundary>} />
                       <Route path="/b/:id" element={<ErrorBoundary><BookmarkDetail /></ErrorBoundary>} />
                       <Route path="/post-capture" element={<ErrorBoundary><PostCapture /></ErrorBoundary>} />

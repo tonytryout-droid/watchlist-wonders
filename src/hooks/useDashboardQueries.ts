@@ -2,12 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { bookmarkService } from "@/services/bookmarks";
 import { scheduleService } from "@/services/schedules";
 import { watchPlanService } from "@/services/watchPlans";
-import type { Bookmark } from "@/types/database";
+import type { Bookmark, Schedule } from "@/types/database";
 
-export interface ScheduleWithBookmark {
-  id: string;
-  bookmark_id: string;
-  scheduled_for: string;
+export interface ScheduleWithBookmark extends Schedule {
   bookmarks: Bookmark | null;
 }
 

@@ -51,8 +51,8 @@ interface DashboardShellProps {
   demoInputValue: string;
   demoStep: number;
   // Refs
-  watchNextRailRef: RefObject<HTMLDivElement | null>;
-  upNextHighlightRef: RefObject<HTMLDivElement | null>;
+  watchNextRailRef: RefObject<HTMLDivElement>;
+  upNextHighlightRef: RefObject<HTMLDivElement>;
   // Callbacks
   onPlay: () => void;
   onHeroSchedule: () => void;
@@ -100,7 +100,7 @@ function RevealSection({
   children: React.ReactNode;
   delayMs: number;
   className?: string;
-  sectionRef?: RefObject<HTMLDivElement | null>;
+  sectionRef?: RefObject<HTMLDivElement>;
 }) {
   return (
     <div
@@ -226,7 +226,7 @@ export function DashboardShell({
   highlightBookmarkId,
   dismissedMissedBanner,
   activeMood,
-  onMoodSelect,
+  onMoodSelect: _onMoodSelect,
   recommendationItems,
   recommendationSavingItemId,
   onSaveRecommendation,
@@ -259,7 +259,7 @@ export function DashboardShell({
   onDismissMissedBanner,
   onDemoInputChange,
   onStartDemo,
-  advancedFilters,
+  advancedFilters: _advancedFilters,
   showFilterPanel,
   onFilterToggle,
   advancedFilterCount,
@@ -288,6 +288,23 @@ export function DashboardShell({
     onVault,
     onUnvault,
   };
+
+  const posterHandlers = (bookmark: Bookmark) => ({
+    onSchedule: () => onSchedule(bookmark),
+    onSkip: () => onSkip(bookmark),
+    onMarkDone: () => onMarkDone(bookmark),
+    onAddToPlan: () => onAddToPlan(bookmark),
+    onDelete: () => onDelete(bookmark),
+    onUndoDone: () => onUndoDone(bookmark),
+    onSetWatching: () => onSetWatching(bookmark),
+    onStatusCycle,
+    onEpisodeUpdate,
+    onToggleUpNext,
+    onSharePublic: () => onSharePublic(bookmark),
+    onSharePrivate: () => onSharePrivate(bookmark),
+    onVault: () => onVault(bookmark),
+    onUnvault: () => onUnvault(bookmark),
+  });
 
   // Filter saved bookmarks by active mood for the intent-first view
   const moodFilteredBookmarks = activeMood
@@ -410,7 +427,7 @@ export function DashboardShell({
                         key={bookmark.id}
                         bookmark={bookmark}
                         schedule={allScheduleMap[bookmark.id]}
-                        {...railHandlers}
+                        {...posterHandlers(bookmark)}
                       />
                     ))}
                   </div>
@@ -473,7 +490,7 @@ export function DashboardShell({
                         bookmark={demoSavedBookmark}
                         schedule={allScheduleMap[demoSavedBookmark.id]}
                         isHighlighted
-                        {...railHandlers}
+                        {...posterHandlers(demoSavedBookmark)}
                       />
                     </div>
                   </div>

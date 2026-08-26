@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
   isCaptureSurface,
@@ -7,7 +7,7 @@ import {
   type CaptureShareResult,
   type CaptureStatus,
   type CaptureSurface,
-} from "@watchmarks/shared/capture";
+} from "@watchmarks/shared";
 import {
   runEnrichmentRequest,
   tmdbApiKey,
@@ -15,6 +15,7 @@ import {
   youtubeApiKey,
 } from "./enrich";
 import { incrementMetric } from "./admin/metrics";
+import { convertBookmarkToV2 } from "./bookmarkV2";
 
 type CaptureShareRequest = {
   url?: unknown;
@@ -279,22 +280,42 @@ async function findDuplicate(params: {
   const { uid, sourceUrl, canonicalUrl, tmdbId } = params;
   const col = getFirestore().collection("users").doc(uid).collection("bookmarks");
 
+  const summary = (found: FirebaseFirestore.QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot) => {
+    const data = found.data() ?? {};
+    const media = data.media && typeof data.media === "object" && !Array.isArray(data.media)
+      ? data.media as Record<string, unknown>
+      : {};
+    return {
+      id: found.id,
+      title: typeof data.title === "string" ? data.title : typeof media.title === "string" ? media.title : undefined,
+      poster_url: typeof data.poster_url === "string"
+        ? data.poster_url
+        : typeof media.posterUrl === "string" ? media.posterUrl : null,
+    };
+  };
+
   if (sourceUrl) {
     const bySource = await col.where("source_url", "==", sourceUrl).limit(1).get();
     const found = bySource.docs[0];
-    if (found) return { id: found.id, ...found.data() };
+    if (found) return summary(found);
+    const byV2Source = await col.where("source.originalUrl", "==", sourceUrl).limit(1).get();
+    if (byV2Source.docs[0]) return summary(byV2Source.docs[0]);
   }
 
   if (tmdbId) {
     const byTmdb = await col.where("metadata.tmdb_id", "==", tmdbId).limit(1).get();
     const found = byTmdb.docs[0];
-    if (found) return { id: found.id, ...found.data() };
+    if (found) return summary(found);
+    const byV2ExternalId = await col.where("resolution.externalId", "==", String(tmdbId)).limit(1).get();
+    if (byV2ExternalId.docs[0]) return summary(byV2ExternalId.docs[0]);
   }
 
   if (canonicalUrl && canonicalUrl !== sourceUrl) {
     const byCanonical = await col.where("canonical_url", "==", canonicalUrl).limit(1).get();
     const found = byCanonical.docs[0];
-    if (found) return { id: found.id, ...found.data() };
+    if (found) return summary(found);
+    const byV2Canonical = await col.where("source.canonicalUrl", "==", canonicalUrl).limit(1).get();
+    if (byV2Canonical.docs[0]) return summary(byV2Canonical.docs[0]);
   }
 
   return null;
@@ -395,6 +416,8 @@ export const captureShare = onCall<CaptureShareRequest, Promise<CaptureShareResu
 
     const nowMs = Date.now();
     const now = new Date(nowMs).toISOString();
+    const db = getFirestore();
+    const captureRef = db.collection("users").doc(uid).collection("captures").doc();
     const latencyMs = toLatencyMs(clientTimestamp, nowMs);
     const provider = result.provider ?? "generic";
     const bookmarkTitle =
@@ -422,7 +445,8 @@ export const captureShare = onCall<CaptureShareRequest, Promise<CaptureShareResu
     const moodTags = mapGenresToMoodTags(result.genres);
     const tmdb = status === "auto_saved" ? buildTmdbEnrichment(result, now) : null;
     const canonicalEntity = status === "auto_saved" ? buildCanonicalEntity(result, now) : null;
-    const docData = {
+    const legacyData = {
+      capture_id: captureRef.id,
       title: bookmarkTitle,
       type: bookmarkType,
       provider,
@@ -455,6 +479,7 @@ export const captureShare = onCall<CaptureShareRequest, Promise<CaptureShareResu
       created_at: now,
       updated_at: now,
     };
+    const docData = convertBookmarkToV2(legacyData, uid, Timestamp.fromDate(new Date(now)));
 
     const bookmarksCol = getFirestore().collection("users").doc(uid).collection("bookmarks");
     const dedupId = computeDedupDocId({
@@ -483,17 +508,46 @@ export const captureShare = onCall<CaptureShareRequest, Promise<CaptureShareResu
         if (!isAlreadyExists) throw err;
         const existing = await ref.get();
         const data = existing.data() ?? {};
+        const media = data.media && typeof data.media === "object" && !Array.isArray(data.media)
+          ? data.media as Record<string, unknown>
+          : {};
         bookmarkId = ref.id;
         collapsedDuplicate = {
           id: ref.id,
-          title: typeof data.title === "string" ? data.title : undefined,
-          poster_url: typeof data.poster_url === "string" ? data.poster_url : null,
+          title: typeof data.title === "string" ? data.title : typeof media.title === "string" ? media.title : undefined,
+          poster_url: typeof data.poster_url === "string" ? data.poster_url : typeof media.posterUrl === "string" ? media.posterUrl : null,
         };
       }
     } else {
       const ref = await bookmarksCol.add(docData);
       bookmarkId = ref.id;
     }
+
+    await captureRef.set({
+      schemaVersion: 1,
+      ownerId: uid,
+      bookmarkId,
+      surface,
+      status: collapsedDuplicate ? "duplicate" : status,
+      raw: {
+        originalUrl: extractedUrl,
+        sharedTitle,
+        sharedText,
+        clientTimestamp,
+        deviceId,
+      },
+      extraction: {
+        provider,
+        title: result.title ?? null,
+        canonicalUrl: result.canonicalUrl ?? null,
+        contentType: result.contentType ?? null,
+        mediaType: result.mediaType ?? null,
+        confidence: result.confidenceScore ?? null,
+        candidates: (result.matchCandidates ?? []).slice(0, 20),
+      },
+      createdAt: Timestamp.fromDate(new Date(now)),
+      updatedAt: Timestamp.fromDate(new Date(now)),
+    });
 
     if (collapsedDuplicate) {
       await recordCaptureMetrics(surface, "duplicate");

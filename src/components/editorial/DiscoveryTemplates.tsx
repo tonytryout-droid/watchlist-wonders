@@ -218,7 +218,7 @@ export function CategoryPage({ category }: { category: string }) {
 export function DiscoveryWithFilters() {
   const theme = useMaterialTheme()
   const [selectedFilter, setSelectedFilter] = useState<string>("all")
-  const [sections, setSections] = useState<EditorialRailSection[]>([])
+  const [sections] = useState<EditorialRailSection[]>([])
 
   // Update sections based on filter
   useMemo(() => {

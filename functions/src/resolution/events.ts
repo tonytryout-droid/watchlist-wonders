@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { incrementMetric } from "../admin/metrics";
 import type { ResolutionCandidate } from "../pipeline/types";
@@ -196,20 +196,31 @@ export const selectResolutionCandidate = onCall<{
       data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)
         ? (data.metadata as Record<string, unknown>)
         : {};
-    const candidates = Array.isArray(metadata.match_candidates) ? metadata.match_candidates : [];
-    const provider = asString(data.provider) ?? null;
-    const rawTitle = asString(metadata.raw_title) ?? asString(data.title);
-    const sourceUrl = asString(data.source_url) ?? asString(data.canonical_url);
+    const source = data.source && typeof data.source === "object" && !Array.isArray(data.source)
+      ? data.source as Record<string, unknown> : {};
+    const media = data.media && typeof data.media === "object" && !Array.isArray(data.media)
+      ? data.media as Record<string, unknown> : {};
+    const resolution = data.resolution && typeof data.resolution === "object" && !Array.isArray(data.resolution)
+      ? data.resolution as Record<string, unknown> : {};
+    const isV2 = data.schemaVersion === 2;
+    const candidatesValue = isV2 ? resolution.candidates : metadata.match_candidates;
+    const candidates = Array.isArray(candidatesValue) ? candidatesValue : [];
+    const provider = asString(isV2 ? source.platform : data.provider) ?? null;
+    const rawTitle = asString(isV2 ? source.rawTitle : metadata.raw_title) ?? asString(isV2 ? media.title : data.title);
+    const sourceUrl = asString(isV2 ? source.originalUrl : data.source_url) ?? asString(isV2 ? source.canonicalUrl : data.canonical_url);
 
     if (action !== "selected") {
-      await ref.set(
-        {
-          updated_at: new Date().toISOString(),
-          "metadata.resolution_status": action === "manual" ? "unresolved" : "needs_selection",
-          "metadata.resolution_selected_by": action === "manual" ? "manual" : null,
-        },
-        { merge: true },
-      );
+      await ref.update(isV2
+        ? {
+            updatedAt: Timestamp.now(),
+            "resolution.status": action === "manual" ? "unresolved" : "needs_selection",
+            "resolution.selectedBy": action === "manual" ? "manual" : null,
+          }
+        : {
+            updated_at: new Date().toISOString(),
+            "metadata.resolution_status": action === "manual" ? "unresolved" : "needs_selection",
+            "metadata.resolution_selected_by": action === "manual" ? "manual" : null,
+          });
       await incrementMetric(`resolution.user_${action}`);
       await logResolutionEvent({
         userId: uid,
@@ -219,7 +230,7 @@ export const selectResolutionCandidate = onCall<{
         platform: provider,
         rawTitle,
         sourceUrl,
-        confidence: asNumber(metadata.resolution_confidence),
+        confidence: asNumber(isV2 ? resolution.confidence : metadata.resolution_confidence),
         confidenceBand: metadata.resolution_confidence_band === "high" || metadata.resolution_confidence_band === "medium" || metadata.resolution_confidence_band === "low"
           ? metadata.resolution_confidence_band
           : null,
@@ -246,8 +257,7 @@ export const selectResolutionCandidate = onCall<{
       selected: index + 1 === rank,
     }));
 
-    await ref.set(
-      {
+    const legacySelection = {
         title: normalized.title,
         type: toBookmarkType(selectedRecord, mediaType),
         canonical_url: `https://www.themoviedb.org/${mediaType}/${normalized.tmdbId}`,
@@ -287,9 +297,24 @@ export const selectResolutionCandidate = onCall<{
         ...(asString(selectedRecord.description) ? { "metadata.overview": asString(selectedRecord.description) } : {}),
         ...(asStringArray(selectedRecord.genres).length ? { "metadata.genres": asStringArray(selectedRecord.genres) } : {}),
         ...(asNumber(selectedRecord.voteAverage) !== null ? { "metadata.vote_average": asNumber(selectedRecord.voteAverage) } : {}),
-      },
-      { merge: true },
-    );
+      };
+    const v2Selection = {
+      "media.title": normalized.title,
+      "media.type": toBookmarkType(selectedRecord, mediaType),
+      "media.posterUrl": normalized.poster,
+      "media.backdropUrl": asString(selectedRecord.backdropUrl) ?? null,
+      "media.releaseYear": normalized.year,
+      "media.runtimeMinutes": asNumber(selectedRecord.runtimeMinutes),
+      "source.canonicalUrl": `https://www.themoviedb.org/${mediaType}/${normalized.tmdbId}`,
+      "resolution.status": "matched",
+      "resolution.provider": "tmdb",
+      "resolution.externalId": String(normalized.tmdbId),
+      "resolution.confidence": normalized.confidence,
+      "resolution.selectedBy": "user",
+      "resolution.candidates": candidateHistory,
+      updatedAt: Timestamp.now(),
+    };
+    await ref.update(isV2 ? v2Selection : legacySelection);
 
     await incrementMetric("resolution.user_selected");
     await incrementMetric(`resolution.selected_rank.${rank}`);

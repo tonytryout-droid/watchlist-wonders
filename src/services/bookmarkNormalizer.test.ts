@@ -3,6 +3,51 @@ import { describe, expect, it } from "vitest";
 import { normalizeBookmark } from "@/services/bookmarkNormalizer";
 
 describe("normalizeBookmark", () => {
+  it("maps a valid v2 document into the legacy UI view without stored aliases", () => {
+    const now = new Date("2026-08-23T12:00:00.000Z");
+    const bookmark = normalizeBookmark("bookmark-v2", {
+      schemaVersion: 2,
+      ownerId: "alice",
+      source: {
+        originalUrl: "https://www.imdb.com/title/tt2543164/",
+        canonicalUrl: "https://www.themoviedb.org/movie/329865",
+        platform: "imdb",
+        rawTitle: "Arrival",
+        capturedAt: now,
+        captureId: "capture-1",
+      },
+      media: {
+        type: "movie", title: "Arrival", posterUrl: null, backdropUrl: null,
+        releaseYear: 2016, runtimeMinutes: 116,
+      },
+      resolution: {
+        status: "matched", provider: "tmdb", externalId: "329865", confidence: 0.98,
+        version: 1, selectedBy: "auto",
+      },
+      library: {
+        state: "watching", scheduledAt: null, progressPercent: 25, priority: 100,
+        queueState: "in_progress", tags: ["sci-fi"], moodTags: ["thoughtful"],
+        notes: "Watch again", rating: 5, review: null, watchedAt: null,
+        lastShownAt: null, shownCount: 1,
+      },
+      visibility: { isPublic: false, isVaulted: false, shareToken: null },
+      availability: null,
+      intelligence: {
+        autoTags: [], embeddingRef: null, fingerprint: null, clusterId: null,
+        importanceScore: 0.8, pendingClusterAssignment: false, pipelineVersion: 2,
+        lastViewedAt: null, viewCount: 3,
+      },
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    expect(bookmark.title).toBe("Arrival");
+    expect(bookmark.status).toBe("watching");
+    expect(bookmark.metadata.tmdb_id).toBe(329865);
+    expect(bookmark.source_url).toContain("imdb.com");
+    expect(bookmark.pipeline_version).toBe(2);
+  });
+
   it("coerces legacy bookmark data into safe runtime values", () => {
     const bookmark = normalizeBookmark("bookmark-1", {
       title: "  Test Title  ",

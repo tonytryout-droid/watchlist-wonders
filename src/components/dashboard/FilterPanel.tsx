@@ -23,6 +23,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { storage } from "@/lib/storage";
 import { cn, getMoodEmoji } from "@/lib/utils";
 import { SlidersHorizontal, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
 
@@ -81,13 +82,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 };
 
 function loadStoredFilters(): { providers: string[]; moods: string[]; runtimeMin: number | null; runtimeMax: number | null } | null {
-  try {
-    const raw = localStorage.getItem(FILTER_STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+  return storage.get(FILTER_STORAGE_KEY, { fallback: null });
 }
 
 function findPresetLabel(runtimeMin: number | null, runtimeMax: number | null): RuntimePreset {
@@ -106,13 +101,8 @@ export function FilterPanel({ onApply, onReset, resultCount, className }: Filter
 
   // Persist filters to localStorage whenever they change
   useEffect(() => {
-    try {
-      const chosen = RUNTIME_PRESETS.find((p) => p.label === runtimePreset)!;
-      localStorage.setItem(
-        FILTER_STORAGE_KEY,
-        JSON.stringify({ providers, moods, runtimeMin: chosen.min, runtimeMax: chosen.max }),
-      );
-    } catch { /* ignore quota errors */ }
+    const chosen = RUNTIME_PRESETS.find((p) => p.label === runtimePreset)!;
+    storage.set(FILTER_STORAGE_KEY, { providers, moods, runtimeMin: chosen.min, runtimeMax: chosen.max });
   }, [providers, moods, runtimePreset]);
 
   const toggleProvider = (p: string) =>
@@ -128,17 +118,12 @@ export function FilterPanel({ onApply, onReset, resultCount, className }: Filter
     onApply({ providers, moods, runtimeMin: chosen.min, runtimeMax: chosen.max });
   };
 
-  const handleApply = () => {
-    const chosen = RUNTIME_PRESETS.find((p) => p.label === runtimePreset)!;
-    onApply({ providers, moods, runtimeMin: chosen.min, runtimeMax: chosen.max });
-  };
-
   const handleReset = () => {
     setProviders([]);
     setMoods([]);
     setRuntimePreset("Any");
     setShowAllMoods(false);
-    try { localStorage.removeItem(FILTER_STORAGE_KEY); } catch { /* ignore */ }
+    storage.remove(FILTER_STORAGE_KEY);
     onReset();
   };
 

@@ -6,8 +6,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   // apps/mobile is its own workspace with its own React-Native toolchain;
-  // packages/shared ships pre-built artifacts (no source to lint here).
-  { ignores: ["dist", "functions/lib", "node_modules", "apps/mobile/**", "packages/shared/**"] },
+  { ignores: ["dist", "functions/lib", "node_modules", "apps/mobile/**", "packages/shared/dist/**"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],

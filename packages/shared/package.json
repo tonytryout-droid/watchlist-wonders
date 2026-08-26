@@ -3,21 +3,54 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/types/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json && node scripts/write-cjs-package.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
   "exports": {
     ".": {
-      "types": "./index.d.ts",
-      "import": "./index.mjs",
-      "require": "./index.cjs"
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
     },
     "./capture": {
-      "types": "./capture.d.ts",
-      "import": "./capture.mjs",
-      "require": "./capture.cjs"
+      "types": "./dist/types/capture.d.ts",
+      "import": "./dist/esm/capture.js",
+      "require": "./dist/cjs/capture.js"
     },
     "./deep-links": {
-      "types": "./deep-links.d.ts",
-      "import": "./deep-links.mjs",
-      "require": "./deep-links.cjs"
+      "types": "./dist/types/deep-links.d.ts",
+      "import": "./dist/esm/deep-links.js",
+      "require": "./dist/cjs/deep-links.js"
+    },
+    "./bookmark": {
+      "types": "./dist/types/bookmark.d.ts",
+      "import": "./dist/esm/bookmark.js",
+      "require": "./dist/cjs/bookmark.js"
+    },
+    "./media": {
+      "types": "./dist/types/media.d.ts",
+      "import": "./dist/esm/media.js",
+      "require": "./dist/cjs/media.js"
+    },
+    "./errors": {
+      "types": "./dist/types/errors.d.ts",
+      "import": "./dist/esm/errors.js",
+      "require": "./dist/cjs/errors.js"
+    },
+    "./functions": {
+      "types": "./dist/types/functions.d.ts",
+      "import": "./dist/esm/functions.js",
+      "require": "./dist/cjs/functions.js"
     }
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
   }
 }

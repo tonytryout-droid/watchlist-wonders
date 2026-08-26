@@ -2,7 +2,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret } from 'firebase-functions/params';
 import * as logger from 'firebase-functions/logger';
 import { getApps, initializeApp } from 'firebase-admin/app';
-import { getFirestore, type Firestore, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
+import { getFirestore, Timestamp, type Firestore, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { redactSecretsInText } from './lib/logSafety';
 
 const tmdbApiKey = defineSecret('TMDB_API_KEY');
@@ -36,6 +36,11 @@ interface BookmarkDocData {
   metadata?: unknown;
   availability?: unknown;
   updated_at?: unknown;
+  updatedAt?: unknown;
+  schemaVersion?: unknown;
+  source?: unknown;
+  media?: unknown;
+  resolution?: unknown;
 }
 
 interface AvailabilityProvider {
@@ -165,6 +170,7 @@ async function fetchTmdbJson(
 }
 
 function getStoredTmdbId(data: BookmarkDocData): number | null {
+  if (data.schemaVersion === 2) return readNumber(asRecord(data.resolution).externalId);
   const metadata = asRecord(data.metadata);
   return readNumber(metadata.tmdb_id ?? metadata.tmdbId);
 }
@@ -241,7 +247,7 @@ function shouldRefresh(data: BookmarkDocData, nowMs: number): boolean {
 
 function collectPreferenceProviders(data: BookmarkDocData): string[] {
   const providers: string[] = [];
-  const provider = asTrimmedString(data.provider);
+  const provider = asTrimmedString(data.schemaVersion === 2 ? asRecord(data.source).platform : data.provider);
   if (provider) providers.push(provider);
 
   const metadata = asRecord(data.metadata);
@@ -258,8 +264,9 @@ async function buildAvailabilityForBookmark(
   data: BookmarkDocData,
   apiKey: string,
 ): Promise<{ availability: BookmarkAvailability; tmdbId: number | null }> {
-  const title = asTrimmedString(data.title);
-  const mediaType = normalizeMediaType(data.type);
+  const media = asRecord(data.media);
+  const title = asTrimmedString(data.schemaVersion === 2 ? media.title : data.title);
+  const mediaType = normalizeMediaType(data.schemaVersion === 2 ? media.type : data.type);
   const metadata = asRecord(data.metadata);
   const overview = asTrimmedString(metadata.overview);
   const regionFromAvailability = asRecord(data.availability).region ?? asRecord(metadata.availability).region;
@@ -365,7 +372,7 @@ export const refreshWatchAvailability = onSchedule(
     const nowMs = Date.now();
     const staleIso = new Date(nowMs - CACHE_TTL_MS).toISOString();
 
-    const [staleSnapshot, missingTmdbIdSnapshot, updatedSnapshot] = await Promise.all([
+    const [staleSnapshot, missingTmdbIdSnapshot, updatedSnapshot, updatedV2Snapshot] = await Promise.all([
       db
         .collectionGroup('bookmarks')
         .where('availability.lastUpdated', '<=', staleIso)
@@ -384,12 +391,19 @@ export const refreshWatchAvailability = onSchedule(
         .orderBy('updated_at', 'asc')
         .limit(MAX_DOCS_PER_RUN)
         .get(),
+      db
+        .collectionGroup('bookmarks')
+        .where('updatedAt', '<=', Timestamp.fromDate(new Date(staleIso)))
+        .orderBy('updatedAt', 'asc')
+        .limit(MAX_DOCS_PER_RUN)
+        .get(),
     ]);
 
     const mergedDocs = dedupeDocs([
       ...staleSnapshot.docs,
       ...missingTmdbIdSnapshot.docs,
       ...updatedSnapshot.docs,
+      ...updatedV2Snapshot.docs,
     ]);
 
     const candidates = mergedDocs.filter((doc) => shouldRefresh(doc.data(), nowMs)).slice(0, MAX_DOCS_PER_RUN);
@@ -405,22 +419,36 @@ export const refreshWatchAvailability = onSchedule(
     for (const snapshot of candidates) {
       const data = snapshot.data();
       try {
-        const title = asTrimmedString(data.title);
-        const mediaType = normalizeMediaType(data.type);
+        const media = asRecord(data.media);
+        const title = asTrimmedString(data.schemaVersion === 2 ? media.title : data.title);
+        const mediaType = normalizeMediaType(data.schemaVersion === 2 ? media.type : data.type);
         if (!title || !mediaType) {
           skipped += 1;
           continue;
         }
 
         const { availability, tmdbId } = await buildAvailabilityForBookmark(data, apiKey);
-        const payload: Record<string, unknown> = {
-          availability,
-          'metadata.availability': availability,
-          updated_at: new Date().toISOString(),
-        };
-        if (tmdbId && !getStoredTmdbId(data)) {
-          payload['metadata.tmdb_id'] = tmdbId;
-        }
+        const payload: Record<string, unknown> = data.schemaVersion === 2
+          ? {
+              availability: {
+                providers: availability.providers.map((provider) => ({ ...provider, leavingDate: null })),
+                lastUpdated: availability.lastUpdated,
+                region: availability.region,
+                externalId: tmdbId ? String(tmdbId) : null,
+                status: availability.status === 'no_tmdb_match' ? 'no_match' : availability.status,
+              },
+              updatedAt: Timestamp.now(),
+              ...(!getStoredTmdbId(data) && tmdbId ? {
+                'resolution.externalId': String(tmdbId),
+                'resolution.provider': 'tmdb',
+              } : {}),
+            }
+          : {
+              availability,
+              'metadata.availability': availability,
+              updated_at: new Date().toISOString(),
+              ...(!getStoredTmdbId(data) && tmdbId ? { 'metadata.tmdb_id': tmdbId } : {}),
+            };
 
         await snapshot.ref.update(payload);
         refreshed += 1;

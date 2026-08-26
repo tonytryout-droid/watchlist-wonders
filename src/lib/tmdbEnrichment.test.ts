@@ -38,10 +38,12 @@ describe("tmdbEnrichment", () => {
     );
 
     expect(enrichment).not.toBeNull();
-    expect(enrichment?.tmdbId).toBe(27205);
-    expect(enrichment?.mediaType).toBe("movie");
-    expect(enrichment?.genres).toEqual(["Thriller", "Sci-Fi"]);
-    expect(enrichment?.runtimeMinutes).toBe(148);
-    expect(enrichment?.enrichedAt).toBe("2026-04-12T12:00:00.000Z");
+    expect(enrichment && "tmdbId" in enrichment).toBe(true);
+    if (!enrichment || !("tmdbId" in enrichment)) throw new Error("Expected TMDB enrichment");
+    expect(enrichment.tmdbId).toBe(27205);
+    expect(enrichment.mediaType).toBe("movie");
+    expect(enrichment.genres).toEqual(["Thriller", "Sci-Fi"]);
+    expect(enrichment.runtimeMinutes).toBe(148);
+    expect(enrichment.enrichedAt).toBe("2026-04-12T12:00:00.000Z");
   });
 });

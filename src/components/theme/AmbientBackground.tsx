@@ -7,7 +7,7 @@
  */
 
 import { useMaterialTheme } from "@/providers/ThemeProvider"
-import { getCSSVariable } from "./ThemeVariables"
+import type { CSSProperties } from "react"
 
 export interface AmbientBackgroundProps {
   /**
@@ -24,6 +24,8 @@ export interface AmbientBackgroundProps {
    * Intensity multiplier for the glow effect
    */
   intensity?: number
+
+  style?: CSSProperties
 }
 
 /**
@@ -41,6 +43,7 @@ export function AmbientBackground({
   className = "",
   accentOverride,
   intensity = 1,
+  style,
 }: AmbientBackgroundProps) {
   const theme = useMaterialTheme()
 
@@ -62,6 +65,7 @@ export function AmbientBackground({
         `,
         opacity: intensity,
         willChange: "opacity",
+        ...style,
       }}
       aria-hidden="true"
     />
@@ -85,8 +89,9 @@ export function AnimatedAmbientBackground(
         animate-pulse-subtle
       `}
       style={{
+        ...props.style,
         animation: "ambient-pulse 6s ease-in-out infinite",
-      } as React.CSSProperties}
+      }}
     />
   )
 }

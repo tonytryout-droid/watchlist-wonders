@@ -254,7 +254,8 @@ const BookmarkDetail = () => {
       bookmarkService.createBookmark({
         title: item.title,
         type: item.media_type === "tv" ? "series" : "movie",
-        provider: "tmdb",
+        provider: "generic",
+        platform_label: "TMDB",
         poster_url: item.posterUrl,
         release_year: item.release_year,
         metadata: { tmdb_id: item.id },
@@ -609,7 +610,7 @@ const BookmarkDetail = () => {
               </DropdownMenuItem>
             )}
             {bookmark.source_url && isSafeUrl(bookmark.source_url) && (
-              <DropdownMenuItem onClick={() => openSafeLink(bookmark.source_url)} className="text-white/85 focus:text-white focus:bg-white/10">
+              <DropdownMenuItem onClick={() => openSafeLink(bookmark.source_url!)} className="text-white/85 focus:text-white focus:bg-white/10">
                 <ExternalLink className="w-4 h-4 mr-2" />Open Source
               </DropdownMenuItem>
             )}

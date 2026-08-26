@@ -1,5 +1,4 @@
 import type {
-  MediaType,
   StreamingAvailability,
   StreamingProvider,
   TmdbDetailResponse,

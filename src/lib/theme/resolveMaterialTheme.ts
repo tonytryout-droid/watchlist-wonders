@@ -77,7 +77,7 @@ export function resolveMaterialTheme(
  */
 export function resolveMaterialThemeOrDefault(
   material?: string,
-  fallbackThemeId: string = DEFAULT_THEME_ID
+  _fallbackThemeId: string = DEFAULT_THEME_ID
 ): MaterialTheme {
   return resolveMaterialTheme(material) || titaniumTheme
 }

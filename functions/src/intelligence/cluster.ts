@@ -8,6 +8,7 @@ interface BookmarkEmbedding {
   title: string;
   embedding: number[];
   tags: string[];
+  isV2: boolean;
 }
 
 const CLUSTER_NAME_SCHEMA = {
@@ -37,31 +38,38 @@ async function loadCentroids(uid: string): Promise<Map<string, { embedding: numb
 }
 
 async function loadPendingBookmarks(uid: string): Promise<BookmarkEmbedding[]> {
-  const snap = await getFirestore()
-    .collection("users")
-    .doc(uid)
-    .collection("bookmarks")
-    .where("pending_cluster_assignment", "==", true)
-    .limit(100)
-    .get();
+  const collection = getFirestore().collection("users").doc(uid).collection("bookmarks");
+  const [legacy, v2] = await Promise.all([
+    collection.where("pending_cluster_assignment", "==", true).limit(100).get(),
+    collection.where("intelligence.pendingClusterAssignment", "==", true).limit(100).get(),
+  ]);
 
   const out: BookmarkEmbedding[] = [];
-  for (const d of snap.docs) {
+  for (const d of [...legacy.docs, ...v2.docs].slice(0, 100)) {
     const data = d.data();
-    const embRef = typeof data.embedding_ref === "string" ? data.embedding_ref : null;
+    const isV2 = data.schemaVersion === 2;
+    const media = data.media && typeof data.media === "object" && !Array.isArray(data.media)
+      ? data.media as Record<string, unknown> : {};
+    const intelligence = data.intelligence && typeof data.intelligence === "object" && !Array.isArray(data.intelligence)
+      ? data.intelligence as Record<string, unknown> : {};
+    const fingerprint = isV2 && intelligence.fingerprint && typeof intelligence.fingerprint === "object"
+      ? intelligence.fingerprint as Record<string, unknown> : data.fingerprint;
+    const embRefValue = isV2 ? intelligence.embeddingRef : data.embedding_ref;
+    const embRef = typeof embRefValue === "string" ? embRefValue : null;
     if (!embRef) continue;
     // We don't have full embedding in Firestore — clustering uses a probe embedding
     // stamped onto the bookmark by the pipeline. For new bookmarks we pull a freshly
     // computed embedding from the pipeline's `fingerprint` cache if present.
-    const cachedEmbedding = Array.isArray(data.fingerprint?.embedding_cache)
-      ? (data.fingerprint.embedding_cache as number[])
+    const cachedEmbedding = Array.isArray((fingerprint as Record<string, unknown> | undefined)?.embedding_cache)
+      ? ((fingerprint as Record<string, unknown>).embedding_cache as number[])
       : null;
     if (!cachedEmbedding) continue;
     out.push({
       id: d.id,
-      title: typeof data.title === "string" ? data.title : "",
+      title: typeof (isV2 ? media.title : data.title) === "string" ? String(isV2 ? media.title : data.title) : "",
       embedding: cachedEmbedding,
-      tags: Array.isArray(data.auto_tags) ? (data.auto_tags as string[]) : [],
+      tags: Array.isArray(isV2 ? intelligence.autoTags : data.auto_tags) ? (isV2 ? intelligence.autoTags : data.auto_tags) as string[] : [],
+      isV2,
     });
   }
   return out;
@@ -133,13 +141,16 @@ export async function runOnlineClustering(uid: string): Promise<{ assigned: numb
       seeded++;
     }
 
-    await db.collection("users").doc(uid).collection("bookmarks").doc(item.id).set(
-      {
+    await db.collection("users").doc(uid).collection("bookmarks").doc(item.id).update(
+      item.isV2 ? {
+        "intelligence.clusterId": targetId,
+        "intelligence.pendingClusterAssignment": false,
+        "intelligence.fingerprint.embedding_cache": null,
+      } : {
         cluster_id: targetId,
         pending_cluster_assignment: false,
         "fingerprint.embedding_cache": null,
       },
-      { merge: true },
     );
   }
 

@@ -53,7 +53,7 @@ const Index = () => {
   const { canInstall, promptInstall } = usePwaInstallPrompt();
 
   useEffect(() => {
-    if (!loading && user) navigate("/dashboard");
+    if (!loading && user) navigate("/library");
   }, [loading, navigate, user]);
 
   if (loading) {

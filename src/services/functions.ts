@@ -39,7 +39,12 @@ export interface SearchBookmarksResponse {
     canonical_entity: unknown | null;
     cluster_id: string | null;
     score: number;
-    breakdown: Record<string, number>;
+    breakdown: {
+      semantic: number;
+      recency: number;
+      engagement: number;
+      importance: number;
+    };
     reason: string;
   }>;
 }
@@ -66,4 +71,46 @@ export async function recordBookmarkView(bookmarkId: string): Promise<void> {
     'recordView',
   );
   await callable({ bookmarkId });
+}
+
+export async function setBookmarkSharing(
+  bookmarkId: string,
+  action: "publish" | "revoke",
+): Promise<{ shareToken: string | null }> {
+  const callable = httpsCallable<
+    { bookmarkId: string; action: "publish" | "revoke" },
+    { shareToken: string | null }
+  >(fbFunctions, "setBookmarkSharing");
+  return (await callable({ bookmarkId, action })).data;
+}
+
+export interface PublicBookmarkResult {
+  shareToken: string;
+  schemaVersion: 1;
+  ownerDisplayName: string | null;
+  title: string;
+  mediaType: "movie" | "series" | "video" | "other";
+  posterUrl: string | null;
+  releaseYear: number | null;
+  runtimeMinutes: number | null;
+  canonicalUrl: string | null;
+  createdAt: unknown;
+}
+
+export async function listPublicBookmarks(uid: string, limit = 50): Promise<PublicBookmarkResult[]> {
+  const callable = httpsCallable<
+    { uid: string; limit: number },
+    { bookmarks: PublicBookmarkResult[] }
+  >(fbFunctions, "listPublicBookmarks");
+  return (await callable({ uid, limit })).data.bookmarks;
+}
+
+export async function reportClientError(payload: {
+  fingerprint: string;
+  url: string | null;
+  error: unknown;
+  context: Record<string, unknown>;
+}): Promise<void> {
+  const callable = httpsCallable<typeof payload, { accepted: true }>(fbFunctions, "reportClientError");
+  await callable(payload);
 }

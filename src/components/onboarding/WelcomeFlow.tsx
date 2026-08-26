@@ -7,6 +7,7 @@ import { getSafeErrorMessage } from "@/lib/errorMessage";
 import { toast } from "sonner";
 import { getProviderMeta } from "@/constants/providers";
 import type { Bookmark } from "@/types/database";
+import { storage } from "@/lib/storage";
 
 const GENRE_OPTIONS = [
   "Action",
@@ -38,14 +39,8 @@ const PROVIDER_OPTIONS = [
 const FILTER_STORAGE_KEY = "wm_dashboard_filters";
 
 function saveProvidersToFilters(providerKeys: string[]) {
-  try {
-    const raw = localStorage.getItem(FILTER_STORAGE_KEY);
-    const existing = raw ? JSON.parse(raw) : {};
-    localStorage.setItem(
-      FILTER_STORAGE_KEY,
-      JSON.stringify({ ...existing, providers: providerKeys }),
-    );
-  } catch { /* ignore */ }
+  const existing = storage.get<Record<string, unknown>>(FILTER_STORAGE_KEY, { fallback: {} });
+  storage.set(FILTER_STORAGE_KEY, { ...existing, providers: providerKeys });
 }
 
 export interface OnboardingSuggestion {

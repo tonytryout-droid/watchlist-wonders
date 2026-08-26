@@ -5,8 +5,12 @@ on:
     branches: ["**"]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  frontend:
+  quality-web:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,13 +21,12 @@ jobs:
       # `npm ci` at the repo root resolves all workspaces (apps/*, packages/*,
       # functions) and links @watchmarks/shared into node_modules.
       - run: npm ci
+      - run: npm run typecheck
       - run: npm run lint
-      # vitest config includes both `src/**/*.test.ts` and
-      # `functions/src/**/*.test.ts`, so this single `npm test` covers both.
       - run: npm test
       - run: npm run build:ci
 
-  functions:
+  quality-functions:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,8 +35,42 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Type-check the Cloud Functions package via its own tsconfig (strict,
-      # commonjs target). Catches issues the bundler's loose mode hides.
-      - name: Functions type-check & build
-        working-directory: functions
-        run: npx tsc --noEmit
+      - run: npm run typecheck:functions
+      - run: npm test -- --reporter=dot functions/src
+
+  security-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm run test:rules
+
+  e2e-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm run test:e2e
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4

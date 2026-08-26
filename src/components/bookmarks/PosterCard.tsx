@@ -5,7 +5,7 @@ import { useBookmarkEnrichment } from "@/hooks/useBookmarkEnrichment";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Play, Plus, Check, CalendarPlus, MoreHorizontal, ExternalLink,
-  Trash2, Undo2, Eye, BookMarked, Minus, ThumbsUp, Info, Film, Star, SkipForward,
+  Trash2, Undo2, Eye, BookMarked, Minus, Info, Film, Star, SkipForward,
   Lock, Unlock, Globe, Share2, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -929,7 +929,7 @@ export function PosterCard({
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-48 bg-card border-white/10">
                         {bookmark.status !== "watching" && (
-                          <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSetWatching(); }} className="text-white/90">
+                          <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSetWatching?.(); }} className="text-white/90">
                             <Eye className="w-4 h-4 mr-2" />Set as Watching
                           </DropdownMenuItem>
                         )}
@@ -961,29 +961,29 @@ export function PosterCard({
                         </DropdownMenuItem>
                         <DropdownMenuSeparator className="bg-white/10" />
                         {bookmark.is_public ? (
-                          <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSharePrivate(); }} className="text-white/90">
+                          <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSharePrivate?.(); }} className="text-white/90">
                             <Globe className="w-4 h-4 mr-2" />Make private
                           </DropdownMenuItem>
                         ) : (
-                          <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSharePublic(); }} className="text-white/90">
+                          <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSharePublic?.(); }} className="text-white/90">
                             <Share2 className="w-4 h-4 mr-2" />Share publicly
                           </DropdownMenuItem>
                         )}
                         {bookmark.is_vaulted ? (
-                          <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUnvault(); }} className="text-white/90">
+                          <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUnvault?.(); }} className="text-white/90">
                             <Unlock className="w-4 h-4 mr-2" />Remove from Vault
                           </DropdownMenuItem>
                         ) : (
-                          <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onVault(); }} className="text-white/90">
+                          <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onVault?.(); }} className="text-white/90">
                             <Lock className="w-4 h-4 mr-2" />Move to Vault
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuSeparator className="bg-white/10" />
-                        <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleOpenSource(); }} className="text-white/90">
+                        <DropdownMenuItem onClick={handleOpenSource} className="text-white/90">
                           <ExternalLink className="w-4 h-4 mr-2" />Open Source
                         </DropdownMenuItem>
                         <DropdownMenuSeparator className="bg-white/10" />
-                        <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(); }} className="text-destructive focus:text-destructive">
+                        <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete?.(); }} className="text-destructive focus:text-destructive">
                           <Trash2 className="w-4 h-4 mr-2" />Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>

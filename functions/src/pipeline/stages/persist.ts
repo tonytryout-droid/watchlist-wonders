@@ -1,4 +1,4 @@
-import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import { FieldValue, getFirestore, Timestamp } from "firebase-admin/firestore";
 import type { TmdbEnrichment } from "../../tmdb/types";
 import { logResolutionEvent } from "../../resolution/events";
 import type {
@@ -59,10 +59,74 @@ export async function persist(
     currentData.metadata && typeof currentData.metadata === "object" && !Array.isArray(currentData.metadata)
       ? (currentData.metadata as Record<string, unknown>)
       : {};
+  const currentResolution =
+    currentData.resolution && typeof currentData.resolution === "object" && !Array.isArray(currentData.resolution)
+      ? currentData.resolution as Record<string, unknown>
+      : {};
   const userConfirmedResolution =
-    currentMetadata.resolution_selected_by === "user" ||
-    currentMetadata.resolution_selected_by === "manual" ||
-    Boolean(currentData.canonical_entity && currentMetadata.resolution_selected_by !== "auto");
+    currentData.schemaVersion === 2
+      ? currentResolution.selectedBy === "user" || currentResolution.selectedBy === "manual"
+      : currentMetadata.resolution_selected_by === "user" ||
+        currentMetadata.resolution_selected_by === "manual" ||
+        Boolean(currentData.canonical_entity && currentMetadata.resolution_selected_by !== "auto");
+
+  if (currentData.schemaVersion === 2) {
+    const v2Update: Record<string, unknown> = {
+      updatedAt: Timestamp.now(),
+      "intelligence.pipelineVersion": PIPELINE_VERSION,
+      "intelligence.autoTags": autoTags.tags,
+      "intelligence.fingerprint": fp
+        ? {
+            text_embedding_id: fp.textEmbeddingId,
+            image_embedding_id: fp.imageEmbeddingId,
+            extracted_keywords: fp.extractedKeywords,
+            platform: fp.platform,
+            embedding_cache: cluster.clusterId ? null : (fp.textEmbedding.length ? fp.textEmbedding : null),
+          }
+        : null,
+      "intelligence.embeddingRef": fp?.textEmbeddingId ?? null,
+      "intelligence.clusterId": cluster.clusterId,
+      "intelligence.pendingClusterAssignment": cluster.pending,
+    };
+
+    if (!userConfirmedResolution) {
+      const status = resolveResult.status ?? (resolveResult.source === "unresolved" ? "unresolved" : "matched");
+      v2Update["resolution.status"] = status;
+      v2Update["resolution.confidence"] = resolveResult.confidence;
+      v2Update["resolution.provider"] = resolveResult.source === "tmdb" || resolveResult.source === "youtube"
+        ? resolveResult.source
+        : null;
+      v2Update["resolution.externalId"] = resolveResult.id || null;
+      v2Update["resolution.candidates"] = resolveResult.candidates ?? [];
+      v2Update["resolution.selectedBy"] = status === "matched" ? "auto" : null;
+      if (status === "matched" && resolveResult.source !== "unresolved") {
+        if (resolveResult.title) v2Update["media.title"] = resolveResult.title;
+        if (resolveResult.poster) v2Update["media.posterUrl"] = resolveResult.poster;
+        if (resolveResult.year) v2Update["media.releaseYear"] = resolveResult.year;
+        if (resolveResult.runtime) v2Update["media.runtimeMinutes"] = resolveResult.runtime;
+        v2Update["media.type"] = resolveResult.type === "tv" ? "series" : "movie";
+      }
+    }
+
+    await ref.update(v2Update);
+    if (!userConfirmedResolution) {
+      await logResolutionEvent({
+        userId: bookmark.userId,
+        bookmarkId: bookmark.id,
+        action: resolveResult.status === "matched" ? "auto_matched" : resolveResult.status === "needs_selection" ? "needs_selection" : "unresolved",
+        status: resolveResult.status ?? "unresolved",
+        platform: signals.platform,
+        rawTitle: signals.rawTitle,
+        sourceUrl: bookmark.canonical_url ?? bookmark.source_url ?? null,
+        confidence: resolveResult.confidence,
+        confidenceBand: resolveResult.confidenceBand ?? "low",
+        candidates: resolveResult.candidates ?? [],
+        selectedCandidate: resolveResult.status === "matched" ? (resolveResult.candidates?.[0] ?? null) : null,
+        selectedRank: resolveResult.status === "matched" ? 1 : null,
+      });
+    }
+    return;
+  }
 
   const update: Record<string, unknown> = {
     updated_at: now,
@@ -180,13 +244,18 @@ export async function bumpView(userId: string, bookmarkId: string): Promise<void
     .doc(userId)
     .collection("bookmarks")
     .doc(bookmarkId);
-  await ref.set(
-    {
-      view_count: FieldValue.increment(1),
-      last_viewed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-    { merge: true },
-  );
+  const snap = await ref.get();
+  const isV2 = snap.data()?.schemaVersion === 2;
+  await ref.update(isV2
+    ? {
+        "intelligence.viewCount": FieldValue.increment(1),
+        "intelligence.lastViewedAt": Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      }
+    : {
+        view_count: FieldValue.increment(1),
+        last_viewed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
 }
 

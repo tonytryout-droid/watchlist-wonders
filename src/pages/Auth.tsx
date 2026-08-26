@@ -23,6 +23,7 @@ import { Mail, Lock, Loader2, Eye, EyeOff, ArrowLeft, Check, X as XIcon } from "
 import { useIsMobile } from "@/hooks/use-mobile";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Button } from "@/components/ui/button";
+import { storage } from "@/lib/storage";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -69,13 +70,13 @@ const Auth = () => {
   const redirectPath = getSafeRedirectPath(searchParams.get("redirect"));
 
   const resolvePostAuthDestination = () => {
-    const pendingUrl = sessionStorage.getItem("pendingShareUrl");
-    const pendingTitle = sessionStorage.getItem("pendingShareTitle");
-    const pendingText = sessionStorage.getItem("pendingShareText");
+    const pendingUrl = storage.get<string | null>("pendingShareUrl", { fallback: null }, "session");
+    const pendingTitle = storage.get<string | null>("pendingShareTitle", { fallback: null }, "session");
+    const pendingText = storage.get<string | null>("pendingShareText", { fallback: null }, "session");
     if (pendingUrl) {
-      sessionStorage.removeItem("pendingShareUrl");
-      sessionStorage.removeItem("pendingShareTitle");
-      sessionStorage.removeItem("pendingShareText");
+      storage.remove("pendingShareUrl", "session");
+      storage.remove("pendingShareTitle", "session");
+      storage.remove("pendingShareText", "session");
       const shareParams = new URLSearchParams({ url: pendingUrl });
       if (pendingTitle) {
         shareParams.set("title", pendingTitle);
@@ -485,7 +486,6 @@ const Auth = () => {
                   type="button"
                   onClick={() => switchMode("signup")}
                   className="text-primary hover:underline font-medium"
-                  aria-current={mode === "signup" ? "page" : undefined}
                 >
                   Sign up
                 </button>
@@ -497,7 +497,6 @@ const Auth = () => {
                   type="button"
                   onClick={() => switchMode("login")}
                   className="text-primary hover:underline font-medium"
-                  aria-current={mode === "login" ? "page" : undefined}
                 >
                   Sign in
                 </button>
@@ -507,7 +506,6 @@ const Auth = () => {
                 type="button"
                 onClick={() => switchMode("login")}
                 className="text-primary hover:underline font-medium inline-flex items-center gap-1"
-                aria-current={mode === "login" ? "page" : undefined}
               >
                 <ArrowLeft className="w-3 h-3" />
                 Back to sign in

@@ -1,46 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
-import { Outlet } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { TopNav } from "./TopNav";
-import { SearchOverlay } from "@/components/search/SearchOverlay";
+import { useEffect, useState } from "react";
+import { Outlet, useNavigate } from "react-router-dom";
 import { HowItWorksButton } from "@/components/HowItWorksButton";
-import { useSearchShortcut } from "@/hooks/useSearchShortcut";
-import { useAuth } from "@/contexts/AuthContext";
-import { bookmarkService } from "@/services/bookmarks";
-import { notificationService } from "@/services/notifications";
-import { fetchUnreadNotificationCount } from "@/components/layout/appLayoutQueries";
-import { FEATURES } from "@/config/features";
+import { TopNav } from "./TopNav";
 
 export function AppLayout() {
-  const { user } = useAuth();
-  const { isSearchOpen, openSearch, closeSearch } = useSearchShortcut();
+  const navigate = useNavigate();
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
-
-  // The vault badge only needs a count — avoid downloading the full bookmark
-  // list on routes that never render it (Settings, Admin, etc.).
-  const { data: vaultedCount = 0 } = useQuery({
-    queryKey: ["bookmarks", "vaulted-count"],
-    queryFn: () => bookmarkService.getVaultedCount(),
-    enabled: !!user,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  // Bookmarks for SearchOverlay — only fetched when the overlay opens. The
-  // result is cached under the standard ["bookmarks"] key, so Dashboard /
-  // Vault subsequent navigations get a cache hit.
-  const { data: bookmarks = [] } = useQuery({
-    queryKey: ["bookmarks"],
-    queryFn: () => bookmarkService.getBookmarks(),
-    enabled: !!user && isSearchOpen,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const { data: unreadCount = 0 } = useQuery({
-    queryKey: ["notifications-count"],
-    queryFn: () => fetchUnreadNotificationCount(notificationService),
-    enabled: !!user && FEATURES.notifications,
-    staleTime: 60 * 1000,
-  });
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -53,19 +18,25 @@ export function AppLayout() {
     };
   }, []);
 
-  const handleOpenSearch = useCallback(() => openSearch(), [openSearch]);
   useEffect(() => {
-    window.addEventListener("wm:open-search", handleOpenSearch);
-    return () => window.removeEventListener("wm:open-search", handleOpenSearch);
-  }, [handleOpenSearch]);
+    const openSearch = () => navigate("/search");
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        openSearch();
+      }
+    };
+    window.addEventListener("wm:open-search", openSearch);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("wm:open-search", openSearch);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [navigate]);
 
   return (
     <div className="min-h-screen bg-background" id="main-scroll-container">
-      <TopNav
-        onSearchClick={openSearch}
-        notificationCount={unreadCount}
-        vaultedCount={vaultedCount}
-      />
+      <TopNav onSearchClick={() => navigate("/search")} />
       {!isOnline && (
         <div
           className="fixed inset-x-0 top-[68px] z-40 border-b border-amber-400/30 bg-amber-500/10 px-4 py-2 text-center text-xs font-medium text-amber-200"
@@ -76,11 +47,6 @@ export function AppLayout() {
           Offline - viewing cached data
         </div>
       )}
-      <SearchOverlay
-        isOpen={isSearchOpen}
-        onClose={closeSearch}
-        bookmarks={bookmarks}
-      />
       <Outlet />
       <HowItWorksButton />
     </div>

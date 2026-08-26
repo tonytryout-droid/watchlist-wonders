@@ -17,9 +17,14 @@ const tmdbApiKey = defineSecret("TMDB_API_KEY");
 
 export { enrich } from "./enrich.js";
 export { captureShare } from "./captureShare.js";
+export { captureBookmark, onCaptureJobCreated } from "./capture/captureBookmark.js";
+export { confirmCandidate } from "./capture/confirmCandidate.js";
 export { selectResolutionCandidate } from "./resolution/events.js";
 export { tmdbProxy } from "./tmdb.js";
 export { refreshWatchAvailability } from "./availabilityRefresh.js";
+export { setBookmarkSharing, listPublicBookmarks } from "./sharing.js";
+export { reportClientError } from "./clientErrors.js";
+export { migrateBookmarksV2 } from "./migration/bookmarkV2.js";
 export { sendReminders } from "./reminders.js";
 export { searchBookmarks } from "./retrieval/searchBookmarks";
 export {
@@ -33,26 +38,42 @@ export {
 } from "./admin/queries";
 
 function toPipelineBookmark(eventBookmarkId: string, eventUserId: string, data: Record<string, unknown>): PipelineBookmark {
+  const source = data.source && typeof data.source === "object" && !Array.isArray(data.source)
+    ? data.source as Record<string, unknown>
+    : {};
+  const media = data.media && typeof data.media === "object" && !Array.isArray(data.media)
+    ? data.media as Record<string, unknown>
+    : {};
+  const resolution = data.resolution && typeof data.resolution === "object" && !Array.isArray(data.resolution)
+    ? data.resolution as Record<string, unknown>
+    : {};
+  const library = data.library && typeof data.library === "object" && !Array.isArray(data.library)
+    ? data.library as Record<string, unknown>
+    : {};
+  const intelligence = data.intelligence && typeof data.intelligence === "object" && !Array.isArray(data.intelligence)
+    ? data.intelligence as Record<string, unknown>
+    : {};
+  const isV2 = data.schemaVersion === 2;
   return {
     id: eventBookmarkId,
     userId: eventUserId,
-    title: typeof data.title === "string" ? data.title : undefined,
-    source_url: typeof data.source_url === "string" ? data.source_url : null,
-    canonical_url: typeof data.canonical_url === "string" ? data.canonical_url : null,
-    type: typeof data.type === "string" ? data.type : null,
-    provider: typeof data.provider === "string" ? data.provider : null,
+    title: typeof (isV2 ? media.title : data.title) === "string" ? String(isV2 ? media.title : data.title) : undefined,
+    source_url: typeof (isV2 ? source.originalUrl : data.source_url) === "string" ? String(isV2 ? source.originalUrl : data.source_url) : null,
+    canonical_url: typeof (isV2 ? source.canonicalUrl : data.canonical_url) === "string" ? String(isV2 ? source.canonicalUrl : data.canonical_url) : null,
+    type: typeof (isV2 ? media.type : data.type) === "string" ? String(isV2 ? media.type : data.type) : null,
+    provider: typeof (isV2 ? source.platform : data.provider) === "string" ? String(isV2 ? source.platform : data.provider) : null,
     metadata:
       data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)
         ? (data.metadata as Record<string, unknown>)
         : {},
-    poster_url: typeof data.poster_url === "string" ? data.poster_url : null,
-    tags: Array.isArray(data.tags) ? (data.tags as string[]) : [],
-    notes: typeof data.notes === "string" ? data.notes : null,
-    user_rating: typeof data.user_rating === "number" ? data.user_rating : null,
-    enriched: data.enriched === true,
-    tmdb: data.tmdb ?? null,
-    view_count: typeof data.view_count === "number" ? data.view_count : undefined,
-    importance_score: typeof data.importance_score === "number" ? data.importance_score : undefined,
+    poster_url: typeof (isV2 ? media.posterUrl : data.poster_url) === "string" ? String(isV2 ? media.posterUrl : data.poster_url) : null,
+    tags: Array.isArray(isV2 ? library.tags : data.tags) ? (isV2 ? library.tags : data.tags) as string[] : [],
+    notes: typeof (isV2 ? library.notes : data.notes) === "string" ? String(isV2 ? library.notes : data.notes) : null,
+    user_rating: typeof (isV2 ? library.rating : data.user_rating) === "number" ? Number(isV2 ? library.rating : data.user_rating) : null,
+    enriched: isV2 ? resolution.status !== "pending" : data.enriched === true,
+    tmdb: isV2 ? null : data.tmdb ?? null,
+    view_count: typeof (isV2 ? intelligence.viewCount : data.view_count) === "number" ? Number(isV2 ? intelligence.viewCount : data.view_count) : undefined,
+    importance_score: typeof (isV2 ? intelligence.importanceScore : data.importance_score) === "number" ? Number(isV2 ? intelligence.importanceScore : data.importance_score) : undefined,
   };
 }
 
@@ -69,7 +90,11 @@ export const onBookmarkCreated = onDocumentCreated(
     if (!snapshot) return;
 
     const data = snapshot.data();
-    if (typeof data.pipeline_version === "number" && data.pipeline_version >= 2) {
+    const intelligence = data.intelligence && typeof data.intelligence === "object" && !Array.isArray(data.intelligence)
+      ? data.intelligence as Record<string, unknown>
+      : {};
+    const pipelineVersion = data.schemaVersion === 2 ? intelligence.pipelineVersion : data.pipeline_version;
+    if (typeof pipelineVersion === "number" && pipelineVersion >= 2) {
       return;
     }
 
@@ -196,7 +221,7 @@ export const manualRetroactiveEnrich = onRequest(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error("[manualRetroactiveEnrich]", message);
-      response.status(500).json({ success: false, error: message });
+      response.status(500).json({ success: false, error: "Unable to complete retroactive enrichment." });
     }
   },
 );

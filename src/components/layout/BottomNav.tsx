@@ -19,7 +19,7 @@
  */
 
 import { Link, useLocation } from "react-router-dom";
-import { Home, Search, Plus, Sparkles, User } from "lucide-react";
+import { Library, Search, Plus, Sparkles, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FEATURES } from "@/config/features";
 
@@ -29,7 +29,7 @@ interface BottomNavProps {
   notificationCount?: number;
 }
 
-export function BottomNav({ onSearchClick, onAddClick, notificationCount = 0 }: BottomNavProps) {
+export function BottomNav({ onAddClick, notificationCount: _notificationCount = 0 }: BottomNavProps) {
   const location = useLocation();
 
   const isActive = (path: string, startsWith = false) =>
@@ -51,24 +51,14 @@ export function BottomNav({ onSearchClick, onAddClick, notificationCount = 0 }: 
 
         {/* Home */}
         <NavItem
-          to="/dashboard"
-          label="Home"
-          icon={Home}
-          active={isActive("/dashboard")}
+          to="/library"
+          label="Library"
+          icon={Library}
+          active={isActive("/library")}
         />
 
         {/* Search */}
-        <button
-          type="button"
-          onClick={onSearchClick}
-          className="flex flex-col items-center gap-0.5 px-3 py-1.5 min-w-[52px] min-h-[44px] justify-center text-white/50 hover:text-white/80 transition-colors relative"
-          aria-label="Search"
-        >
-          <div className="relative">
-            <Search className="w-5 h-5" />
-          </div>
-          <span className="text-[10px] font-medium">Search</span>
-        </button>
+        <NavItem to="/search" label="Search" icon={Search} active={isActive("/search")} />
 
         {/* Add — visually elevated as primary CTA */}
         <button
@@ -96,8 +86,8 @@ export function BottomNav({ onSearchClick, onAddClick, notificationCount = 0 }: 
         {/* Profile */}
         <NavItem
           to="/settings"
-          label="Profile"
-          icon={User}
+          label="Settings"
+          icon={Settings}
           active={isActive("/settings")}
         />
       </div>

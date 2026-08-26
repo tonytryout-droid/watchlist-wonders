@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
 import type { TmdbEnrichment } from "@/types/database";
 
 export type BookmarkEnrichmentState =

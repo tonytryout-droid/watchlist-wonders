@@ -9,6 +9,7 @@ import {
   type ResolutionStatus,
 } from './resolution/scoring';
 import { redactUrlForLog as sharedRedactUrlForLog, redactError } from './lib/logSafety';
+import { fetchUrl } from './enrichment/fetchUrl';
 
 export const youtubeApiKey = defineSecret('YOUTUBE_API_KEY');
 export const tmdbApiKey = defineSecret('TMDB_API_KEY');
@@ -189,17 +190,19 @@ async function fetchWithTimeout(
   init: RequestInit = {},
   timeoutMs = DEFAULT_FETCH_TIMEOUT_MS
 ): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, {
-      ...init,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeout);
+  if (init.method && init.method !== 'GET') {
+    throw new HttpsError('invalid-argument', 'Only GET requests are supported for enrichment fetches.');
   }
+  const fetched = await fetchUrl(url, { totalTimeoutMs: timeoutMs });
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(fetched.headers)) {
+    if (Array.isArray(value)) value.forEach((item) => headers.append(name, item));
+    else if (typeof value === 'string') headers.set(name, value);
+  }
+  return new Response(fetched.body, {
+    status: fetched.status,
+    headers,
+  });
 }
 
 // --- Platform Detection ---

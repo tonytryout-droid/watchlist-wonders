@@ -5,23 +5,18 @@ import { ArrowUpDown } from "lucide-react";
 import { openSafe } from "@/lib/utils";
 import { useDashboardQueries, type ScheduleWithBookmark } from "@/hooks/useDashboardQueries";
 import type { AdvancedFilters } from "@/components/dashboard/FilterPanel";
+import { storage } from "@/lib/storage";
 
 const FILTER_STORAGE_KEY = "wm_dashboard_filters";
 
 function loadStoredAdvancedFilters(): AdvancedFilters {
-  try {
-    const raw = localStorage.getItem(FILTER_STORAGE_KEY);
-    if (!raw) return { providers: [], moods: [], runtimeMin: null, runtimeMax: null };
-    const parsed = JSON.parse(raw) as Partial<AdvancedFilters>;
-    return {
-      providers: parsed.providers ?? [],
-      moods: parsed.moods ?? [],
-      runtimeMin: parsed.runtimeMin ?? null,
-      runtimeMax: parsed.runtimeMax ?? null,
-    };
-  } catch {
-    return { providers: [], moods: [], runtimeMin: null, runtimeMax: null };
-  }
+  const parsed = storage.get<Partial<AdvancedFilters>>(FILTER_STORAGE_KEY, { fallback: {} });
+  return {
+    providers: parsed.providers ?? [],
+    moods: parsed.moods ?? [],
+    runtimeMin: parsed.runtimeMin ?? null,
+    runtimeMax: parsed.runtimeMax ?? null,
+  };
 }
 import { bookmarkService } from "@/services/bookmarks";
 import { socialService } from "@/services/social";
@@ -209,8 +204,14 @@ const Dashboard = () => {
     if (demoStep < 4) return [];
     return upcomingSignals.map((schedule) => ({
       id: `demo-schedule-${schedule.bookmarkId}`,
+      user_id: "demo",
       bookmark_id: schedule.bookmarkId,
       scheduled_for: schedule.scheduledFor,
+      reminder_offset_minutes: 0,
+      recurrence_type: "none" as const,
+      state: "scheduled" as const,
+      created_at: now.toISOString(),
+      updated_at: now.toISOString(),
       bookmarks: allBookmarks.find((bookmark) => bookmark.id === schedule.bookmarkId) ?? null,
     }));
   }, [allBookmarks, demoActive, demoStep, upcomingSchedules, upcomingSignals]);
@@ -218,7 +219,7 @@ const Dashboard = () => {
   const allScheduleMap = useMemo((): Record<string, Schedule> => {
     const map: Record<string, Schedule> = {};
     for (const s of upcomingSchedulesForDisplay) {
-      if (!map[s.bookmark_id]) map[s.bookmark_id] = s as Schedule;
+      if (!map[s.bookmark_id]) map[s.bookmark_id] = s;
     }
     return map;
   }, [upcomingSchedulesForDisplay]);
@@ -340,7 +341,7 @@ const Dashboard = () => {
   );
 
   const endDemo = useCallback(() => {
-    window.localStorage.setItem("seen_demo", "true");
+    storage.set("seen_demo", true);
     demoRunIdRef.current += 1;
     clearDemoTimers();
     setDemoActive(false);
@@ -351,7 +352,7 @@ const Dashboard = () => {
   }, [clearDemoTimers]);
 
   const startDemo = useCallback(async () => {
-    window.localStorage.setItem("seen_demo", "true");
+    storage.set("seen_demo", true);
     const runId = demoRunIdRef.current + 1;
     demoRunIdRef.current = runId;
     clearDemoTimers();
@@ -422,7 +423,7 @@ const Dashboard = () => {
   const welcomeStorageKey = user?.uid ? `${WELCOME_FLOW_KEY_PREFIX}${user.uid}` : null;
 
   const dismissWelcomeFlow = useCallback(() => {
-    if (welcomeStorageKey) window.localStorage.setItem(welcomeStorageKey, "done");
+    if (welcomeStorageKey) storage.set(welcomeStorageKey, true);
     setWelcomeFlowActive(false);
     setWelcomeFlowDismissed(true);
   }, [welcomeStorageKey]);
@@ -465,7 +466,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (isLoading || demoActive || bookmarksData.length > 0 || isNewAccount) return;
-    const hasSeenDemo = window.localStorage.getItem("seen_demo");
+    const hasSeenDemo = storage.get("seen_demo", { fallback: false });
     if (hasSeenDemo) return;
     void startDemo();
   }, [bookmarksData.length, demoActive, isLoading, isNewAccount, startDemo]);
@@ -499,7 +500,7 @@ const Dashboard = () => {
       setWelcomeFlowDismissed(true);
       return;
     }
-    setWelcomeFlowDismissed(window.localStorage.getItem(welcomeStorageKey) === "done");
+    setWelcomeFlowDismissed(storage.get(welcomeStorageKey, { fallback: false }));
   }, [welcomeStorageKey]);
 
   useEffect(() => {

@@ -1,7 +1,7 @@
 import { getMessaging, getToken, deleteToken, onMessage, type MessagePayload } from 'firebase/messaging';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import { initializeApp, getApps } from 'firebase/app';
+import { getApps } from 'firebase/app';
 
 // Re-use the already-initialized Firebase app
 function getMessagingInstance() {

@@ -24,7 +24,6 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { scheduleService } from "@/services/schedules";
-import { bookmarkService } from "@/services/bookmarks";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, isToday, isTomorrow, startOfDay, addDays } from "date-fns";
 
 const ACTIVE_SCHEDULE_STATES = new Set(["scheduled", "snoozed"]);
@@ -38,11 +37,6 @@ const Calendar = () => {
     queryFn: () => scheduleService.getSchedules(),
   });
 
-  const { data: bookmarks = [] } = useQuery({
-    queryKey: ['bookmarks'],
-    queryFn: () => bookmarkService.getBookmarks(),
-  });
-
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
@@ -51,7 +45,7 @@ const Calendar = () => {
   const startDayOfWeek = monthStart.getDay();
   
   // Create padding days for the calendar grid
-  const paddingDays = Array.from({ length: startDayOfWeek }, (_, i) => null);
+  const paddingDays = Array.from({ length: startDayOfWeek }, () => null);
   const visibleSchedules = schedules.filter((s) => ACTIVE_SCHEDULE_STATES.has(s.state));
   const upcomingSchedules = visibleSchedules
     .filter((s) => new Date(s.scheduled_for) >= new Date())

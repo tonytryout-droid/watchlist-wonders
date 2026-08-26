@@ -12,7 +12,7 @@
 import { useRef, useState } from "react";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getProviderMeta, PROVIDER_META } from "@/constants/providers";
+import { getProviderMeta } from "@/constants/providers";
 import type { AdvancedFilters } from "@/components/dashboard/FilterPanel";
 
 // Providers shown in the WatchBar (most common ones)

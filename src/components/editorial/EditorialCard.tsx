@@ -13,7 +13,6 @@ import {
   TrendingUp,
   Calendar,
   Users,
-  DollarSign,
   Flame,
 } from "lucide-react"
 
@@ -108,7 +107,7 @@ function getCategoryLabel(item: EditorialContent): string {
     case "recommendation":
       return "For You"
     default:
-      return item.category || "Item"
+      return (item as { category?: string }).category ?? "Item"
   }
 }
 

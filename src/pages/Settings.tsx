@@ -17,6 +17,7 @@ import { bookmarkService } from "@/services/bookmarks";
 import { authService } from "@/services/auth";
 import { socialService } from "@/services/social";
 import { fcmService } from "@/services/fcm";
+import type { Bookmark } from "@/types/database";
 
 function getErrorCode(error: unknown): string | null {
   if (!error || typeof error !== "object") return null;
@@ -30,6 +31,7 @@ const Settings = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordLoading, setPasswordLoading] = useState(false);
@@ -41,11 +43,6 @@ const Settings = () => {
   const [emailRemindersEnabled, setEmailRemindersEnabled] = useState(false);
   const [emailRemindersLoading, setEmailRemindersLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const { data: bookmarks = [] } = useQuery({
-    queryKey: ['bookmarks'],
-    queryFn: () => bookmarkService.getBookmarks(),
-  });
 
   const { data: publicProfile } = useQuery({
     queryKey: ['public-profile', user?.uid],
@@ -216,7 +213,16 @@ const Settings = () => {
     }
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
+    setIsExporting(true);
+    let bookmarks: Bookmark[];
+    try {
+      bookmarks = await bookmarkService.getAllBookmarksPaginated();
+    } catch {
+      toast({ title: "Export failed", description: "Could not load your library for export.", variant: "destructive" });
+      setIsExporting(false);
+      return;
+    }
     const headers = ["Title", "Type", "Provider", "Status", "Runtime (min)", "Year", "My Rating", "Notes", "Source URL", "Added"];
     const rows = bookmarks.map((b) => [
       `"${(b.title || "").replace(/"/g, '""')}"`,
@@ -239,6 +245,7 @@ const Settings = () => {
     a.click();
     URL.revokeObjectURL(url);
     toast({ title: "Export downloaded", description: `${bookmarks.length} bookmarks exported.` });
+    setIsExporting(false);
   };
 
   const handleSignOut = async () => {
@@ -250,7 +257,7 @@ const Settings = () => {
         description: "You have been successfully signed out.",
       });
       navigate("/auth");
-    } catch (error) {
+    } catch {
       toast({
         title: "Error signing out",
         description: "Something went wrong. Please try again.",
@@ -559,14 +566,12 @@ const Settings = () => {
               <CardContent>
                 <Button
                   variant="outline"
-                  onClick={handleExportCSV}
-                  disabled={bookmarks.length === 0}
+                  onClick={() => void handleExportCSV()}
+                  disabled={isExporting}
                   className="w-full sm:w-auto"
                 >
                   <Download className="w-4 h-4 mr-2" />
-                  {bookmarks.length === 0
-                    ? "No bookmarks yet"
-                    : `Download CSV (${bookmarks.length} bookmark${bookmarks.length !== 1 ? "s" : ""})`}
+                  {isExporting ? "Preparing export…" : "Download CSV"}
                 </Button>
               </CardContent>
             </Card>

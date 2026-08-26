@@ -62,8 +62,10 @@ async function batchAttachBookmarks(uid: string, notifications: Notification[]):
   );
 }
 
-function docToNotification(snap: { id: string; data(): Record<string, unknown> }): Notification {
-  return { id: snap.id, ...snap.data() } as Notification;
+function docToNotification(snap: { id: string; data(): Record<string, unknown> | undefined }): Notification {
+  const data = snap.data();
+  if (!data) throw new Error(`Notification ${snap.id} not found`);
+  return { id: snap.id, ...data } as Notification;
 }
 
 export const notificationService = {

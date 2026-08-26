@@ -1,8 +1,8 @@
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { embedQuery, isVertexConfigured } from "../ai/vertex";
-import { queryNearest, isVectorIndexConfigured, cosineSimilarity } from "../ai/vectorIndex";
+import { queryNearest, isVectorIndexConfigured } from "../ai/vectorIndex";
 import { incrementMetric } from "../admin/metrics";
 import { rank, type RankableBookmark, type RankedBookmark } from "./rank";
 
@@ -92,23 +92,39 @@ function asArray(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function asIso(value: unknown): string | null {
+  if (value instanceof Timestamp) return value.toDate().toISOString();
+  if (typeof value === "string" && Number.isFinite(Date.parse(value))) return new Date(value).toISOString();
+  return null;
+}
+
 function toBookmarkDoc(snap: FirebaseFirestore.QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot): BookmarkDoc {
   const d = snap.data() ?? {};
+  const isV2 = d.schemaVersion === 2;
+  const source = asRecord(d.source);
+  const media = asRecord(d.media);
+  const resolution = asRecord(d.resolution);
+  const library = asRecord(d.library);
+  const intelligence = asRecord(d.intelligence);
   return {
     id: snap.id,
-    title: asString(d.title),
-    poster_url: typeof d.poster_url === "string" ? d.poster_url : null,
-    type: asString(d.type) || "other",
-    provider: asString(d.provider) || "generic",
-    tags: asArray(d.tags),
-    auto_tags: asArray(d.auto_tags),
-    canonical_entity: d.canonical_entity ?? null,
-    cluster_id: typeof d.cluster_id === "string" ? d.cluster_id : null,
-    created_at: typeof d.created_at === "string" ? d.created_at : null,
-    view_count: asNumber(d.view_count, 0),
-    importance_score: asNumber(d.importance_score, 0.5),
-    embedding_ref: typeof d.embedding_ref === "string" ? d.embedding_ref : null,
-    notes: typeof d.notes === "string" ? d.notes : null,
+    title: asString(isV2 ? media.title : d.title),
+    poster_url: typeof (isV2 ? media.posterUrl : d.poster_url) === "string" ? String(isV2 ? media.posterUrl : d.poster_url) : null,
+    type: asString(isV2 ? media.type : d.type) || "other",
+    provider: asString(isV2 ? source.platform : d.provider) || "generic",
+    tags: asArray(isV2 ? library.tags : d.tags),
+    auto_tags: asArray(isV2 ? intelligence.autoTags : d.auto_tags),
+    canonical_entity: isV2 ? resolution : d.canonical_entity ?? null,
+    cluster_id: typeof (isV2 ? intelligence.clusterId : d.cluster_id) === "string" ? String(isV2 ? intelligence.clusterId : d.cluster_id) : null,
+    created_at: asIso(isV2 ? d.createdAt : d.created_at),
+    view_count: asNumber(isV2 ? intelligence.viewCount : d.view_count, 0),
+    importance_score: asNumber(isV2 ? intelligence.importanceScore : d.importance_score, 0.5),
+    embedding_ref: typeof (isV2 ? intelligence.embeddingRef : d.embedding_ref) === "string" ? String(isV2 ? intelligence.embeddingRef : d.embedding_ref) : null,
+    notes: typeof (isV2 ? library.notes : d.notes) === "string" ? String(isV2 ? library.notes : d.notes) : null,
   };
 }
 
@@ -121,27 +137,29 @@ async function fetchByIds(uid: string, ids: string[]): Promise<BookmarkDoc[]> {
 }
 
 async function fetchRecent(uid: string, limit: number): Promise<BookmarkDoc[]> {
-  const snap = await getFirestore()
-    .collection("users")
-    .doc(uid)
-    .collection("bookmarks")
-    .orderBy("created_at", "desc")
-    .limit(limit)
-    .get();
-  return snap.docs.map(toBookmarkDoc);
+  const collection = getFirestore().collection("users").doc(uid).collection("bookmarks");
+  const [legacy, v2] = await Promise.all([
+    collection.orderBy("created_at", "desc").limit(limit).get(),
+    collection.orderBy("createdAt", "desc").limit(limit).get(),
+  ]);
+  return [...legacy.docs, ...v2.docs]
+    .map(toBookmarkDoc)
+    .sort((left, right) => Date.parse(right.created_at ?? "") - Date.parse(left.created_at ?? ""))
+    .slice(0, limit);
 }
 
 async function fetchInDateRange(uid: string, fromMs: number, toMs: number, limit: number): Promise<BookmarkDoc[]> {
-  const snap = await getFirestore()
-    .collection("users")
-    .doc(uid)
-    .collection("bookmarks")
-    .where("created_at", ">=", new Date(fromMs).toISOString())
-    .where("created_at", "<=", new Date(toMs).toISOString())
-    .orderBy("created_at", "desc")
-    .limit(limit)
-    .get();
-  return snap.docs.map(toBookmarkDoc);
+  const collection = getFirestore().collection("users").doc(uid).collection("bookmarks");
+  const [legacy, v2] = await Promise.all([
+    collection.where("created_at", ">=", new Date(fromMs).toISOString())
+      .where("created_at", "<=", new Date(toMs).toISOString()).orderBy("created_at", "desc").limit(limit).get(),
+    collection.where("createdAt", ">=", Timestamp.fromMillis(fromMs))
+      .where("createdAt", "<=", Timestamp.fromMillis(toMs)).orderBy("createdAt", "desc").limit(limit).get(),
+  ]);
+  return [...legacy.docs, ...v2.docs]
+    .map(toBookmarkDoc)
+    .sort((left, right) => Date.parse(right.created_at ?? "") - Date.parse(left.created_at ?? ""))
+    .slice(0, limit);
 }
 
 function keywordMatch(query: string, docs: BookmarkDoc[]): BookmarkDoc[] {

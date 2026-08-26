@@ -1,4 +1,5 @@
 import type { Bookmark } from "@/types/database";
+import { BookmarkV2Schema, type BookmarkV2 } from "@watchmarks/shared/bookmark";
 import { z } from "zod";
 
 const bookmarkFingerprintSchema = z.object({
@@ -153,8 +154,122 @@ function clampPercent(value: unknown): number {
   return Math.max(0, Math.min(100, parsed));
 }
 
+function legacyStatus(bookmark: BookmarkV2): Bookmark["status"] {
+  if (bookmark.library.state === "watching") return "watching";
+  if (bookmark.library.state === "watched") return "done";
+  if (bookmark.library.state === "dropped") return "dropped";
+  return bookmark.library.scheduledAt ? "scheduled" : "backlog";
+}
+
+function legacyMediaType(type: BookmarkV2["media"]["type"]): Bookmark["type"] {
+  return type === "documentary" ? "doc" : type;
+}
+
+function normalizeBookmarkV2(id: string, raw: unknown): Bookmark {
+  const parsed = BookmarkV2Schema.safeParse(raw);
+  if (!parsed.success) {
+    throw new Error(`Bookmark ${id} has an invalid v2 schema: ${parsed.error.issues[0]?.message ?? "unknown validation error"}`);
+  }
+
+  const data = parsed.data;
+  const createdAt = asIsoString(data.createdAt, new Date().toISOString()) ?? new Date().toISOString();
+  const updatedAt = asIsoString(data.updatedAt, createdAt) ?? createdAt;
+  const externalId = data.resolution.externalId;
+  const numericExternalId = externalId && /^\d+$/.test(externalId) ? Number(externalId) : null;
+  const metadata: Bookmark["metadata"] = {
+    ...(numericExternalId ? { tmdb_id: numericExternalId } : {}),
+    resolution_status: data.resolution.status === "pending" || data.resolution.status === "failed"
+      ? "unresolved"
+      : data.resolution.status,
+    resolution_confidence: data.resolution.confidence ?? undefined,
+    resolution_requires_selection: data.resolution.status === "needs_selection",
+    resolution_selected_by: data.resolution.selectedBy ?? undefined,
+    match_candidates: data.resolution.candidates ?? [],
+    episodes_watched: data.library.episodesWatched ?? undefined,
+    total_episodes: data.library.totalEpisodes ?? undefined,
+    trailer_url: data.library.trailerUrl ?? undefined,
+    watched_with: data.library.watchedWith ?? undefined,
+  };
+  const availability: Bookmark["availability"] = data.availability
+    ? {
+        providers: data.availability.providers.map((provider) => ({
+          ...provider,
+          leaving_date: provider.leavingDate ?? null,
+        })),
+        lastUpdated: data.availability.lastUpdated,
+        region: data.availability.region,
+        tmdbId: data.availability.externalId && /^\d+$/.test(data.availability.externalId)
+          ? Number(data.availability.externalId)
+          : null,
+        status: data.availability.status === "no_match" ? "no_tmdb_match" as const : data.availability.status,
+      }
+    : null;
+
+  return {
+    id,
+    user_id: data.ownerId,
+    title: data.media.title,
+    type: legacyMediaType(data.media.type),
+    provider: data.source.platform,
+    source_url: data.source.originalUrl,
+    canonical_url: data.source.canonicalUrl,
+    platform_label: null,
+    status: legacyStatus(data),
+    runtime_minutes: data.media.runtimeMinutes,
+    release_year: data.media.releaseYear,
+    poster_url: data.media.posterUrl,
+    backdrop_url: data.media.backdropUrl,
+    tags: data.library.tags,
+    mood_tags: data.library.moodTags,
+    notes: data.library.notes,
+    metadata,
+    last_shown_at: asIsoString(data.library.lastShownAt),
+    shown_count: data.library.shownCount,
+    created_at: createdAt,
+    updated_at: updatedAt,
+    user_rating: data.library.rating,
+    user_review: data.library.review,
+    watched_at: asIsoString(data.library.watchedAt),
+    is_public: data.visibility.isPublic,
+    share_token: data.visibility.shareToken ?? undefined,
+    is_vaulted: data.visibility.isVaulted,
+    priority: data.library.priority,
+    queue_status: data.library.queueState,
+    progress_percent: data.library.progressPercent,
+    availability,
+    enriched: data.resolution.status !== "pending",
+    enriched_at: data.resolution.status !== "pending" ? updatedAt : null,
+    enrich_fail_reason: data.resolution.status === "failed" ? "resolution_failed" : null,
+    tmdb: null,
+    auto_tags: data.intelligence.autoTags,
+    embedding_ref: data.intelligence.embeddingRef,
+    fingerprint: data.intelligence.fingerprint as Bookmark["fingerprint"],
+    canonical_entity: data.resolution.status === "matched" && externalId
+      ? {
+          source: data.resolution.provider ?? "unresolved",
+          id: externalId,
+          type: data.media.type === "series" ? "tv" : data.media.type === "movie" ? "movie" : "unknown",
+          title: data.media.title,
+          year: data.media.releaseYear,
+          runtime: data.media.runtimeMinutes,
+          poster: data.media.posterUrl,
+          confidence: data.resolution.confidence ?? 0,
+          matched_at: updatedAt,
+          suggested: false,
+        }
+      : null,
+    cluster_id: data.intelligence.clusterId,
+    last_viewed_at: asIsoString(data.intelligence.lastViewedAt),
+    view_count: data.intelligence.viewCount,
+    importance_score: data.intelligence.importanceScore ?? undefined,
+    pending_cluster_assignment: data.intelligence.pendingClusterAssignment,
+    pipeline_version: data.intelligence.pipelineVersion,
+  };
+}
+
 export function normalizeBookmark(id: string, raw: unknown): Bookmark {
   const data = asRecord(raw);
+  if (data.schemaVersion === 2) return normalizeBookmarkV2(id, raw);
   const now = new Date().toISOString();
   const status = normalizeStatus(data.status);
   const createdAt = asIsoString(data.created_at ?? data.createdAt, now) ?? now;

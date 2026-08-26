@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { detectProvider, cn } from "@/lib/utils";
 import { enrichUrl } from "@/services/functions";
+import { captureAndWait, confirmCaptureCandidate } from "@/services/captureShare";
 import { bookmarkService } from "@/services/bookmarks";
 import { attachmentService } from "@/services/attachments";
 import { buildSmartFillData, mapGenresToMoodTags, type EnrichmentMatchCandidate, type MatchConfidence } from "@/lib/enrichmentSmartFill";
@@ -22,6 +23,7 @@ import { ConfirmMetadataDialog, type ConfirmMetadataPayload } from "@/components
 import { CandidateGrid } from "@/components/bookmarks/CandidateGrid";
 import { QuickScheduleSheet } from "@/components/schedules/QuickScheduleSheet";
 import type { Bookmark } from "@/types/database";
+import { queryKeys } from "@/lib/queryKeys";
 
 const GENRE_OPTIONS = [
   "action",
@@ -160,15 +162,13 @@ const NewBookmark = () => {
   const [tagInput, setTagInput] = useState("");
 
   // Duplicate detection
-  const { data: allBookmarks = [] } = useQuery({
-    queryKey: ['bookmarks'],
-    queryFn: () => bookmarkService.getBookmarks(),
+  const selectedTmdbId = toNumericId(metadata.tmdb_id ?? metadata.tmdbId);
+  const { data: duplicateBookmark = null } = useQuery({
+    queryKey: queryKeys.bookmarks.duplicate(selectedTmdbId),
+    queryFn: () => bookmarkService.findDuplicateByTmdbId(selectedTmdbId!),
+    enabled: selectedTmdbId !== null,
     staleTime: 60 * 1000,
   });
-  const selectedTmdbId = toNumericId(metadata.tmdb_id ?? metadata.tmdbId);
-  const duplicateBookmark = selectedTmdbId
-    ? allBookmarks.find((b) => toNumericId(b.metadata?.tmdb_id ?? b.metadata?.tmdbId) === selectedTmdbId)
-    : null;
 
   // Attachment state
   const [attachments, setAttachments] = useState<File[]>([]);
@@ -181,12 +181,40 @@ const NewBookmark = () => {
   // Schedule after save
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [savedBookmark, setSavedBookmark] = useState<Bookmark | null>(null);
+  const manualRequestIdRef = useRef(crypto.randomUUID());
 
   // Create bookmark mutation
   const createBookmarkMutation = useMutation({
     mutationFn: async (bookmarkData: Parameters<typeof bookmarkService.createBookmark>[0]) => {
-      const bookmark = await bookmarkService.createBookmark(bookmarkData);
-      if (attachments.length > 0) {
+      let capture = await captureAndWait({
+        requestId: manualRequestIdRef.current,
+        url: bookmarkData.source_url ?? undefined,
+        sharedTitle: bookmarkData.title,
+        surface: "manual",
+        clientCapturedAt: new Date().toISOString(),
+      });
+      if (capture.status === "needs_selection" && selectedCandidateKey) {
+        const selected = capture.candidates.find(
+          (candidate) => `${candidate.tmdbId}-${candidate.mediaType}` === selectedCandidateKey,
+        );
+        if (selected) capture = await confirmCaptureCandidate({ captureId: capture.captureId, candidate: selected });
+      }
+      if (capture.status === "processing" || !("bookmarkId" in capture)) {
+        throw new Error("Capture did not produce a bookmark.");
+      }
+      const isDuplicate = capture.status === "duplicate";
+      const bookmark = isDuplicate
+        ? await bookmarkService.getBookmark(capture.bookmarkId)
+        : await bookmarkService.updateBookmark(capture.bookmarkId, {
+            title: bookmarkData.title,
+            status: bookmarkData.status,
+            tags: bookmarkData.tags,
+            mood_tags: bookmarkData.mood_tags,
+            notes: bookmarkData.notes,
+            priority: bookmarkData.priority,
+            queue_status: bookmarkData.queue_status,
+          });
+      if (!isDuplicate && attachments.length > 0) {
         setUploadProgress(0);
         for (let i = 0; i < attachments.length; i++) {
           await attachmentService.createAttachment(attachments[i], bookmark.id);

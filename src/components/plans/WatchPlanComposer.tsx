@@ -184,7 +184,7 @@ export function WatchPlanComposer({ open, onOpenChange, allBookmarks }: WatchPla
       } catch (error) {
         // Rollback: delete the plan if adding items fails
         try {
-          await watchPlanService.deletePlan(plan.id);
+          await watchPlanService.deleteWatchPlan(plan.id);
         } catch (deleteError) {
           console.error('[WatchPlanComposer] Failed to rollback plan deletion', deleteError);
         }

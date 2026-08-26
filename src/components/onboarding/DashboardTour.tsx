@@ -305,7 +305,7 @@ function LibraryIllustration() {
         { label: "Continue Watching", color: "bg-sky-900/60" },
         { label: "Saved for Later", color: "bg-violet-900/60" },
         { label: "Chill Picks", color: "bg-emerald-900/60" },
-      ].map(({ label, color }, ri) => (
+      ].map(({ color }, ri) => (
         <div key={ri} className="space-y-1.5">
           <div className="h-2 bg-foreground/15 rounded w-28 ml-1" />
           <div className="flex gap-2 overflow-hidden">

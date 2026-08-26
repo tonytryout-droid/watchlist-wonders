@@ -62,7 +62,7 @@ const ShareView = () => {
       queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
       toast({ title: "Saved to your watchlist!" });
     },
-    onError: (err: unknown) => {
+    onError: (_err: unknown) => {
       toast({
         title: "Could not save",
         description: "Could not save to your watchlist. Please try again.",

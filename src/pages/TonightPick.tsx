@@ -6,10 +6,12 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ToastAction } from "@/components/ui/toast";
-import { cn, formatRuntime, getMoodEmoji, openSafe } from "@/lib/utils";
+import { formatRuntime, getMoodEmoji, openSafe } from "@/lib/utils";
 import { bookmarkService } from "@/services/bookmarks";
 import { useToast } from "@/hooks/use-toast";
 import type { Bookmark } from "@/types/database";
+import { storage } from "@/lib/storage";
+import { queryKeys } from "@/lib/queryKeys";
 
 const REJECTION_STORAGE_KEY = "wm_tonight_rejections";
 const FILTER_STORAGE_KEY = "wm_dashboard_filters";
@@ -22,35 +24,22 @@ interface RejectionRecord {
 }
 
 function loadRejections(): RejectionRecord[] {
-  try {
-    const raw = localStorage.getItem(REJECTION_STORAGE_KEY);
-    if (!raw) return [];
-    const all = JSON.parse(raw) as RejectionRecord[];
-    // Prune expired
-    const cutoff = Date.now() - REJECTION_TTL_MS;
-    return all.filter((r) => r.rejectedAt > cutoff);
-  } catch {
-    return [];
-  }
+  const all = storage.get<RejectionRecord[]>(REJECTION_STORAGE_KEY, {
+    fallback: [],
+    validate: (raw) => Array.isArray(raw) ? raw.filter((item): item is RejectionRecord => Boolean(item) && typeof item.id === "string" && typeof item.rejectedAt === "number") : null,
+  });
+  const cutoff = Date.now() - REJECTION_TTL_MS;
+  return all.filter((record) => record.rejectedAt > cutoff);
 }
 
 function saveRejection(id: string) {
-  try {
-    const existing = loadRejections().filter((r) => r.id !== id);
-    existing.push({ id, rejectedAt: Date.now() });
-    localStorage.setItem(REJECTION_STORAGE_KEY, JSON.stringify(existing));
-  } catch { /* ignore */ }
+  const existing = loadRejections().filter((record) => record.id !== id);
+  storage.set(REJECTION_STORAGE_KEY, [...existing, { id, rejectedAt: Date.now() }]);
 }
 
 function loadActiveMoodFromFilters(): string | null {
-  try {
-    const raw = localStorage.getItem(FILTER_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { moods?: string[] };
-    return parsed.moods?.[0] ?? null;
-  } catch {
-    return null;
-  }
+  const parsed = storage.get<{ moods?: string[] }>(FILTER_STORAGE_KEY, { fallback: {} });
+  return parsed.moods?.[0] ?? null;
 }
 
 function scoreCandidate(b: Bookmark, rejectedIds: Set<string>): number {
@@ -86,7 +75,7 @@ const TonightPick = () => {
 
   // Fetch backlog items under 90 minutes
   const { data: rawCandidates = [], isLoading, error } = useQuery({
-    queryKey: ['tonight-candidates'],
+    queryKey: queryKeys.tonight.candidates,
     queryFn: () => bookmarkService.getTonightCandidates(),
   });
 
@@ -117,8 +106,8 @@ const TonightPick = () => {
   const markDoneMutation = useMutation({
     mutationFn: (id: string) => bookmarkService.updateStatus(id, 'done'),
     onSuccess: (_, id) => {
-      queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
-      queryClient.invalidateQueries({ queryKey: ['tonight-candidates'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.bookmarks.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tonight.candidates });
       setPicks(prev => prev.filter((p) => p.id !== id));
       toast({
         title: "Marked as done!",

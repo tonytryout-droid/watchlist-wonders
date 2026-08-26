@@ -11,32 +11,26 @@ WatchMarks is a React + Firebase watchlist application for saving, organizing, a
 
 ## Requirements
 
-- Node.js 22+
-- npm
+- Node.js 22.x
+- npm 10 or 11
 - Firebase CLI (`npm install -g firebase-tools`)
 - A Firebase project
 
 ## Quick Start
 
-1. Install root dependencies:
+1. Install all root and workspace dependencies from the lockfile:
 
 ```bash
-npm install
+npm ci
 ```
 
-2. Install Cloud Functions dependencies:
-
-```bash
-npm --prefix functions install
-```
-
-3. Create local environment file:
+2. Create local environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-4. Fill Firebase web app values in `.env`:
+3. Fill Firebase web app values in `.env`:
 
 ```env
 VITE_FIREBASE_API_KEY=
@@ -50,7 +44,7 @@ VITE_FIREBASE_VAPID_KEY=
 VITE_APP_URL=
 ```
 
-5. Start the app:
+4. Start the app:
 
 ```bash
 npm run dev
@@ -112,6 +106,8 @@ The frontend will automatically connect to the emulator hosts when running in de
 
 ## Enrichment Flow
 
+The canonical ingestion contract, asynchronous worker, SSRF boundary, fixture policy, and rollout procedure are documented in [Capture pipeline v2](docs/capture-pipeline.md).
+
 - Frontend calls Firebase callable function `enrich` via `httpsCallable`.
 - There is no `VITE_ENRICH_URL` runtime setting in the current app path.
 - Callable requires authenticated users.
@@ -122,6 +118,9 @@ See function details in `functions/README.md`.
 
 - `npm run dev` - Start Vite dev server
 - `npm run build` - Build frontend
+- `npm run typecheck` - Type-check the frontend
+- `npm run typecheck:functions` - Type-check Cloud Functions
+- `npm run verify` - Run the authoritative local web verification suite
 - `npm run preview` - Preview production build
 - `npm run lint` - Run ESLint
 - `npm test` - Run Vitest once

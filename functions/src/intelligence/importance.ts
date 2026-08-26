@@ -9,6 +9,7 @@ interface BookmarkLite {
   has_note: boolean;
   has_rating: boolean;
   user_id: string;
+  isV2: boolean;
 }
 
 function normalizeViews(views: number, maxViews: number): number {
@@ -48,17 +49,25 @@ async function loadUserBookmarks(uid: string): Promise<BookmarkLite[]> {
     .get();
   return snap.docs.map((d) => {
     const data = d.data();
+    const isV2 = data.schemaVersion === 2;
+    const library = data.library && typeof data.library === "object" && !Array.isArray(data.library)
+      ? data.library as Record<string, unknown> : {};
+    const resolution = data.resolution && typeof data.resolution === "object" && !Array.isArray(data.resolution)
+      ? data.resolution as Record<string, unknown> : {};
+    const intelligence = data.intelligence && typeof data.intelligence === "object" && !Array.isArray(data.intelligence)
+      ? data.intelligence as Record<string, unknown> : {};
     return {
       id: d.id,
       user_id: uid,
-      view_count: typeof data.view_count === "number" ? data.view_count : 0,
-      has_canonical: !!data.canonical_entity,
+      view_count: typeof (isV2 ? intelligence.viewCount : data.view_count) === "number" ? Number(isV2 ? intelligence.viewCount : data.view_count) : 0,
+      has_canonical: isV2 ? resolution.status === "matched" : !!data.canonical_entity,
       tags: [
-        ...(Array.isArray(data.tags) ? (data.tags as string[]) : []),
-        ...(Array.isArray(data.auto_tags) ? (data.auto_tags as string[]) : []),
+        ...(Array.isArray(isV2 ? library.tags : data.tags) ? (isV2 ? library.tags : data.tags) as string[] : []),
+        ...(Array.isArray(isV2 ? intelligence.autoTags : data.auto_tags) ? (isV2 ? intelligence.autoTags : data.auto_tags) as string[] : []),
       ],
-      has_note: typeof data.notes === "string" && data.notes.trim().length > 0,
-      has_rating: typeof data.user_rating === "number" && data.user_rating > 0,
+      has_note: typeof (isV2 ? library.notes : data.notes) === "string" && String(isV2 ? library.notes : data.notes).trim().length > 0,
+      has_rating: typeof (isV2 ? library.rating : data.user_rating) === "number" && Number(isV2 ? library.rating : data.user_rating) > 0,
+      isV2,
     };
   });
 }
@@ -70,7 +79,7 @@ export async function recomputeImportance(uid: string): Promise<{ updated: numbe
   const maxViews = bookmarks.reduce((m, b) => Math.max(m, b.view_count), 0);
   const userTopTags = topUserTags(bookmarks);
   const db = getFirestore();
-  const batch = db.batch();
+  let batch = db.batch();
   let updated = 0;
 
   for (const b of bookmarks) {
@@ -81,11 +90,16 @@ export async function recomputeImportance(uid: string): Promise<{ updated: numbe
       0.1 * (b.has_note || b.has_rating ? 1 : 0);
 
     const ref = db.collection("users").doc(uid).collection("bookmarks").doc(b.id);
-    batch.set(ref, { importance_score: Math.round(score * 1000) / 1000 }, { merge: true });
+    batch.update(ref, b.isV2
+      ? { "intelligence.importanceScore": Math.round(score * 1000) / 1000 }
+      : { importance_score: Math.round(score * 1000) / 1000 });
     updated++;
-    if (updated % 400 === 0) await batch.commit();
+    if (updated % 400 === 0) {
+      await batch.commit();
+      batch = db.batch();
+    }
   }
-  await batch.commit().catch(() => undefined);
+  if (updated % 400 !== 0) await batch.commit();
   await incrementMetric("importance.user.recomputed");
   return { updated };
 }

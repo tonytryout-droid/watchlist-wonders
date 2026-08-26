@@ -7,9 +7,10 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { TmdbCandidatePicker } from "@/components/bookmarks/TmdbCandidatePicker";
 import { detectProvider } from "@/lib/utils";
-import { bookmarkService } from "@/services/bookmarks";
-import { captureShare, type CaptureShareResult } from "@/services/captureShare";
+import { captureAndWait, confirmCaptureCandidate } from "@/services/captureShare";
+import type { CaptureBookmarkResponse } from "@watchmarks/shared/capture";
 import type { Bookmark } from "@/types/database";
+import { storage } from "@/lib/storage";
 
 const PROVIDER_LABELS: Record<Bookmark["provider"], string> = {
   youtube: "YouTube",
@@ -57,10 +58,11 @@ const ShareTarget = () => {
   const [viewState, setViewState] = useState<ShareViewState>("capturing");
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
-  const [captureResult, setCaptureResult] = useState<CaptureShareResult | null>(null);
+  const [captureResult, setCaptureResult] = useState<CaptureBookmarkResponse | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
   const captureStartedRef = useRef(false);
+  const requestIdRef = useRef(crypto.randomUUID());
 
   const sharedUrl = searchParams.get("url") ?? "";
   const sharedText = searchParams.get("text") ?? "";
@@ -76,24 +78,25 @@ const ShareTarget = () => {
     [targetUrl],
   );
 
-  const bookmarkHref = captureResult?.bookmarkId ? `/b/${captureResult.bookmarkId}` : "/dashboard";
+  const bookmarkId = captureResult && "bookmarkId" in captureResult ? captureResult.bookmarkId : null;
+  const bookmarkHref = bookmarkId ? `/b/${bookmarkId}` : "/library";
 
   const routeToBookmark = useCallback(() => {
     navigate(bookmarkHref, { replace: true });
   }, [bookmarkHref, navigate]);
 
   const persistPendingPayload = useCallback(() => {
-    if (sharedUrl) sessionStorage.setItem("pendingShareUrl", sharedUrl);
-    if (sharedTitle) sessionStorage.setItem("pendingShareTitle", sharedTitle);
-    if (sharedText) sessionStorage.setItem("pendingShareText", sharedText);
+    if (sharedUrl) storage.set("pendingShareUrl", sharedUrl, "session");
+    if (sharedTitle) storage.set("pendingShareTitle", sharedTitle, "session");
+    if (sharedText) storage.set("pendingShareText", sharedText, "session");
   }, [sharedText, sharedTitle, sharedUrl]);
 
   useEffect(() => {
     if (sharedUrl || sharedText || sharedTitle) return;
 
-    const pendingUrl = sessionStorage.getItem("pendingShareUrl");
-    const pendingTitle = sessionStorage.getItem("pendingShareTitle");
-    const pendingText = sessionStorage.getItem("pendingShareText");
+    const pendingUrl = storage.get<string | null>("pendingShareUrl", { fallback: null }, "session");
+    const pendingTitle = storage.get<string | null>("pendingShareTitle", { fallback: null }, "session");
+    const pendingText = storage.get<string | null>("pendingShareText", { fallback: null }, "session");
     if (!pendingUrl && !pendingTitle && !pendingText) return;
 
     const params = new URLSearchParams();
@@ -102,9 +105,9 @@ const ShareTarget = () => {
     if (pendingText) params.set("text", pendingText);
     navigate(`/share-target?${params.toString()}`, { replace: true });
 
-    sessionStorage.removeItem("pendingShareUrl");
-    sessionStorage.removeItem("pendingShareTitle");
-    sessionStorage.removeItem("pendingShareText");
+    storage.remove("pendingShareUrl", "session");
+    storage.remove("pendingShareTitle", "session");
+    storage.remove("pendingShareText", "session");
   }, [navigate, sharedText, sharedTitle, sharedUrl]);
 
   useEffect(() => {
@@ -116,7 +119,7 @@ const ShareTarget = () => {
   }, [authLoading, hasSharePayload, navigate, persistPendingPayload, user]);
 
   useEffect(() => {
-    if (captureResult?.status !== "auto_saved" && captureResult?.status !== "duplicate") return;
+    if (captureResult?.status !== "saved" && captureResult?.status !== "duplicate") return;
     if (!captureResult.bookmarkId) return;
 
     const timeout = window.setTimeout(() => {
@@ -135,24 +138,25 @@ const ShareTarget = () => {
 
     void (async () => {
       try {
-        const result = await captureShare({
+        const result = await captureAndWait({
+          requestId: requestIdRef.current,
           url: sharedUrl || undefined,
-          text: sharedText || undefined,
-          title: sharedTitle || undefined,
-          surface: "pwa_share_target",
-          clientTimestamp: new Date().toISOString(),
+          sharedText: sharedText || undefined,
+          sharedTitle: sharedTitle || undefined,
+          surface: "pwa_share",
+          clientCapturedAt: new Date().toISOString(),
         });
         setCaptureResult(result);
         await queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
 
         switch (result.status) {
-          case "auto_saved":
+          case "saved":
             setViewState("saved");
-            toast({ title: "Saved", description: result.message ?? "Added to your watchlist." });
+            toast({ title: "Saved", description: "Added to your watchlist." });
             break;
           case "duplicate":
             setViewState("duplicate");
-            toast({ title: "Already saved", description: result.message ?? "This title is already in your watchlist." });
+            toast({ title: "Already saved", description: "This title is already in your watchlist." });
             break;
           case "needs_selection":
             setViewState("needs_selection");
@@ -161,7 +165,7 @@ const ShareTarget = () => {
           case "unresolved":
           default:
             setViewState("unresolved");
-            toast({ title: "Saved for later", description: result.message ?? "We saved this capture for later review." });
+            toast({ title: "Saved for later", description: "We saved this capture for later review." });
             break;
         }
       } catch {
@@ -190,14 +194,15 @@ const ShareTarget = () => {
     setRetryCount((prev) => prev + 1);
   };
 
-  const handleCandidateSelect = async (candidate: NonNullable<CaptureShareResult["candidates"]>[number]) => {
-    if (!captureResult?.bookmarkId) return;
+  const handleCandidateSelect = async (candidate: Extract<CaptureBookmarkResponse, { status: "needs_selection" }>["candidates"][number]) => {
+    if (!captureResult?.captureId) return;
     setIsSelecting(true);
     try {
-      await bookmarkService.selectResolutionCandidate(captureResult.bookmarkId, candidate);
+      const confirmed = await confirmCaptureCandidate({ captureId: captureResult.captureId, candidate });
+      if (confirmed.status !== "saved") throw new Error("Candidate confirmation did not complete.");
       await queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
       toast({ title: "Matched", description: `Saved as "${candidate.title}".` });
-      navigate(`/b/${captureResult.bookmarkId}`, { replace: true });
+      navigate(`/b/${confirmed.bookmarkId}`, { replace: true });
     } catch {
       setCaptureError("Could not apply this match.");
       setViewState("error");
@@ -272,9 +277,7 @@ const ShareTarget = () => {
     <>
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-5 px-6 text-center">
         <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center text-sm font-semibold text-primary overflow-hidden">
-          {captureResult?.posterUrl ? (
-            <img src={captureResult.posterUrl} alt={captureResult.resolvedTitle ?? "Shared title"} className="w-full h-full object-cover" />
-          ) : viewState === "saved" || viewState === "duplicate" || viewState === "unresolved" ? (
+          {viewState === "saved" || viewState === "duplicate" || viewState === "unresolved" ? (
             <CheckCircle2 className="w-7 h-7" />
           ) : (
             PROVIDER_MARKS[detectedProvider]
@@ -290,15 +293,6 @@ const ShareTarget = () => {
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
 
-        {captureResult?.resolvedTitle ? (
-          <div className="rounded-xl border border-border bg-card px-4 py-3 min-w-[260px] max-w-sm">
-            <p className="font-medium text-foreground">{captureResult.resolvedTitle}</p>
-            <p className="text-xs text-muted-foreground">
-              {captureResult.provider ? PROVIDER_LABELS[captureResult.provider as Bookmark["provider"]] : PROVIDER_LABELS[detectedProvider]}
-            </p>
-          </div>
-        ) : null}
-
         {viewState === "saved" || viewState === "duplicate" ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <LinkIcon className="w-4 h-4" />
@@ -311,7 +305,7 @@ const ShareTarget = () => {
             <Button onClick={() => setPickerOpen(true)} disabled={isSelecting}>
               {isSelecting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Select title"}
             </Button>
-            <Button variant="outline" onClick={routeToBookmark} disabled={!captureResult?.bookmarkId}>
+            <Button variant="outline" onClick={routeToBookmark} disabled={!bookmarkId}>
               Review later
             </Button>
           </div>
@@ -319,7 +313,7 @@ const ShareTarget = () => {
 
         {viewState === "unresolved" ? (
           <div className="flex flex-col gap-3 w-full max-w-sm">
-            <Button onClick={routeToBookmark} disabled={!captureResult?.bookmarkId}>
+            <Button onClick={routeToBookmark} disabled={!bookmarkId}>
               Open bookmark
             </Button>
             <Button variant="outline" onClick={() => navigate("/dashboard", { replace: true })}>
@@ -332,8 +326,8 @@ const ShareTarget = () => {
       <TmdbCandidatePicker
         open={pickerOpen}
         onOpenChange={setPickerOpen}
-        candidates={captureResult?.candidates ?? []}
-        extractedTitle={captureResult?.extractedTitle ?? sharedTitle}
+        candidates={captureResult?.status === "needs_selection" ? captureResult.candidates : []}
+        extractedTitle={sharedTitle}
         onSelect={(candidate) => { void handleCandidateSelect(candidate); }}
         onSkip={() => {
           setPickerOpen(false);

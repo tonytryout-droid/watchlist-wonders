@@ -3,7 +3,7 @@
  * Tests real-world scenarios with various platforms
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { detectProvider, extractYouTubeVideoId, extractImdbId } from '@/lib/utils';
 
 describe('Social Media Integration Tests', () => {

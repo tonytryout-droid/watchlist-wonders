@@ -1,5 +1,5 @@
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-import { db, auth } from '@/lib/firebase';
+import { auth } from '@/lib/firebase';
+import { reportClientError } from '@/services/functions';
 
 type ErrorContext = Record<string, unknown>;
 
@@ -7,9 +7,7 @@ type ErrorContext = Record<string, unknown>;
  * Persistent error sink.
  *
  * - In dev: just logs to console.
- * - In prod: appends a record to /errorReports/{autoId}. A Cloud Function can
- *   fan-out to Slack/email; until that's wired, the collection itself is
- *   queryable from the admin dashboard.
+ * - In prod: sends a bounded payload to an authenticated, rate-limited callable.
  * - Optionally forwards to Sentry's `window.Sentry.captureException` if
  *   `@sentry/react` was initialised at app boot (no hard dependency).
  *
@@ -85,14 +83,13 @@ export function reportError(error: unknown, context: ErrorContext = {}): void {
   forwardToSentry(error, context);
 
   try {
-    void addDoc(collection(db, 'errorReports'), {
-      uid: auth.currentUser?.uid ?? null,
-      ts: serverTimestamp(),
+    if (!auth.currentUser) return;
+    void reportClientError({
       url: typeof window !== 'undefined' ? window.location.pathname : null,
       fingerprint: fp,
       error: serializeError(error),
       context,
-    });
+    }).catch(() => undefined);
   } catch {
     // Even the sink can fail (e.g. offline) — never escalate from reporter.
   }
